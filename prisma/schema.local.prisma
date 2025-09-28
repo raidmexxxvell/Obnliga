@@ -1,0 +1,23 @@
+// Local variant of schema.prisma for developer convenience (sqlite).
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Copy of production schema models (trimmed to keep migrations minimal for local dev)
+// NOTE: keep in sync with prisma/schema.prisma when making breaking changes.
+
+model User {
+  id        Int      @id @default(autoincrement())
+  userId    BigInt   @unique @map("user_id")
+  tgUsername String? @map("tg_username")
+  photoUrl  String?  @map("photo_url")
+  createdAt DateTime @map("created_at") @default(now())
+  updatedAt DateTime @map("updated_at") @updatedAt
+
+  @@map("users")
+}

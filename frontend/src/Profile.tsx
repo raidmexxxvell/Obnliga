@@ -40,10 +40,12 @@ function formatDate(dt?: string) {
   if (!dt) return ''
   try {
     const d = new Date(dt)
-    // format dd.mm.yyyy in Moscow timezone +3 (approx — Date stores in UTC)
-    const day = String(d.getUTCDate()).padStart(2, '0')
-    const month = String(d.getUTCMonth() + 1).padStart(2, '0')
-    const year = d.getUTCFullYear()
+    // Convert to Moscow time (UTC+3) and format dd.mm.yyyy
+    const ms = d.getTime() + 3 * 60 * 60 * 1000
+    const md = new Date(ms)
+    const day = String(md.getUTCDate()).padStart(2, '0')
+    const month = String(md.getUTCMonth() + 1).padStart(2, '0')
+    const year = md.getUTCFullYear()
     return `${day}.${month}.${year}`
   } catch (e) {
     return dt
