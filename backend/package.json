@@ -17,7 +17,9 @@
     "@prisma/client": "^5.0.0",
     "dotenv": "^17.2.2",
     "fastify": "^4.0.0",
-    "grammy": "^1.38.2"
+    "grammy": "^1.38.2",
+    "ioredis": "^5.8.0",
+    "quick-lru": "^7.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

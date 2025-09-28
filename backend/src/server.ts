@@ -13,6 +13,10 @@ startBot().catch((e) => {
   server.log.warn({ err: e }, 'bot start failed')
 })
 
+// register cache routes (demo)
+import cacheRoutes from './routes/cacheRoutes'
+server.register(cacheRoutes)
+
 const start = async () => {
   try {
     await server.listen({ port: 3000, host: '0.0.0.0' })
