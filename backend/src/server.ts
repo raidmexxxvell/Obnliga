@@ -27,6 +27,10 @@ startBot().catch((e) => {
 import cacheRoutes from './routes/cacheRoutes'
 server.register(cacheRoutes)
 
+// register ETag plugin (Phase 2 requirement)
+import etagPlugin from './plugins/etag'
+server.register(etagPlugin)
+
 const start = async () => {
   try {
     await server.listen({ port: 3000, host: '0.0.0.0' })

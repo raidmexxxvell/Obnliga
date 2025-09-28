@@ -1,0 +1,64 @@
+# State / Store — контракт и текущее состояние
+
+Дата: 2025-09-28
+
+Цель:
+- Задокументировать фасад стора (store façade) для фронтенда — типы, публичный API, сценарии использования и ожидаемое поведение при real-time обновлениях.
+
+Общий контракт фасада (коротко)
+- Inputs: HTTP API (ETag/If-None-Match), WebSocket (patch|full), local persistence (localStorage) для корзины.
+- Outputs: подписываемые селекторы/колбеки, синхронные геттеры состояния и асинхронные экшены для мутирующих операций.
+- Ошибки: сетевые ошибки/таймауты возвращаются в форме `{ ok: false, error }` для action-методов; store остаётся в консистентном состоянии.
+
+Ядро: фасад store (пример API)
+- createStoreFacade(): Store
+
+Store — публичные методы и селекторы (пример)
+- getState(): RootState — синхронный снимок
+- subscribe(listener: (state) => void): Unsubscribe
+- actions:
+  - fetchMatches(force?: boolean): Promise<{ ok: boolean }>
+  - fetchMatch(id: number): Promise<{ ok: boolean }>
+  - placeBet(betPayload): Promise<{ ok: boolean, id?: number }>
+  - addToCart(itemId, qty): void
+  - syncCart(): Promise<{ ok: boolean }>
+
+Stores (модули)
+- matchesStore
+  - state: { items: Match[], byId: Record<number, Match>, loading: boolean, etag?: string }
+  - actions: fetchMatches, fetchMatch, applyPatch
+- realtimeStore
+  - state: { connected: boolean, topics: string[] }
+  - actions: connect(url), subscribe(topic), unsubscribe(topic), applyPatch
+- userStore
+  - state: { me?: User, loggedIn: boolean }
+  - actions: telegramInit(initData) — flow with server verification
+- shopStore
+  - state: { items: ShopItem[], cart: Cart }
+  - actions: loadItems, addToCart, removeFromCart, placeOrder
+
+Типы и shape (коротко)
+- Match { id: number, homeTeamId: number, awayTeamId: number, matchDate: string, homeScore: number, awayScore: number, status: 'scheduled'|'live'|'finished' }
+- ShopItem { id: number, title: string, price: number }
+- Cart { items: { itemId: number, qty: number }[] }
+
+ETag / SWR behaviour (client-side)
+- При fetchMatches: если локально известен `etag`, отправляем `If-None-Match`.
+- При 304 — не обновляем state; при 200 — сохраняем тело и новый `ETag`.
+- При получении WS-патча для matches — применяем патч к store через `applyPatch`, опционально инвалидация ETag.
+
+Edge cases
+- Пустой ответ / отсутствие данных — store держит `items = []` и `loading = false`.
+- Конфликты между WS-патчем и локальным optimistic update — оптимистичные апдейты должны быть отменяемы при ошибке сервера.
+- Большие payloads — при необходимости использовать pagination / incremental fetch.
+
+Тесты (минимальный набор)
+- Unit: matchesStore.fetchMatches happy path + 304 handling + error handling.
+- Integration: WS patch apply → store state changes (mock WS).
+
+Документы к обновлению при изменениях
+- При любом изменении shape стора обновлять `docs/state.md`.
+
+Следующие шаги
+- Реализовать `frontend/src/api/etag.ts` с поддержкой If-None-Match и SWR.
+- Создать `src/store/facade.ts` и покрыть unit тестами (Jest + msw / nock).
