@@ -37,6 +37,24 @@ Stores (модули)
   - state: { items: ShopItem[], cart: Cart }
   - actions: loadItems, addToCart, removeFromCart, placeOrder
 
+UI / Navigation state
+- currentTab: 'home'|'league'|'predictions'|'leaderboard'|'shop'|'profile' — текущее активное представление.
+- Поведение:
+  - 'home' — основная страница с контентом (сейчас реализована).
+  - остальные значения — показывают placeholder ("Страница в разработке") до реализации реальных страниц.
+
+Пример добавления в фасад стора/контракта:
+
+```ts
+type UITab = 'home'|'league'|'predictions'|'leaderboard'|'shop'|'profile'
+interface UIState { currentTab: UITab }
+// actions
+setTab(tab: UITab): void
+```
+
+Замечания по UX
+- Закрытие/переход со сплеша: сплеш скрывается только после завершения прогресса (100%) и небольшой задержки (примерно 350ms), чтобы избежать мерцания при коротких задержках загрузки.
+
 Типы и shape (коротко)
 - Match { id: number, homeTeamId: number, awayTeamId: number, matchDate: string, homeScore: number, awayScore: number, status: 'scheduled'|'live'|'finished' }
 - ShopItem { id: number, title: string, price: number }

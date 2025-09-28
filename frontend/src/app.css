@@ -92,6 +92,24 @@
   box-shadow: 0 8px 20px rgba(2,6,23,0.6);
 }
 
+/* layout space for bottom nav */
+.content-wrapper{ padding:20px 18px 88px; max-width:980px; margin:0 auto; width:100% }
+
+.placeholder{ display:flex; align-items:center; justify-content:center; height:60vh }
+.placeholder-card{ text-align:center; padding:22px; border-radius:10px; background:rgba(255,255,255,0.02); box-shadow:0 8px 20px rgba(2,6,23,0.6) }
+
+/* bottom navigation */
+.bottom-nav{ position:fixed; left:16px; right:16px; bottom:18px; display:flex; gap:8px; justify-content:space-between; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); padding:8px; border-radius:14px; box-shadow: 0 10px 30px rgba(2,6,23,0.6); z-index:40 }
+.bottom-nav .tab{ flex:1; background:transparent; border:0; color:var(--neon-cyan); display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 6px; border-radius:10px; cursor:pointer }
+.bottom-nav .tab .icon{ font-size:18px }
+.bottom-nav .tab .label{ font-size:12px; opacity:0.9 }
+.bottom-nav .tab.active{ background: linear-gradient(90deg, rgba(0,240,255,0.04), rgba(255,45,247,0.03)); box-shadow:0 6px 18px rgba(0,240,255,0.04) }
+
+@media (max-width:520px){
+  .bottom-nav{ left:10px; right:10px }
+  .bottom-nav .tab .label{ display:none }
+}
+
 /* small entrance animation for the logo */
 @keyframes logoPop{ from{ transform: translateY(12px) scale(.86) rotate(-6deg); opacity:0 } to{ transform: translateY(-6px) scale(1) rotate(-4deg); opacity:0.98 } }
 .logo.animate{ animation: logoPop 640ms cubic-bezier(.2,.9,.2,1) both }

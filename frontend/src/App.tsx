@@ -5,6 +5,7 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(true)
   const [progress, setProgress] = useState(0)
   const [isExiting, setIsExiting] = useState(false)
+  const [currentTab, setCurrentTab] = useState<'home'|'league'|'predictions'|'leaderboard'|'shop'|'profile'>('home')
 
   useEffect(() => {
     const duration = 1600 // splash duration in ms
@@ -52,11 +53,51 @@ export default function App() {
 
   return (
     <div className="app-root main">
-      <div className="card">
-        <h1 style={{marginTop:0}}>Привет!</h1>
-        <p>Добро пожаловать в мини-приложение Футбольной Лиги.</p>
-        <p>Откройте бота в Telegram и отправьте /start, чтобы получить ссылку на WebApp.</p>
+      <div className="content-wrapper">
+        {currentTab === 'home' && (
+          <div className="card">
+            <h1 style={{marginTop:0}}>Привет!</h1>
+            <p>Добро пожаловать в мини-приложение Футбольной Лиги.</p>
+            <p>Откройте бота в Telegram и отправьте /start, чтобы получить ссылку на WebApp.</p>
+          </div>
+        )}
+
+        {currentTab !== 'home' && (
+          <div className="placeholder">
+            <div className="placeholder-card">
+              <h2>Страница в разработке</h2>
+              <p>Эта вкладка ещё не реализована — работаем над ней.</p>
+            </div>
+          </div>
+        )}
       </div>
+
+      <nav className="bottom-nav" role="navigation" aria-label="Основные вкладки">
+        <button className={"tab" + (currentTab==='home'? ' active':'')} onClick={()=>setCurrentTab('home')} aria-current={currentTab==='home'}>
+          <span className="icon">🏠</span>
+          <span className="label">Главная</span>
+        </button>
+        <button className={"tab" + (currentTab==='league'? ' active':'')} onClick={()=>setCurrentTab('league')}>
+          <span className="icon">🏆</span>
+          <span className="label">Лига</span>
+        </button>
+        <button className={"tab" + (currentTab==='predictions'? ' active':'')} onClick={()=>setCurrentTab('predictions')}>
+          <span className="icon">📈</span>
+          <span className="label">Прогнозы</span>
+        </button>
+        <button className={"tab" + (currentTab==='leaderboard'? ' active':'')} onClick={()=>setCurrentTab('leaderboard')}>
+          <span className="icon">🥇</span>
+          <span className="label">Лидерборд</span>
+        </button>
+        <button className={"tab" + (currentTab==='shop'? ' active':'')} onClick={()=>setCurrentTab('shop')}>
+          <span className="icon">🛒</span>
+          <span className="label">Магазин</span>
+        </button>
+        <button className={"tab" + (currentTab==='profile'? ' active':'')} onClick={()=>setCurrentTab('profile')}>
+          <span className="icon">👤</span>
+          <span className="label">Профиль</span>
+        </button>
+      </nav>
     </div>
   )
 }
