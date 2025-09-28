@@ -1,0 +1,44 @@
+services:
+  - type: web_service
+    name: futbol-league-backend
+    env: node
+    plan: free
+    region: oregon
+    buildCommand: "cd backend && npm ci && npm run build"
+    startCommand: "cd backend && npx prisma migrate deploy && npm run start"
+    autoDeploy: true
+    branch: main
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: postgres
+      - key: REDIS_URL
+      - key: TELEGRAM_BOT_TOKEN
+
+  - type: static_site
+    name: futbol-league-frontend
+    env: static
+    plan: free
+    region: oregon
+    buildCommand: "cd frontend && npm ci && npm run build"
+    staticPublishPath: "frontend/dist"
+    autoDeploy: true
+    branch: main
+
+  - type: worker
+    name: futbol-league-worker
+    env: node
+    plan: free
+    region: oregon
+    buildCommand: "cd backend && npm ci && npm run build"
+    startCommand: "cd backend && node dist/workers/worker.js"
+    autoDeploy: false
+    branch: main
+
+jobs:
+  - name: run-migrations
+    type: job
+    env: node
+    region: oregon
+    buildCommand: "cd backend && npm ci"
+    startCommand: "cd backend && npx prisma migrate deploy"
+    schedule: "on-deploy"

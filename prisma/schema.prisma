@@ -1,0 +1,217 @@
+// Начальная схема Prisma (взята из docs/prisma.md)
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Tournament {
+  id         Int       @id @default(autoincrement())
+  name       String
+  season     String
+  status     String @default("active")
+  startDate  DateTime? @map("start_date")
+  endDate    DateTime? @map("end_date")
+  description String?
+  createdAt  DateTime  @map("created_at") @default(now())
+  updatedAt  DateTime  @map("updated_at") @updatedAt
+
+  matches    Match[]
+  playerStatistics PlayerStatistics[]
+
+  @@map("tournaments")
+}
+
+model Team {
+  id           Int      @id @default(autoincrement())
+  name         String
+  logoUrl      String?  @map("logo_url")
+  description  String?
+  foundedYear  Int?     @map("founded_year")
+  city         String?
+  isActive     Boolean  @map("is_active") @default(true)
+  createdAt    DateTime @map("created_at") @default(now())
+  updatedAt    DateTime @map("updated_at") @updatedAt
+
+  homeMatches Match[]  @relation("homeMatches")
+  awayMatches Match[]  @relation("awayMatches")
+  teamCompositions TeamComposition[]
+  matchEvents MatchEvent[]
+  rosterEntries TeamPlayer[]
+
+  @@map("teams")
+}
+
+model Player {
+  id           Int      @id @default(autoincrement())
+  telegramId   BigInt?  @unique @map("telegram_id")
+  firstName    String   @map("first_name")
+  lastName     String?  @map("last_name")
+  username     String?
+  position     String?
+  birthDate    DateTime? @map("birth_date")
+  phone        String?
+  isActive     Boolean  @map("is_active") @default(true)
+  createdAt    DateTime @map("created_at") @default(now())
+  updatedAt    DateTime @map("updated_at") @updatedAt
+
+  teamCompositions TeamComposition[]
+  matchEvents MatchEvent[] @relation("player_events")
+  playerStatistics PlayerStatistics[]
+  assistedEvents MatchEvent[] @relation("assisted_by")
+  teamLinks TeamPlayer[]
+
+  @@map("players")
+}
+
+model TeamPlayer {
+  id           Int     @id @default(autoincrement())
+  teamId       Int     @map("team_id")
+  playerId     Int     @map("player_id")
+  jerseyNumber Int?    @map("jersey_number")
+  position     String?
+  status       String? @default("active")
+  isCaptain    Boolean @map("is_captain") @default(false)
+  joinedAt     DateTime? @map("joined_at")
+  leftAt       DateTime? @map("left_at")
+  createdAt    DateTime  @map("created_at") @default(now())
+  updatedAt    DateTime  @map("updated_at") @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, playerId], name: "uq_team_player_unique")
+  @@map("team_players")
+}
+
+model TeamRoster {
+  id        Int      @id @default(autoincrement())
+  team      String
+  player    String
+  createdAt DateTime @map("created_at") @default(now())
+
+  @@map("team_roster")
+}
+
+model Match {
+  id            Int      @id @default(autoincrement())
+  tournamentId  Int?     @map("tournament_id")
+  homeTeamId    Int?     @map("home_team_id")
+  awayTeamId    Int?     @map("away_team_id")
+  matchDate     DateTime @map("match_date")
+  tour          Int?
+  venue         String?
+  homeScore     Int      @map("home_score") @default(0)
+  awayScore     Int      @map("away_score") @default(0)
+  status        String   @default("scheduled")
+  referee       String?
+  durationMinutes Int?   @map("duration_minutes")
+  weatherConditions String? @map("weather_conditions")
+  attendance    Int?
+  notes         String?
+  createdAt     DateTime @map("created_at") @default(now())
+  updatedAt     DateTime @map("updated_at") @updatedAt
+
+  tournament Tournament? @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  homeTeam Team? @relation("homeMatches", fields: [homeTeamId], references: [id], onDelete: SetNull)
+  awayTeam Team? @relation("awayMatches", fields: [awayTeamId], references: [id], onDelete: SetNull)
+  teamCompositions TeamComposition[]
+  matchEvents MatchEvent[]
+
+  @@map("matches")
+}
+
+model TeamComposition {
+  id                Int     @id @default(autoincrement())
+  matchId           Int     @map("match_id")
+  teamId            Int     @map("team_id")
+  playerId          Int     @map("player_id")
+  position          String?
+  jerseyNumber      Int?    @map("jersey_number")
+  isCaptain         Boolean @map("is_captain") @default(false)
+  substitutedInMinute  Int? @map("substituted_in_minute")
+  substitutedOutMinute Int? @map("substituted_out_minute")
+  yellowCards       Int?    @map("yellow_cards") @default(0)
+  redCards          Int?    @map("red_cards") @default(0)
+  createdAt         DateTime @map("created_at") @default(now())
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  team  Team  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, playerId], name: "unique_player_per_match")
+  @@unique([matchId, teamId, jerseyNumber], name: "unique_jersey_per_team_match")
+  @@map("team_compositions")
+}
+
+model MatchEvent {
+  id                  Int      @id @default(autoincrement())
+  matchId             Int      @map("match_id")
+  playerId            Int      @map("player_id")
+  teamId              Int      @map("team_id")
+  eventType           String   @map("event_type")
+  minute              Int
+  additionalTime      Int?     @map("additional_time") @default(0)
+  description         String?
+  assistedByPlayerId  Int?     @map("assisted_by_player_id")
+  createdAt           DateTime @map("created_at") @default(now())
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player Player @relation("player_events", fields: [playerId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  assistedBy Player? @relation("assisted_by", fields: [assistedByPlayerId], references: [id], onDelete: SetNull)
+
+  @@map("match_events")
+}
+
+model PlayerStatistics {
+  id           Int      @id @default(autoincrement())
+  playerId     Int      @map("player_id")
+  tournamentId Int      @map("tournament_id")
+  matchesPlayed Int?    @map("matches_played") @default(0)
+  goalsScored  Int?     @map("goals_scored") @default(0)
+  assists      Int?     @default(0)
+  yellowCards  Int?     @map("yellow_cards") @default(0)
+  redCards     Int?     @map("red_cards") @default(0)
+  lastUpdated  DateTime @map("last_updated") @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, tournamentId], name: "unique_player_tournament_stats")
+  @@map("player_statistics")
+}
+
+model AdminLog {
+  id              Int      @id @default(autoincrement())
+  adminId         BigInt?  @map("admin_id")
+  action          String
+  description     String
+  endpoint        String?
+  requestData     String?  @map("request_data")
+  resultStatus    String   @map("result_status")
+  resultMessage   String?  @map("result_message")
+  affectedEntities String? @map("affected_entities")
+  executionTimeMs Int?    @map("execution_time_ms")
+  ipAddress       String? @map("ip_address")
+  userAgent       String? @map("user_agent")
+  createdAt       DateTime @map("created_at") @default(now())
+
+  @@map("admin_logs")
+}
+
+model News {
+  id         Int      @id @default(autoincrement())
+  title      String
+  content    String
+  authorId   BigInt?  @map("author_id")
+  isPublished Boolean @map("is_published") @default(true)
+  newsType   String?  @map("news_type")
+  createdAt  DateTime @map("created_at") @default(now())
+  updatedAt  DateTime @map("updated_at") @updatedAt
+
+  @@map("news")
+}
