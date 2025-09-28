@@ -1,43 +1,48 @@
 services:
-  - type: web_service
+  - type: web
     name: futbol-league-backend
-    env: node
+    runtime: node
     plan: free
     region: oregon
     buildCommand: "cd backend && npm ci && npm run build"
     startCommand: "cd backend && npx prisma migrate deploy && npm run start"
-    autoDeploy: true
+    autoDeployTrigger: commit
     branch: main
     envVars:
       - key: DATABASE_URL
-        fromDatabase: postgres
+        # If you define a Postgres database in this same file, reference it like:
+        # fromDatabase:
+        #   name: my-db-name
+        #   property: connectionString
+        # Otherwise set DATABASE_URL in the dashboard or an envVarGroup.
       - key: REDIS_URL
       - key: TELEGRAM_BOT_TOKEN
 
-  - type: static_site
+  - type: web
     name: futbol-league-frontend
-    env: static
+    runtime: static
     plan: free
     region: oregon
     buildCommand: "cd frontend && npm ci && npm run build"
     staticPublishPath: "frontend/dist"
-    autoDeploy: true
+    autoDeployTrigger: commit
     branch: main
 
   - type: worker
     name: futbol-league-worker
-    env: node
+    runtime: node
     plan: free
     region: oregon
     buildCommand: "cd backend && npm ci && npm run build"
     startCommand: "cd backend && node dist/workers/worker.js"
-    autoDeploy: false
+    autoDeployTrigger: off
     branch: main
 
-jobs:
-  - name: run-migrations
-    type: job
-    env: node
+# If you want a scheduled/one-off job to run migrations on deploy, define a
+# cron service below. Render treats cron jobs as services with type: cron.
+  - type: cron
+    name: run-migrations
+    runtime: node
     region: oregon
     buildCommand: "cd backend && npm ci"
     startCommand: "cd backend && npx prisma migrate deploy"
