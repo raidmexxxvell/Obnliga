@@ -8,9 +8,10 @@ datasource db {
 
 generator client {
   provider = "prisma-client-js"
-  // Генерировать клиент в папку backend/node_modules, чтобы он был доступен
-  // приложению, которое запускается из каталога backend/ (Render / сервисы).
-  output = "../backend/node_modules/@prisma/client"
+  // Генерировать клиент в папку backend/node_modules/.prisma/client — это безопасный
+  // путь, который не перезаписывает пакет @prisma/client. Импорты из `@prisma/client`
+  // автоматически будут форвардиться к `.prisma/client`.
+  output = "../backend/node_modules/.prisma/client"
 }
 
 model Tournament {
