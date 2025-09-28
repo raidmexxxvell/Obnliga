@@ -3,8 +3,8 @@ services:
     name: futbol-league-backend
     runtime: node
     plan: free
-    region: oregon
-    buildCommand: "cd backend && npm ci && npm run build"
+    region: Frankfurt
+    buildCommand: "cd backend && npm install && npm run build"
     autoDeployTrigger: commit
     branch: main
     envVars:
@@ -21,7 +21,7 @@ services:
   - type: web
     name: futbol-league-frontend
     runtime: static
-    buildCommand: "cd frontend && npm ci && npm run build"
+    buildCommand: "cd frontend && npm install && npm run build"
     staticPublishPath: "frontend/dist"
     autoDeployTrigger: commit
     branch: main
