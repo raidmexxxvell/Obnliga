@@ -3,14 +3,16 @@ import './profile.css'
 
 export default function Profile() {
   const [user, setUser] = useState<any>(null)
+  const [loading, setLoading] = useState<boolean>(false)
 
   useEffect(() => {
-    // Try to fetch current user - placeholder: expects tg init flow to post user
-    // In production this should call /api/auth/telegram-init or verify initData
     loadProfile()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function loadProfile() {
+    setLoading(true)
+    // 1) try token-based load
     try {
       const token = localStorage.getItem('session')
       const headers: any = {}
@@ -18,47 +20,49 @@ export default function Profile() {
       const resp = await fetch('/api/auth/me', { headers })
       if (resp.ok) {
         const data = await resp.json()
-        if (data?.ok && data.user) setUser(data.user)
+        if (data?.ok && data.user) {
+          setUser(data.user)
+          setLoading(false)
+          return
+        }
       }
     } catch (e) {
-      // ignore - demo only
+      // ignore and try initData path
     }
-  }
-  // send initData handler (has access to setUser)
-  async function onSendInit() {
-    // send initData (if running inside Telegram WebApp)
+
+    // 2) if no token/user yet and we are inside Telegram WebApp, try to send initData lazily
     try {
       // @ts-ignore
       const tg = (window as any)?.Telegram?.WebApp
-      if (!tg || !tg.initData) {
-        alert('initData not available (not running inside Telegram WebApp)')
-        return
-      }
-      const resp = await fetch('/api/auth/telegram-init', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ initData: tg.initData })
-      })
-      const data = await resp.json()
-      if (!resp.ok) {
-        alert('initData verification failed: ' + JSON.stringify(data))
-        return
-      }
-      alert('User verified and saved')
-      if (data?.token) localStorage.setItem('session', data.token)
-      // reload profile from server
-      try {
-        const token = data?.token || localStorage.getItem('session')
-        const headers: any = {}
-        if (token) headers['Authorization'] = `Bearer ${token}`
-        const me = await fetch('/api/auth/me', { headers })
-        if (me.ok) {
-          const md = await me.json()
-          if (md?.ok && md.user) setUser(md.user)
+      if (tg && (tg.initData || (tg.initDataUnsafe && tg.initDataUnsafe.user))) {
+        const initDataValue = tg.initData || JSON.stringify({ user: tg.initDataUnsafe.user })
+        const r = await fetch('/api/auth/telegram-init', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ initData: initDataValue })
+        })
+        if (r.ok) {
+          const dd = await r.json()
+          if (dd?.token) localStorage.setItem('session', dd.token)
+          // fetch profile now that we have token
+          try {
+            const token = dd?.token || localStorage.getItem('session')
+            const headers: any = {}
+            if (token) headers['Authorization'] = `Bearer ${token}`
+            const me = await fetch('/api/auth/me', { headers })
+            if (me.ok) {
+              const md = await me.json()
+              if (md?.ok && md.user) setUser(md.user)
+            }
+          } catch (e) {
+            // ignore
+          }
         }
-      } catch (e) {}
+      }
     } catch (e) {
-      alert('send failed')
+      // ignore
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -68,14 +72,11 @@ export default function Profile() {
         {user && user.photoUrl ? (
           <img src={user.photoUrl} alt={user.tgUsername || 'avatar'} className="avatar neon-border" />
         ) : (
-          <div className="avatar placeholder neon-border">👤</div>
+          <div className="avatar placeholder neon-border">{loading ? '...' : '👤'}</div>
         )}
       </div>
-      <div className="profile-name">{user?.tgUsername ? `@${user.tgUsername}` : 'Гость'}</div>
+      <div className="profile-name">{user?.tgUsername ? `@${user.tgUsername}` : loading ? 'Загрузка...' : 'Гость'}</div>
       <div className="profile-meta">{user?.createdAt ? formatDate(user.createdAt) : ''}</div>
-      <div style={{marginTop:10}}>
-        <button className="neon-btn" onClick={onSendInit}>Send initData to server</button>
-      </div>
     </div>
   )
 }
