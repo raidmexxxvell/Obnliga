@@ -22,3 +22,10 @@
 Дальше:
 - Запустить `npm --prefix backend run prisma:migrate:dev` локально для создания миграции `users` и сгенерировать client.
 - Реализовать серверную проверку `initData` из Telegram (ETag / hash validation) в отдельном PR.
+
+Локально выполнено:
+- Создана временная схема `prisma/schema.local.prisma` с provider = "sqlite" и выполнена миграция:
+	`DATABASE_URL="file:./prisma/dev.db" npx prisma migrate dev --schema prisma/schema.local.prisma --name add_users_local`.
+	Это создало миграцию в `prisma/migrations/20250928184321_add_users_local` и обновило локальную `prisma/dev.db`.
+
+Примечание: production schema остаётся PostgreSQL — при деплое нужно использовать `prisma migrate deploy` против продакшен БД. Локальная sqlite-схема создана для удобства разработки и не должна автоматически пушиться в prod.
