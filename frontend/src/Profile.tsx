@@ -7,19 +7,60 @@ export default function Profile() {
   useEffect(() => {
     // Try to fetch current user - placeholder: expects tg init flow to post user
     // In production this should call /api/auth/telegram-init or verify initData
-    ;(async () => {
-      try {
-        // demo: fetch first user or return null
-        const resp = await fetch('/api/users/0')
-        if (resp.ok) {
-          const data = await resp.json()
-          setUser(data)
-        }
-      } catch (e) {
-        // ignore - demo only
-      }
-    })()
+    loadProfile()
   }, [])
+
+  async function loadProfile() {
+    try {
+      const token = localStorage.getItem('session')
+      const headers: any = {}
+      if (token) headers['Authorization'] = `Bearer ${token}`
+      const resp = await fetch('/api/auth/me', { headers })
+      if (resp.ok) {
+        const data = await resp.json()
+        if (data?.ok && data.user) setUser(data.user)
+      }
+    } catch (e) {
+      // ignore - demo only
+    }
+  }
+  // send initData handler (has access to setUser)
+  async function onSendInit() {
+    // send initData (if running inside Telegram WebApp)
+    try {
+      // @ts-ignore
+      const tg = (window as any)?.Telegram?.WebApp
+      if (!tg || !tg.initData) {
+        alert('initData not available (not running inside Telegram WebApp)')
+        return
+      }
+      const resp = await fetch('/api/auth/telegram-init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData })
+      })
+      const data = await resp.json()
+      if (!resp.ok) {
+        alert('initData verification failed: ' + JSON.stringify(data))
+        return
+      }
+      alert('User verified and saved')
+      if (data?.token) localStorage.setItem('session', data.token)
+      // reload profile from server
+      try {
+        const token = data?.token || localStorage.getItem('session')
+        const headers: any = {}
+        if (token) headers['Authorization'] = `Bearer ${token}`
+        const me = await fetch('/api/auth/me', { headers })
+        if (me.ok) {
+          const md = await me.json()
+          if (md?.ok && md.user) setUser(md.user)
+        }
+      } catch (e) {}
+    } catch (e) {
+      alert('send failed')
+    }
+  }
 
   return (
     <div className="profile-card card neon-card">
@@ -55,29 +96,3 @@ function formatDate(dt?: string) {
   }
 }
 
-async function onSendInit() {
-  // send initData (if running inside Telegram WebApp)
-  try {
-    // @ts-ignore
-    const tg = (window as any)?.Telegram?.WebApp
-    if (!tg || !tg.initData) {
-      alert('initData not available (not running inside Telegram WebApp)')
-      return
-    }
-    const resp = await fetch('/api/auth/telegram-init', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ initData: tg.initData })
-    })
-    const data = await resp.json()
-    if (!resp.ok) alert('initData verification failed: ' + JSON.stringify(data))
-    else {
-      alert('User verified and saved')
-      // save token (if any) to localStorage as fallback when cookie isn't set
-      if (data?.token) localStorage.setItem('session', data.token)
-      window.location.reload()
-    }
-  } catch (e) {
-    alert('send failed')
-  }
-}

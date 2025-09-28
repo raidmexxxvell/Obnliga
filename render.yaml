@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     region: Frankfurt
-    buildCommand: "cd backend && npm install && npm run build && npx prisma generate --schema ../prisma/schema.prisma"
+    buildCommand: "cd backend && npm install && npm run build && npx prisma generate --schema ../prisma/schema.prisma && npx prisma db push --schema ../prisma/schema.prisma"
     autoDeployTrigger: commit
     branch: main
     envVars:
