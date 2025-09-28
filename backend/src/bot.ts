@@ -11,6 +11,22 @@ let botInstance: Bot | null = null
 if (token) {
   botInstance = new Bot(token)
 
+  // Global error catcher for grammy — prevents unhandled rejections from crashing the process.
+  botInstance.catch((err) => {
+    // err is a GrammyError wrapper; original error info available at err.error
+    try {
+      const code = (err as any)?.error?.error_code
+      if (code === 409) {
+        // Conflict: another getUpdates instance is running (common on PaaS). Log and ignore.
+        console.warn('Telegram getUpdates conflict (409) — another bot instance likely running. Ignoring.')
+        return
+      }
+    } catch (e) {
+      // ignore
+    }
+    console.error('Unhandled bot error', err)
+  })
+
   botInstance.command('start', async (ctx) => {
     const name = ctx.from?.first_name || 'игрок'
     const keyboard = new InlineKeyboard().url('Открыть WebApp', webAppUrl)
@@ -39,8 +55,18 @@ export const startBot = async () => {
   }
   try {
     await botInstance.init()
-    botInstance.start()
-    console.log('Telegram bot started (long polling)')
+    // Start polling but don't let an unhandled rejection bubble up: catch and log.
+    botInstance.start().then(() => {
+      console.log('Telegram bot started (long polling)')
+    }).catch((err) => {
+      // If getUpdates was claimed by another instance, it's safe to continue without crashing.
+      const code = (err as any)?.error_code || (err as any)?.error?.error_code
+      if (code === 409) {
+        console.warn('Telegram getUpdates conflict on start (409) — another instance running. Bot will not poll.')
+      } else {
+        console.error('Bot start failed', err)
+      }
+    })
   } catch (err) {
     console.error('Failed to start bot', err)
   }
