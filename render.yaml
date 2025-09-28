@@ -5,7 +5,6 @@ services:
     plan: free
     region: oregon
     buildCommand: "cd backend && npm ci && npm run build"
-    startCommand: "cd backend && npx prisma migrate deploy && npm run start"
     autoDeployTrigger: commit
     branch: main
     envVars:
