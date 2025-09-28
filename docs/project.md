@@ -13,6 +13,9 @@
 - Реализован multilevel cache skeleton: `backend/src/cache/multilevelCache.ts`.
 - Добавлен ETag-плагин Fastify: `backend/src/plugins/etag.ts` и зарегистрирован в `server.ts` (см. `audit/changes/0005-add-etag-middleware.md`).
 
+- Добавлена модель `User` и базовый flow аутентификации через Telegram WebApp (server-side `initData` verification, JWT issuance). Файлы: `backend/src/routes/authRoutes.ts`, `backend/src/routes/userRoutes.ts`, `frontend/src/Profile.tsx`.
+- Добавлена prototype реализация realtime: Fastify WebSocket endpoint + Redis pub/sub glue (`backend/src/realtime/index.ts`) и минимальный клиент `frontend/src/wsClient.ts`. Для локальной отладки необходим Redis (см. `docs/prisma.md` и `docs/dev-setup.md`).
+
 Проверка правил — ОК
 1) Прочитаны `docs/roadmap.md`, `audit/mcp-context7-summary.md` и `docs/dev-setup.md`.
 2) MCP context7: `audit/mcp-context7-summary.md` присутствует и содержит набор артефактов/рекомендаций.
@@ -49,6 +52,11 @@
      npm install
      npm run dev
    - Проверить /health и demo endpoints: `GET /api/cache/:key`.
+  - Запуск Redis локально (рекомендуется для realtime):
+
+```powershell
+docker run -d --name obnliga-redis -p 6379:6379 redis:7-alpine
+```
 2. Frontend
    - cd frontend
    - npm install

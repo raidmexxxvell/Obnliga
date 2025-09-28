@@ -398,6 +398,35 @@ ADD CONSTRAINT check_minute_range CHECK (minute >= 0 AND minute <= 120);
 Рекомендуемый flow из официальной документации Telegram Web Apps:
 
 - Клиент (Web App) получает `window.Telegram.WebApp.initData` (строка) и `initDataUnsafe` (объект).
+
+Дополнение — текущая реализация в проекте
+
+- Добавлена модель `User` в `prisma/schema.prisma` с полями: `id` (автоинкремент), `userId` (BigInt, `@map("user_id")`), `tgUsername` (`@map("tg_username")`), `photoUrl` (`@map("photo_url")`), `createdAt` (`@map("created_at")`), `updatedAt` (`@map("updated_at")`).
+- Для локальной разработки была создана отдельная локальная схема `prisma/schema.local.prisma` и применена миграция к локальной sqlite базе `prisma/dev.db`. В продакшне используется Postgres и миграции следует применять с `prisma migrate deploy`.
+
+Хранение времён и отображение
+
+- В базе все временные метки сохраняются в UTC (тип DateTime). Для отображения в UI используется форматирование в МСК (UTC+3) и формат `dd.MM.yyyy`.
+
+Security / initData verification
+
+- Сервер реализует проверку `initData` согласно документации Telegram: сортировка параметров по ключу, построение `data_check_string`, вычисление `secret_key = SHA256(TELEGRAM_BOT_TOKEN)` и сравнение HMAC-SHA256. После валидного входа сервер создаёт/обновляет запись `User` и возвращает JWT. JWT может быть установлен в httpOnly cookie (если fastify-cookie активен) и также возвращается в JSON для fallback (frontend сохраняет в localStorage при отсутствии cookie).
+
+Dev notes — Redis и realtime
+
+- Реализация realtime: WebSocket endpoint на `/realtime` и серверная интеграция с Redis pub/sub для доставки сообщений между инстансами. Для локальной отладки требуется запущенный Redis (по умолчанию `redis://127.0.0.1:6379`) или указать `REDIS_URL`.
+- Если Redis не доступен, сервер логирует `ECONNREFUSED` и realtime не будет работать; HTTP и auth endpoints продолжают работать без Redis.
+
+Команды полезные локально
+
+```powershell
+# если используете docker (рекомендуется для Redis локально)
+docker run -d --name obnliga-redis -p 6379:6379 redis:7-alpine
+
+# применить локальную миграцию (если используете sqlite локально)
+npx prisma migrate dev --schema=prisma/schema.local.prisma --name add_users_local
+npx prisma generate
+```
 - Никогда не доверяйте `initDataUnsafe` на сервере: сервер должен принять `initData` строку и проверить её целостность, используя shared secret (бот токен) и метод проверки hash, описанный в документации: `auth_date`, `id`, `username`, `photo_url` и `hash`.
 - Сервер валидирует `initData` и затем создаёт/обновляет запись пользователя в БД (upsert по `user.id`).
 

@@ -32,6 +32,9 @@ export default function Profile() {
       </div>
       <div className="profile-name">{user?.tgUsername ? `@${user.tgUsername}` : 'Гость'}</div>
       <div className="profile-meta">{user?.createdAt ? formatDate(user.createdAt) : ''}</div>
+      <div style={{marginTop:10}}>
+        <button className="neon-btn" onClick={onSendInit}>Send initData to server</button>
+      </div>
     </div>
   )
 }
@@ -49,5 +52,32 @@ function formatDate(dt?: string) {
     return `${day}.${month}.${year}`
   } catch (e) {
     return dt
+  }
+}
+
+async function onSendInit() {
+  // send initData (if running inside Telegram WebApp)
+  try {
+    // @ts-ignore
+    const tg = (window as any)?.Telegram?.WebApp
+    if (!tg || !tg.initData) {
+      alert('initData not available (not running inside Telegram WebApp)')
+      return
+    }
+    const resp = await fetch('/api/auth/telegram-init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData: tg.initData })
+    })
+    const data = await resp.json()
+    if (!resp.ok) alert('initData verification failed: ' + JSON.stringify(data))
+    else {
+      alert('User verified and saved')
+      // save token (if any) to localStorage as fallback when cookie isn't set
+      if (data?.token) localStorage.setItem('session', data.token)
+      window.location.reload()
+    }
+  } catch (e) {
+    alert('send failed')
   }
 }

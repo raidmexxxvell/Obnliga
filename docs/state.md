@@ -80,3 +80,31 @@ Edge cases
 Следующие шаги
 - Реализовать `frontend/src/api/etag.ts` с поддержкой If-None-Match и SWR.
 - Создать `src/store/facade.ts` и покрыть unit тестами (Jest + msw / nock).
+
+Обновление: User / Profile / Realtime
+
+- User shape (DB / shared types)
+
+```ts
+interface DbUser {
+  id: number;
+  userId: string; // telegram numeric id as string (BigInt in DB)
+  tgUsername?: string | null;
+  photoUrl?: string | null;
+  createdAt: string; // ISO UTC in DB
+  updatedAt: string; // ISO UTC in DB
+}
+```
+
+- userStore behaviour
+  - `telegramInit(initData)` — отправляет `initData` на `/api/auth/telegram-init`; сервер валидирует строку и возвращает { ok, user, token } где token — JWT. При успехе store сохраняет `me = user` и `loggedIn = true`.
+  - Отображение дат: frontend конвертирует UTC в МСК (UTC+3) и форматирует как `dd.MM.yyyy` для `createdAt` / `updatedAt`.
+
+- realtimeStore / WS рекомендации
+  - Клиент WS должен поддерживать reconnect с экспоненциальным бэкоффом (начиная с 500ms, cap ~30s) и jitter.
+  - Подписки происходят по топикам; текущая реализация использует имя вкладки (`tab:<name>`) и `user:<userId>` как возможные топики. Сервер должен валидировать права подписки (ACL) — реализовать проверку в `backend/src/realtime/index.ts`.
+  - Для локальной отладки запускайте Redis и убедитесь, что `REDIS_URL` корректен.
+
+Edge cases / Notes
+- Если token истёк — WS клиент должен попытаться повторно получить токен (refresh flow не реализован — требование для следующего этапа) и переавторизоваться.
+

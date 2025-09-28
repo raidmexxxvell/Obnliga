@@ -31,12 +31,26 @@ server.register(cacheRoutes)
 import userRoutes from './routes/userRoutes'
 server.register(userRoutes)
 
+// register auth routes (telegram initData verifier)
+import authRoutes from './routes/authRoutes'
+server.register(authRoutes)
+
+// register fastify websocket & cookie plugins and realtime
+// websocket & cookie plugins and realtime will be registered in start() to avoid top-level await
+import websocketPlugin from '@fastify/websocket'
+import cookiePlugin from '@fastify/cookie'
+import registerRealtime from './realtime'
+
 // register ETag plugin (Phase 2 requirement)
 import etagPlugin from './plugins/etag'
 server.register(etagPlugin)
 
 const start = async () => {
   try {
+    // register cookie & websocket plugins and realtime module
+    await server.register(cookiePlugin)
+    await server.register(websocketPlugin)
+    await registerRealtime(server)
     await server.listen({ port: 3000, host: '0.0.0.0' })
     server.log.info('Server listening on 0.0.0.0:3000')
   } catch (err) {
