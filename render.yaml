@@ -18,7 +18,7 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
   # Start the app; migrations are executed via the `run-migrations` job defined below.
-    startCommand: "cd backend && npm run start"
+    startCommand: "cd backend && npx prisma generate --schema ../prisma/schema.prisma && npm run start"
 
   - type: web
     name: futbol-league-frontend
