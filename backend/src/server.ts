@@ -27,6 +27,10 @@ startBot().catch((e) => {
 import cacheRoutes from './routes/cacheRoutes'
 server.register(cacheRoutes)
 
+// register user routes
+import userRoutes from './routes/userRoutes'
+server.register(userRoutes)
+
 // register ETag plugin (Phase 2 requirement)
 import etagPlugin from './plugins/etag'
 server.register(etagPlugin)

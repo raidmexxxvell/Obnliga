@@ -12,3 +12,13 @@ export interface User {
   displayName?: string
   balance?: number
 }
+
+// Prisma/DB-backed user (Telegram)
+export interface DbUser {
+  id: number
+  userId: string // store as string in JS to avoid precision loss
+  tgUsername?: string | null
+  photoUrl?: string | null
+  createdAt?: string
+  updatedAt?: string
+}

@@ -217,3 +217,15 @@ model News {
 
   @@map("news")
 }
+
+// Users table for Telegram WebApp users. Keep flexible for future columns.
+model User {
+  id        Int      @id @default(autoincrement())
+  userId    BigInt   @unique @map("user_id")
+  tgUsername String? @map("tg_username")
+  photoUrl  String?  @map("photo_url")
+  createdAt DateTime @map("created_at") @default(now())
+  updatedAt DateTime @map("updated_at") @updatedAt
+
+  @@map("users")
+}

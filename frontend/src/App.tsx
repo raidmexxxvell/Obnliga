@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import './app.css'
+import Profile from './Profile'
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true)
@@ -62,7 +63,9 @@ export default function App() {
           </div>
         )}
 
-        {currentTab !== 'home' && (
+        {currentTab === 'profile' ? (
+          <Profile />
+        ) : currentTab !== 'home' && (
           <div className="placeholder">
             <div className="placeholder-card">
               <h2>Страница в разработке</h2>

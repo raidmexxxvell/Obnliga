@@ -1,0 +1,14 @@
+.neon-card {
+  background: linear-gradient(180deg, rgba(10,10,20,0.5), rgba(3,3,10,0.6));
+  border-radius: 12px;
+  padding: 18px;
+  color: #e6f7ff;
+  text-align: center;
+  box-shadow: 0 4px 18px rgba(0,200,255,0.08), 0 0 24px rgba(0,255,200,0.03) inset;
+}
+.avatar-wrap { display:flex; justify-content:center; margin-bottom:10px }
+.avatar { width:88px; height:88px; border-radius:50%; object-fit:cover; }
+.avatar.placeholder { display:flex; align-items:center; justify-content:center; font-size:36px; background:linear-gradient(45deg,#0b0f1a,#08121b); }
+.neon-border { box-shadow: 0 0 8px rgba(0,200,255,0.25), 0 0 18px rgba(0,120,255,0.06); border: 1px solid rgba(120,220,255,0.08); }
+.profile-name { margin-top:4px; font-weight:600; color:#c8f9ff }
+.profile-meta { margin-top:6px; font-size:12px; color:#9fe8ff }
