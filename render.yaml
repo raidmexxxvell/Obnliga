@@ -21,7 +21,6 @@ services:
   - type: web
     name: futbol-league-frontend
     runtime: static
-    plan: free
     buildCommand: "cd frontend && npm ci && npm run build"
     staticPublishPath: "frontend/dist"
     autoDeployTrigger: commit
