@@ -8,15 +8,17 @@ services:
     autoDeployTrigger: commit
     branch: main
     envVars:
+      # Для production на Render установите ваше реальное значение через Dashboard (не коммитите секреты).
       - key: DATABASE_URL
-        sync: false
-        # Provide DATABASE_URL in the Dashboard during initial blueprint creation
-        # or define a `databases:` entry and reference it with fromDatabase.
+        # Пример External Database URL (замените реальным значением в Dashboard):
+        value: "postgresql://football_obn_ztbb_user:zSGQTTZlgi0GCL05Zto5FENhdaSqrdXP@dpg-d3ckliq4d50c73cl4eeg-a.frankfurt-postgres.render.com/football_obn_ztbb?sslmode=require"
+        # NOTE: рекомендуется задать это значение в Render Dashboard как secret и снять его из репозитория.
       - key: REDIS_URL
         sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
-    startCommand: "cd backend && npx prisma migrate deploy --schema ../prisma/schema.prisma && npm run start"
+  # Start the app; migrations are executed via the `run-migrations` job defined below.
+    startCommand: "cd backend && npm run start"
 
   - type: web
     name: futbol-league-frontend
@@ -25,3 +27,17 @@ services:
     staticPublishPath: "frontend/dist"
     autoDeployTrigger: commit
     branch: main
+
+jobs:
+  - name: run-migrations
+    type: job
+    plan: free
+    region: Frankfurt
+    # Set DATABASE_URL in the Dashboard for this job (do not commit secrets to repo).
+    envVars:
+      - key: DATABASE_URL
+        value: "postgresql://<user>:<pass>@<host>/<db>?sslmode=require"
+        sync: false
+    buildCommand: "cd backend && npm install"
+    runCommand: "cd backend && npx prisma generate --schema ../prisma/schema.prisma && npx prisma migrate deploy --schema ../prisma/schema.prisma"
+    # This job can be manually triggered from Render or wired into deploy pipeline.

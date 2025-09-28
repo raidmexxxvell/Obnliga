@@ -1,6 +1,8 @@
 // Начальная схема Prisma (взята из docs/prisma.md)
 datasource db {
-  provider = "sqlite"
+  // Переключаемся на PostgreSQL для среды Render/production.
+  // Локально можно поднимать Postgres (docker) или временно править эту строку на sqlite для быстрого прототипа.
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
