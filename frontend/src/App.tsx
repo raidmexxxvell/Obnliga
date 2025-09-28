@@ -4,6 +4,7 @@ import './app.css'
 export default function App() {
   const [showSplash, setShowSplash] = useState(true)
   const [progress, setProgress] = useState(0)
+  const [isExiting, setIsExiting] = useState(false)
 
   useEffect(() => {
     const duration = 1600 // splash duration in ms
@@ -12,16 +13,25 @@ export default function App() {
       const elapsed = Date.now() - start
       const p = Math.min(100, Math.round((elapsed / duration) * 100))
       setProgress(p)
-      if (p >= 100) clearInterval(interval)
+      if (p >= 100) {
+        clearInterval(interval)
+        // start exit sequence (small delay for smoothness)
+        setIsExiting(true)
+      }
     }, 40)
 
-    const t = setTimeout(() => setShowSplash(false), duration)
-    return () => { clearInterval(interval); clearTimeout(t) }
+    return () => { clearInterval(interval) }
   }, [])
+
+  useEffect(() => {
+    if (!isExiting) return
+    const t = setTimeout(() => setShowSplash(false), 350)
+    return () => clearTimeout(t)
+  }, [isExiting])
 
   if (showSplash) {
     return (
-      <div className="app-root splash">
+      <div className={"app-root splash" + (isExiting ? " exiting" : "")}>
         <div className="accent-shape left" aria-hidden />
         <div className="accent-shape right" aria-hidden />
         <div className="splash-inner">
@@ -29,7 +39,6 @@ export default function App() {
           <img src="/logo_liga.png" alt="Логотип Лиги" className="logo animate heartbeat" />
           <h2 className="neon-title">Футбольная Лига</h2>
           <p className="neon-sub">Загружаем...</p>
-+
           <div style={{marginTop:14, display:'flex', flexDirection:'column', alignItems:'center'}}>
             <div className="progress" aria-hidden>
               <div className="progress-fill" style={{ width: `${progress}%` }} />

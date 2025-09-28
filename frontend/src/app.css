@@ -27,7 +27,10 @@
   justify-content:center;
   position:relative;
   overflow:hidden;
+  transition: opacity 360ms ease, transform 360ms ease;
 }
+
+.splash.exiting{ opacity:0; transform: scale(.995); pointer-events:none }
 
 .splash-inner{
   text-align:center;
@@ -94,8 +97,8 @@
 .logo.animate{ animation: logoPop 640ms cubic-bezier(.2,.9,.2,1) both }
 
 /* heartbeat */
-@keyframes heartbeat{ 0%{ transform: scale(1) } 20%{ transform: scale(1.06) } 40%{ transform: scale(0.98) } 60%{ transform: scale(1.03) } 100%{ transform: scale(1) } }
-.logo.heartbeat{ animation: heartbeat 1.2s ease-in-out infinite; transform-origin:center }
+@keyframes heartbeat{ 0%{ transform: scale(1) } 25%{ transform: scale(1.04) } 50%{ transform: scale(0.985) } 75%{ transform: scale(1.02) } 100%{ transform: scale(1) } }
+.logo.heartbeat{ animation: heartbeat 1.9s ease-in-out infinite; transform-origin:center }
 
 /* progress bar */
 .progress{ width:220px; height:8px; border-radius:999px; background: rgba(255,255,255,0.04); box-shadow: inset 0 1px 0 rgba(255,255,255,0.02); overflow:hidden }
