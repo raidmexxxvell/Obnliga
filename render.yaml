@@ -16,8 +16,7 @@ services:
         sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
-    preDeployCommand: "cd backend && npx prisma migrate deploy"
-    startCommand: "cd backend && npm run start"
+    startCommand: "cd backend && npx prisma migrate deploy && npm run start"
 
   - type: web
     name: futbol-league-frontend
@@ -27,15 +26,3 @@ services:
     staticPublishPath: "frontend/dist"
     autoDeployTrigger: commit
     branch: main
-
-  - type: worker
-    name: futbol-league-worker
-    runtime: node
-    plan: free
-    region: oregon
-    buildCommand: "cd backend && npm ci && npm run build"
-    startCommand: "cd backend && node dist/workers/worker.js"
-    autoDeployTrigger: off
-    branch: main
-
-# Note: one-off or on-deploy migrations handled via `preDeployCommand` above.
