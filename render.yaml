@@ -10,19 +10,20 @@ services:
     branch: main
     envVars:
       - key: DATABASE_URL
-        # If you define a Postgres database in this same file, reference it like:
-        # fromDatabase:
-        #   name: my-db-name
-        #   property: connectionString
-        # Otherwise set DATABASE_URL in the dashboard or an envVarGroup.
+        sync: false
+        # Provide DATABASE_URL in the Dashboard during initial blueprint creation
+        # or define a `databases:` entry and reference it with fromDatabase.
       - key: REDIS_URL
+        sync: false
       - key: TELEGRAM_BOT_TOKEN
+        sync: false
+    preDeployCommand: "cd backend && npx prisma migrate deploy"
+    startCommand: "cd backend && npm run start"
 
   - type: web
     name: futbol-league-frontend
     runtime: static
     plan: free
-    region: oregon
     buildCommand: "cd frontend && npm ci && npm run build"
     staticPublishPath: "frontend/dist"
     autoDeployTrigger: commit
@@ -38,12 +39,4 @@ services:
     autoDeployTrigger: off
     branch: main
 
-# If you want a scheduled/one-off job to run migrations on deploy, define a
-# cron service below. Render treats cron jobs as services with type: cron.
-  - type: cron
-    name: run-migrations
-    runtime: node
-    region: oregon
-    buildCommand: "cd backend && npm ci"
-    startCommand: "cd backend && npx prisma migrate deploy"
-    schedule: "on-deploy"
+# Note: one-off or on-deploy migrations handled via `preDeployCommand` above.
