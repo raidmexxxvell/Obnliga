@@ -20,10 +20,21 @@ function verifyInitData(initData: string, botToken: string) {
       .update('WebAppData')
       .digest()
     const hmac = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex')
+    
+    // Log for debugging
+    console.log('verifyInitData debug:', {
+      params,
+      dataCheckString,
+      calculatedHmac: hmac,
+      providedHash: hash,
+      isValid: hmac === hash
+    });
+    
     return hmac === hash
   } catch (e) {
+    console.log('verifyInitData error:', e);
     return false
-  }
+ }
 }
 
 export default async function (server: FastifyInstance) {
@@ -82,15 +93,20 @@ export default async function (server: FastifyInstance) {
         }
       } else {
         // flatten querystring form -> verify HMAC
+        server.log.info({ initData: raw }, 'Received initData for verification')
         ok = verifyInitData(raw, botToken)
         params = Object.fromEntries(new URLSearchParams(raw)) as Record<string, string>
+        server.log.info({ extractedParams: params }, 'Extracted params from initData')
         if (params.auth_date) authDateSec = Number(params.auth_date)
       }
     } catch (e) {
       ok = false
     }
 
-    if (!ok) return reply.status(403).send({ error: 'invalid_init_data' })
+    if (!ok) {
+      server.log.warn({ params, rawCandidate }, 'initData verification failed')
+      return reply.status(403).send({ error: 'invalid_init_data' })
+    }
 
     // If we have auth_date, enforce freshness (default max 24h)
     try {
