@@ -14,8 +14,11 @@ function verifyInitData(initData: string, botToken: string) {
     const dataCheckArray = Object.keys(params).sort().map(k => `${k}=${params[k]}`)
     const dataCheckString = dataCheckArray.join('\n')
 
-    // secret_key = sha256(bot_token)
-    const secretKey = crypto.createHash('sha256').update(botToken).digest()
+    // secret_key = HMAC_SHA256('WebAppData', bot_token) - according to Telegram documentation
+    const secretKey = crypto
+      .createHmac('sha256', botToken)
+      .update('WebAppData')
+      .digest()
     const hmac = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex')
     return hmac === hash
   } catch (e) {
