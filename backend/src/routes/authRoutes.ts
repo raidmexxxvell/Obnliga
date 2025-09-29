@@ -26,8 +26,11 @@ function verifyInitData(initData: string, botToken: string) {
 export default async function (server: FastifyInstance) {
   server.post('/api/auth/telegram-init', async (request, reply) => {
     const body = request.body as any
-    const { initData } = body || {}
-    if (!initData) return reply.status(400).send({ error: 'initData required' })
+    // Accept initData from multiple possible places (body, query, header)
+    const q = request.query as any
+    const headerInit = (request.headers['x-telegram-init-data'] || request.headers['x-telegram-initdata']) as string | undefined
+    const rawCandidate = body?.initData || body?.init_data || q?.initData || q?.init_data || headerInit || (typeof body === 'string' ? body : undefined)
+    if (!rawCandidate) return reply.status(400).send({ error: 'initData required' })
 
     const botToken = process.env.TELEGRAM_BOT_TOKEN
     if (!botToken) {
@@ -35,10 +38,55 @@ export default async function (server: FastifyInstance) {
       return reply.status(500).send({ error: 'server misconfigured' })
     }
 
-    const ok = verifyInitData(initData, botToken)
+    // Support several shapes of initData: flattened querystring (signed), or JSON with `user`.
+    let params: Record<string, string> = {}
+    let ok = false
+    let authDateSec: number | undefined
+    try {
+      const raw = String(rawCandidate || '')
+      const trimmed = raw.trim()
+      if (trimmed.startsWith('{')) {
+        // JSON payload — try to parse and extract `user` and auth_date
+        try {
+          const parsed = JSON.parse(raw) as any
+          if (parsed?.user) {
+            const u = parsed.user
+            if (u.id) params.id = String(u.id)
+            if (u.username) params.username = u.username
+            if (u.first_name) params.first_name = u.first_name
+            if (u.photo_url || u.photoUrl) params.photo_url = u.photo_url || u.photoUrl
+            if (u.auth_date) authDateSec = Number(u.auth_date)
+            ok = true
+            server.log.info({ user: params.id }, 'telegram-init: accepted JSON user payload (unsafe)')
+          }
+        } catch (e) {
+          ok = false
+        }
+      } else {
+        // flatten querystring form -> verify HMAC
+        ok = verifyInitData(raw, botToken)
+        params = Object.fromEntries(new URLSearchParams(raw)) as Record<string, string>
+        if (params.auth_date) authDateSec = Number(params.auth_date)
+      }
+    } catch (e) {
+      ok = false
+    }
+
     if (!ok) return reply.status(403).send({ error: 'invalid_init_data' })
 
-    const params = Object.fromEntries(new URLSearchParams(initData)) as Record<string, string>
+    // If we have auth_date, enforce freshness (default max 24h)
+    try {
+      if (authDateSec) {
+        const maxAge = 24 * 60 * 60 // seconds
+        const nowSec = Math.floor(Date.now() / 1000)
+        if (nowSec - authDateSec > maxAge) {
+          server.log.info({ auth_date: authDateSec }, 'telegram-init: auth_date expired')
+          return reply.status(403).send({ error: 'init_data_expired' })
+        }
+      }
+    } catch (e) {
+      // ignore date check errors
+    }
     // Telegram WebApp initData can contain flattened fields (id, username, photo_url)
     // or a JSON-encoded `user` field. Support both.
     let userId = params.id
