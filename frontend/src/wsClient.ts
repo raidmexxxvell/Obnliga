@@ -74,5 +74,21 @@ export class WSClient {
 }
 
 const token = typeof window !== 'undefined' ? (localStorage.getItem('session') || undefined) : undefined
-export const wsClient = new WSClient(`${location.origin.replace(/^http/, 'ws')}/realtime`)
+
+// Resolve WS URL from Vite env or derive from BACKEND_URL / location
+const metaEnv: any = (import.meta as any).env || {}
+const VITE_WS_URL = (metaEnv && (metaEnv.VITE_WS_URL as string)) || ''
+const VITE_BACKEND_URL = (metaEnv && (metaEnv.VITE_BACKEND_URL as string)) || ''
+let resolvedWsUrl = ''
+if (VITE_WS_URL) {
+  resolvedWsUrl = VITE_WS_URL
+} else if (VITE_BACKEND_URL) {
+  resolvedWsUrl = VITE_BACKEND_URL.replace(/^http/, 'ws') + '/realtime'
+} else if (typeof location !== 'undefined') {
+  resolvedWsUrl = `${location.origin.replace(/^http/, 'ws')}/realtime`
+} else {
+  resolvedWsUrl = '/realtime'
+}
+
+export const wsClient = new WSClient(resolvedWsUrl)
 wsClient.connect(token)

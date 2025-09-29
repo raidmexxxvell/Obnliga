@@ -24,6 +24,21 @@ function verifyInitData(initData: string, botToken: string) {
 }
 
 export default async function (server: FastifyInstance) {
+  // Simple CORS preflight handlers for auth endpoints (used when frontend is served from a different origin)
+  server.options('/api/auth/telegram-init', async (request, reply) => {
+    reply.header('Access-Control-Allow-Origin', '*')
+    reply.header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+    reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    reply.header('Access-Control-Max-Age', '600')
+    return reply.status(204).send()
+  })
+  server.options('/api/auth/me', async (request, reply) => {
+    reply.header('Access-Control-Allow-Origin', '*')
+    reply.header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+    reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    reply.header('Access-Control-Max-Age', '600')
+    return reply.status(204).send()
+  })
   server.post('/api/auth/telegram-init', async (request, reply) => {
     const body = request.body as any
     // Accept initData from multiple possible places (body, query, header)
@@ -131,7 +146,8 @@ export default async function (server: FastifyInstance) {
         // fallback: send token in body only
       }
 
-      return reply.send({ ok: true, user, token })
+  reply.header('Access-Control-Allow-Origin', '*')
+  return reply.send({ ok: true, user, token })
     } catch (err) {
       server.log.error({ err }, 'telegram-init upsert failed')
       return reply.status(500).send({ error: 'internal' })
@@ -153,7 +169,8 @@ export default async function (server: FastifyInstance) {
       // find user by userId (stored as BigInt in DB)
       const u = await (prisma as any).user.findUnique({ where: { userId: BigInt(sub) as any } })
       if (!u) return reply.status(404).send({ error: 'not_found' })
-      return reply.send({ ok: true, user: u })
+  reply.header('Access-Control-Allow-Origin', '*')
+  return reply.send({ ok: true, user: u })
     } catch (e) {
       const msg = (e as any)?.message
       return reply.status(401).send({ error: 'invalid_token', detail: msg })

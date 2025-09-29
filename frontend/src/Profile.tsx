@@ -12,12 +12,15 @@ export default function Profile() {
 
   async function loadProfile() {
     setLoading(true)
+    const metaEnv: any = (import.meta as any).env || {}
+    const backend = metaEnv.VITE_BACKEND_URL || ''
+    const meUrl = backend ? `${backend.replace(/\/$/, '')}/api/auth/me` : '/api/auth/me'
     // 1) try token-based load
     try {
       const token = localStorage.getItem('session')
       const headers: any = {}
       if (token) headers['Authorization'] = `Bearer ${token}`
-      const resp = await fetch('/api/auth/me', { headers })
+      const resp = await fetch(meUrl, { headers })
       if (resp.ok) {
         const data = await resp.json()
         if (data?.ok && data.user) {
@@ -36,7 +39,8 @@ export default function Profile() {
       const tg = (window as any)?.Telegram?.WebApp
       if (tg && (tg.initData || (tg.initDataUnsafe && tg.initDataUnsafe.user))) {
         const initDataValue = tg.initData || JSON.stringify({ user: tg.initDataUnsafe.user })
-        const r = await fetch('/api/auth/telegram-init', {
+        const initUrl = backend ? `${backend.replace(/\/$/, '')}/api/auth/telegram-init` : '/api/auth/telegram-init'
+        const r = await fetch(initUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ initData: initDataValue })
@@ -49,7 +53,7 @@ export default function Profile() {
             const token = dd?.token || localStorage.getItem('session')
             const headers: any = {}
             if (token) headers['Authorization'] = `Bearer ${token}`
-            const me = await fetch('/api/auth/me', { headers })
+            const me = await fetch(meUrl, { headers })
             if (me.ok) {
               const md = await me.json()
               if (md?.ok && md.user) setUser(md.user)
