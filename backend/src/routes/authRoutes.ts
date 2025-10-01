@@ -124,18 +124,23 @@ export default async function (server: FastifyInstance) {
     // Telegram WebApp initData can contain flattened fields (id, username, photo_url)
     // or a JSON-encoded `user` field. Support both.
     let userId = params.id
-    let username = params.username ?? params.first_name
+    let username = params.username || params.first_name
     let photoUrl = params.photo_url
+    
+    // Try to parse user object if present
     if (!userId && params.user) {
       try {
         const uobj = JSON.parse(params.user)
         userId = String(uobj.id ?? uobj.user_id)
-        username = username || (uobj.username ?? uobj.first_name)
-        photoUrl = photoUrl || (uobj.photo_url || uobj.photoUrl)
+        username = username || uobj.username || uobj.first_name
+        photoUrl = photoUrl || uobj.photo_url || uobj.photoUrl
       } catch (e) {
         // ignore parse errors
       }
     }
+    
+    // Log extracted data for debugging
+    server.log.info({ userId, username, photoUrl }, 'Extracted user data from initData')
 
     if (!userId) return reply.status(400).send({ error: 'user id missing' })
 

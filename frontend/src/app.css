@@ -11,6 +11,9 @@
   min-height:100vh;
   font-family: 'Segoe UI', Roboto, Arial, sans-serif;
   color: #e6f7ff;
+}
+
+.app-root.main{
   background: radial-gradient(1200px 600px at 10% 10%, rgba(0,240,255,0.03), transparent),
               radial-gradient(900px 400px at 90% 80%, rgba(255,45,247,0.03), transparent),
               linear-gradient(180deg, var(--bg-1), var(--bg-2));
@@ -20,14 +23,20 @@
 }
 
 .splash{
-  width:100%;
+  width:100vw;
   height:100vh;
+  position:fixed;
+  top:0;
+  left:0;
   display:flex;
   align-items:center;
   justify-content:center;
-  position:relative;
   overflow:hidden;
   transition: opacity 360ms ease, transform 360ms ease;
+  background: radial-gradient(1200px 600px at 10% 10%, rgba(0,240,255,0.03), transparent),
+              radial-gradient(900px 400px at 90% 80%, rgba(255,45,247,0.03), transparent),
+              linear-gradient(180deg, var(--bg-1), var(--bg-2));
+  z-index:9999;
 }
 
 .splash.exiting{ opacity:0; transform: scale(.995); pointer-events:none }
@@ -80,9 +89,10 @@
 .accent-shape.right{ right:-60px; top:10%; }
 .accent-shape.left{ left:-80px; bottom:6%; transform: rotate(-8deg) skewX(-8deg); }
 
-.main{
+.app-root.main{
   padding:28px;
   max-width:900px;
+  width:100%;
 }
 
 .card{

@@ -15,59 +15,82 @@ export default function Profile() {
     const metaEnv: any = (import.meta as any).env || {}
     const backend = metaEnv.VITE_BACKEND_URL || ''
     const meUrl = backend ? `${backend.replace(/\/$/, '')}/api/auth/me` : '/api/auth/me'
-    // 1) try token-based load
-    try {
-      const token = localStorage.getItem('session')
-      const headers: any = {}
-      if (token) headers['Authorization'] = `Bearer ${token}`
-      const resp = await fetch(meUrl, { headers })
-      if (resp.ok) {
-        const data = await resp.json()
-        if (data?.ok && data.user) {
-          setUser(data.user)
-          setLoading(false)
-          return
-        }
-      }
-    } catch (e) {
-      // ignore and try initData path
-    }
-
-    // 2) if no token/user yet and we are inside Telegram WebApp, try to send initData lazily
+    
+    // 1) Check if we're inside Telegram WebApp first and try to authenticate
     try {
       // @ts-ignore
       const tg = (window as any)?.Telegram?.WebApp
-      if (tg && (tg.initData || (tg.initDataUnsafe && tg.initDataUnsafe.user))) {
-        const initDataValue = tg.initData || JSON.stringify({ user: tg.initDataUnsafe.user })
+      if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+        console.log('Telegram user data:', tg.initDataUnsafe.user)
+        
+        // Try to send initData to backend
         const initUrl = backend ? `${backend.replace(/\/$/, '')}/api/auth/telegram-init` : '/api/auth/telegram-init'
+        
+        // Prepare initData - use the raw initData string if available
+        let initDataValue = tg.initData
+        if (!initDataValue) {
+          // Fallback: construct from initDataUnsafe
+          const user = tg.initDataUnsafe.user
+          initDataValue = JSON.stringify({ 
+            user: {
+              id: user.id,
+              first_name: user.first_name,
+              last_name: user.last_name,
+              username: user.username,
+              photo_url: user.photo_url,
+              language_code: user.language_code
+            }
+          })
+        }
+        
+        console.log('Sending initData to backend')
         const r = await fetch(initUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ initData: initDataValue })
         })
+        
         if (r.ok) {
           const dd = await r.json()
-          if (dd?.token) localStorage.setItem('session', dd.token)
-          // fetch profile now that we have token
-          try {
-            const token = dd?.token || localStorage.getItem('session')
-            const headers: any = {}
-            if (token) headers['Authorization'] = `Bearer ${token}`
-            const me = await fetch(meUrl, { headers })
-            if (me.ok) {
-              const md = await me.json()
-              if (md?.ok && md.user) setUser(md.user)
+          console.log('Backend response:', dd)
+          if (dd?.token) {
+            localStorage.setItem('session', dd.token)
+            // If user data is directly in response, use it
+            if (dd?.user) {
+              setUser(dd.user)
+              setLoading(false)
+              return
             }
-          } catch (e) {
-            // ignore
+          }
+        } else {
+          console.error('Backend auth failed:', await r.text())
+        }
+      }
+    } catch (e) {
+      console.error('Telegram WebApp auth error:', e)
+    }
+
+    // 2) Try token-based load as fallback
+    try {
+      const token = localStorage.getItem('session')
+      if (token) {
+        const headers: any = { 'Authorization': `Bearer ${token}` }
+        const resp = await fetch(meUrl, { headers })
+        if (resp.ok) {
+          const data = await resp.json()
+          console.log('Token-based profile load:', data)
+          if (data?.ok && data.user) {
+            setUser(data.user)
+            setLoading(false)
+            return
           }
         }
       }
     } catch (e) {
-      // ignore
-    } finally {
-      setLoading(false)
+      console.error('Token-based load error:', e)
     }
+
+    setLoading(false)
   }
 
   return (
@@ -79,7 +102,9 @@ export default function Profile() {
           <div className="avatar placeholder neon-border">{loading ? '...' : '👤'}</div>
         )}
       </div>
-      <div className="profile-name">{user?.tgUsername ? `@${user.tgUsername}` : loading ? 'Загрузка...' : 'Гость'}</div>
+      <div className="profile-name">
+        {loading ? 'Загрузка...' : user?.tgUsername || 'Гость'}
+      </div>
       <div className="profile-meta">{user?.createdAt ? formatDate(user.createdAt) : ''}</div>
     </div>
   )
