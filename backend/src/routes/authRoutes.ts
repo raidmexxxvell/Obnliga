@@ -3,6 +3,7 @@ import prisma from '../db'
 import jwt from 'jsonwebtoken'
 import { parse as parseInitData, validate as validateInitData, validate3rd as validateInitDataSignature } from '@telegram-apps/init-data-node'
 import { serializePrisma } from '../utils/serialization'
+import { defaultCache } from '../cache'
 
 const INIT_DATA_MAX_AGE_SEC = 24 * 60 * 60
 
@@ -135,6 +136,10 @@ export default async function (server: FastifyInstance) {
         },
       })
 
+      // Invalidate cache after upsert
+      const userCacheKey = `user:${userId}`
+      await defaultCache.invalidate(userCacheKey)
+
       // Create a JWT session token (short lived) and set as httpOnly cookie
       const jwtSecret = process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'dev-secret'
       const token = jwt.sign({ sub: String(user.userId), username: user.tgUsername }, jwtSecret, { expiresIn: '7d' })
@@ -170,8 +175,13 @@ export default async function (server: FastifyInstance) {
       const jwtPayload: any = jwt.verify(token, jwtSecret)
       const sub = jwtPayload?.sub
       if (!sub) return reply.status(401).send({ error: 'bad_token' })
-      // find user by userId (stored as BigInt in DB)
-      const u = await (prisma as any).user.findUnique({ where: { userId: BigInt(sub) as any } })
+      
+      // Use cache for user data (5 min TTL)
+      const cacheKey = `user:${sub}`
+      const u = await defaultCache.get(cacheKey, async () => {
+        return await (prisma as any).user.findUnique({ where: { userId: BigInt(sub) as any } })
+      }, 300) // 5 minutes TTL
+      
       if (!u) return reply.status(404).send({ error: 'not_found' })
       const serializedUser = serializePrisma(u)
   const origin = (request.headers.origin as string) || '*'

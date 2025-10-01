@@ -1,6 +1,15 @@
 import React, { useEffect, useState } from 'react'
 import './profile.css'
 
+interface CacheEntry {
+  data: any
+  timestamp: number
+  etag?: string
+}
+
+const CACHE_TTL = 5 * 60 * 1000 // 5 минут
+const CACHE_KEY = 'obnliga_profile_cache'
+
 export default function Profile() {
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState<boolean>(false)
@@ -10,7 +19,44 @@ export default function Profile() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  function getCachedProfile(): CacheEntry | null {
+    try {
+      const stored = localStorage.getItem(CACHE_KEY)
+      if (!stored) return null
+      const entry: CacheEntry = JSON.parse(stored)
+      const now = Date.now()
+      if (now - entry.timestamp > CACHE_TTL) {
+        localStorage.removeItem(CACHE_KEY)
+        return null
+      }
+      return entry
+    } catch {
+      return null
+    }
+  }
+
+  function setCachedProfile(data: any, etag?: string) {
+    try {
+      const entry: CacheEntry = {
+        data,
+        timestamp: Date.now(),
+        etag
+      }
+      localStorage.setItem(CACHE_KEY, JSON.stringify(entry))
+    } catch {
+      // ignore
+    }
+  }
+
   async function loadProfile() {
+    // Проверяем кэш сначала
+    const cached = getCachedProfile()
+    if (cached && cached.data) {
+      setUser(cached.data)
+      console.log('Loaded profile from cache')
+      return
+    }
+
     setLoading(true)
     const metaEnv: any = (import.meta as any).env || {}
     const backend = metaEnv.VITE_BACKEND_URL || ''
@@ -57,6 +103,10 @@ export default function Profile() {
         if (typeof initDataValue === 'string' && initDataValue.length > 0) {
           headers['X-Telegram-Init-Data'] = initDataValue
         }
+        // Добавляем ETag из кэша если есть
+        if (cached?.etag) {
+          headers['If-None-Match'] = cached.etag
+        }
 
         const r = await fetch(initUrl, {
           method: 'POST',
@@ -65,13 +115,23 @@ export default function Profile() {
           body: JSON.stringify({ initData: initDataValue })
         })
         
-        if (r.ok) {
+        if (r.status === 304) {
+          // Используем кэшированные данные
+          if (cached?.data) {
+            setUser(cached.data)
+            console.log('Using cached profile (304 Not Modified)')
+            setLoading(false)
+            return
+          }
+        } else if (r.ok) {
           const dd = await r.json()
           console.log('Backend response:', dd)
           if (dd?.token) {
             localStorage.setItem('session', dd.token)
           }
           if (dd?.ok && dd.user) {
+            const etag = r.headers.get('ETag')
+            setCachedProfile(dd.user, etag || undefined)
             setUser(dd.user)
             setLoading(false)
             return
@@ -91,11 +151,27 @@ export default function Profile() {
       const token = localStorage.getItem('session')
       if (token) {
         const headers: any = { 'Authorization': `Bearer ${token}` }
-  const resp = await fetch(meUrl, { headers, credentials: 'include' })
-        if (resp.ok) {
+        // Добавляем ETag из кэша если есть
+        if (cached?.etag) {
+          headers['If-None-Match'] = cached.etag
+        }
+        
+        const resp = await fetch(meUrl, { headers, credentials: 'include' })
+        
+        if (resp.status === 304) {
+          // Используем кэшированные данные
+          if (cached?.data) {
+            setUser(cached.data)
+            console.log('Using cached profile (304 Not Modified)')
+            setLoading(false)
+            return
+          }
+        } else if (resp.ok) {
           const data = await resp.json()
           console.log('Token-based profile load:', data)
           if (data?.ok && data.user) {
+            const etag = resp.headers.get('ETag')
+            setCachedProfile(data.user, etag || undefined)
             setUser(data.user)
             setLoading(false)
             return
@@ -110,18 +186,46 @@ export default function Profile() {
   }
 
   return (
-    <div className="profile-card card neon-card">
-      <div className="avatar-wrap">
-        {user && user.photoUrl ? (
-          <img src={user.photoUrl} alt={user.tgUsername || 'avatar'} className="avatar neon-border" />
-        ) : (
-          <div className="avatar placeholder neon-border">{loading ? '...' : '👤'}</div>
-        )}
+    <div className="profile-container">
+      <div className="profile-header">
+        <div className="avatar-section">
+          {user && user.photoUrl ? (
+            <img src={user.photoUrl} alt={user.tgUsername || 'avatar'} className="profile-avatar" />
+          ) : (
+            <div className="profile-avatar placeholder">{loading ? '⏳' : '👤'}</div>
+          )}
+          <div className="status-indicator online"></div>
+        </div>
+        
+        <div className="profile-info">
+          <h1 className="profile-name">
+            {loading ? 'Загрузка...' : user?.tgUsername || 'Гость'}
+          </h1>
+          {user?.userId && (
+            <div className="profile-id">ID: {user.userId}</div>
+          )}
+          {user?.createdAt && (
+            <div className="profile-joined">
+              Участник с {formatDate(user.createdAt)}
+            </div>
+          )}
+        </div>
       </div>
-      <div className="profile-name">
-        {loading ? 'Загрузка...' : user?.tgUsername || 'Гость'}
+      
+      <div className="profile-stats">
+        <div className="stat-item">
+          <div className="stat-value">0</div>
+          <div className="stat-label">Матчи</div>
+        </div>
+        <div className="stat-item">
+          <div className="stat-value">0</div>
+          <div className="stat-label">Голы</div>
+        </div>
+        <div className="stat-item">
+          <div className="stat-value">0</div>
+          <div className="stat-label">Рейтинг</div>
+        </div>
       </div>
-      <div className="profile-meta">{user?.createdAt ? formatDate(user.createdAt) : ''}</div>
     </div>
   )
 }
@@ -141,4 +245,3 @@ function formatDate(dt?: string) {
     return dt
   }
 }
-
