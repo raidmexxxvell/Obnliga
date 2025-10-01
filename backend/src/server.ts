@@ -1,7 +1,14 @@
 import 'dotenv/config'
 import Fastify from 'fastify'
+import cors from '@fastify/cors'
 
 const server = Fastify({ logger: true })
+
+// Register CORS to allow frontend requests from different origin
+server.register(cors, {
+  origin: true, // Allow all origins in development, configure specifically for production
+  credentials: true
+})
 
 server.get('/health', async () => {
   // TODO: extend health checks (DB, Redis, queues) in Phase 9

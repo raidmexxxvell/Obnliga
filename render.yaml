@@ -27,6 +27,9 @@ services:
     staticPublishPath: "frontend/dist"
     autoDeployTrigger: commit
     branch: main
+    envVars:
+      - key: VITE_BACKEND_URL
+        value: "https://futbol-league-backend.onrender.com"
 
 jobs:
   - name: run-migrations

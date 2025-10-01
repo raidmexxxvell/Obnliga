@@ -43,11 +43,8 @@
 
 .splash-inner{
   text-align:center;
-  backdrop-filter: blur(6px) saturate(120%);
+  /* Убран фон и блюр - теперь просто контейнер для контента */
   padding:28px;
-  border-radius:12px;
-  box-shadow: 0 10px 30px rgba(2,6,23,0.7), 0 0 30px rgba(0,240,255,0.06) inset;
-  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
 }
 
 .logo{

@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-  "build": "prisma generate --schema ../prisma/schema.prisma && tsc -p tsconfig.json",
-  "start": "node dist/server.js",
-  "postinstall": "prisma generate --schema ../prisma/schema.prisma",
+    "build": "prisma generate --schema ../prisma/schema.prisma && tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "postinstall": "prisma generate --schema ../prisma/schema.prisma",
     "prisma:generate": "prisma generate --schema ../prisma/schema.prisma",
     "prisma:migrate:dev": "prisma migrate dev --schema ../prisma/schema.prisma --name init",
     "prisma:migrate:deploy": "prisma migrate deploy --schema ../prisma/schema.prisma",
@@ -20,19 +20,19 @@
   },
   "dependencies": {
     "@fastify/cookie": "^7.4.0",
+    "@fastify/cors": "^11.1.0",
     "@fastify/websocket": "^8.3.1",
     "@prisma/client": "^5.0.0",
-    "prisma": "^5.0.0",
     "dotenv": "^17.2.2",
     "fastify": "^4.0.0",
     "grammy": "^1.38.2",
     "ioredis": "^5.8.0",
     "jsonwebtoken": "^9.0.2",
+    "prisma": "^5.0.0",
     "quick-lru": "^7.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.0.0"
   }
