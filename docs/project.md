@@ -12,6 +12,9 @@
 - Prisma schema и клиент (dev sqlite / production Postgres) — в `prisma/schema.prisma`.
 - Реализован multilevel cache skeleton: `backend/src/cache/multilevelCache.ts`.
 - Добавлен ETag-плагин Fastify: `backend/src/plugins/etag.ts` и зарегистрирован в `server.ts` (см. `audit/changes/0005-add-etag-middleware.md`).
+- Создан отдельный фронтенд для админ-дэшборда (`admin/`), включающий вход по ENV-параметрам Render и вкладочную структуру (Команды, Матчи, Статистика, Управление игроками, Новости) — пока содержатся заглушки.
+
+- Backend расширен эндпоинтом `/api/admin/login`, использующим переменные окружения `LOGIN_ADMIN` и `PASSWORD_ADMIN` для выдачи JWT токена администратору. Маршрут зарегистрирован в `backend/src/server.ts`.
 
 - Добавлена модель `User` и базовый flow аутентификации через Telegram WebApp (server-side `initData` verification, JWT issuance). Файлы: `backend/src/routes/authRoutes.ts`, `backend/src/routes/userRoutes.ts`, `frontend/src/Profile.tsx`.
 - Добавлена prototype реализация realtime: Fastify WebSocket endpoint + Redis pub/sub glue (`backend/src/realtime/index.ts`) и минимальный клиент `frontend/src/wsClient.ts`. Для локальной отладки необходим Redis (см. `docs/prisma.md` и `docs/dev-setup.md`).

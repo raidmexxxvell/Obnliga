@@ -1,103 +1,66 @@
 # MCP Context7 — Summary Audit
 
-Дата: 28-09-2025
+Дата обновления: 01-10-2025
 
-Все артефакты, шаблоны и ссылки, которые агент извлёк с помощью mcp context7, чтобы последующие изменения опирались на согласованный, локальный контекст.
+Назначение файла: зафиксировать наличие/отсутствие артефактов из предыдущего проекта и определить стратегию их переноса на текущий стек (Node.js + Fastify + Prisma + Vite + React). На момент обновления локальных файлов из `audit/context7/*` **не обнаружено** — требуется спланированная до-загрузка. Ниже приведён консолидированный список паттернов и модулей, на которые мы опираемся при разработке.
 
 ---
 
-## 1. Сбор артефактов через mcp context7
+## 1. Состояние контекстов и следующий шаг
 
-| Артефакт / Тема | mcp-context7 ключ / путь | Локальный файл | Summary / Комментарии |
-|------------------|----------------------------|------------------|------------------------|
-| Prisma (версия) | `prisma@<version>` | `audit/context7/prisma-<version>.md` | краткий обзор / основные API / миграции |
-| Fastify | `fastify@<version>` | `audit/context7/fastify-<version>.md` | плагины, схема маршрутов, validation |
-| BullMQ | `bullmq@<version>` | `audit/context7/bullmq-<version>.md` | очередь задач, worker patterns |
-| Redis / cache patterns | `redis/cache` | `audit/context7/redis-cache.md` | TTL, invalidation, pub/sub |
-| ETag / SWR fetch | `etag-swr` | `audit/context7/etag-swr.md` | fetch wrappers, If-None-Match |
-| Patch-WS / real-time | `patch-ws` | `audit/context7/patch-ws.md` | protocol patterns, versioning |
-| Store patterns | `zustand` / `nanostores` | `audit/context7/store-patterns.md` | selectors, middleware, persistence |
-| Render deployment | `render/nodejs` | `audit/context7/render-deploy.md` | env, build/start config |
+- `audit/context7/` — директория отсутствует. Необходимо запросить и выгрузить артефакты через mcp context7 перед началом активной разработки новых подсистем.
+- Для ближайшей задачи (админ-дэшборд) критичны референсы по следующим темам: admin-logger, RBAC flow, UI-шаблоны панелей, patch-based WS интеграция.
+- План: после получения доступа запросить набор файлов (пример):
+  1. `frontend/admin/dashboard-layout.tsx` — шаблон раскладки и неокубистская стилистика.
+  2. `frontend/admin/hooks/useAdminAuth.ts` — пример фасада для админской аутентификации.
+  3. `backend/admin/logger.ts` — концепция audit log и RBAC middleware.
+  4. `frontend/common/styles/neon-theme.css` — палитра и UI-токены.
 
-> **Убедитесь**, что для каждого артефакта агент сохранил файл, содержащий:
-> - описательный заголовок и ключ mcp context7  
-> - краткое summary  
-> - полезные код-сниппеты  
-> - ограничения / версии  
-> - ссылки на локальные исходные модули или пакеты, где это применимо
+До поступления этих артефактов новые реализации помечаются как **temporary stub** и сопровождаются планом последующей синхронизации.
 
-Также агент должен сформировать `audit/context7/index.json`:
+---
 
-json
-{
-  "prisma": "prisma-<version>.md",
-  "fastify": "fastify-<version>.md",
-  "bullmq": "bullmq-<version>.md",
-  "redis-cache": "redis-cache.md",
-  "etag-swr": "etag-swr.md",
-  "patch-ws": "patch-ws.md",
-  "store-patterns": "store-patterns.md",
-  "render-deploy": "render-deploy.md"
-}
+## 2. Классификация ключевых паттернов
 
+| Модуль / Паттерн | Текущий источник | Стратегия | Необходимый фасад/адаптер | Тесты (состояние) | Заметки / Риски |
+|------------------|------------------|-----------|----------------------------|-------------------|-----------------|
+| Multilevel Cache | `backend/src/cache/multilevelCache.ts` | **Refactor** — привести API к контрактам из прошлой версии (TTL, tryAcquire, invalidate) | `backend/src/cache/index.ts` (уже выступает фасадом) | Unit tests отсутствуют → план добавить Jest | Риск расхождения с прежним поведением Redis pub/sub; требуется сверка с контекстом `redis-cache.md` после получения |
+| ETag + SWR | `backend/src/plugins/etag.ts`, планируемый `frontend/src/api/etag.ts` | **Reuse** — портировать старый fetch-wrapper на TS | `frontend/src/api/etag.ts` (создать) | Нет тестов → запланировать msw | Требуется сверка с `etag-swr.md` |
+| Patch-based WS | `backend/src/realtime/index.ts`, `frontend/src/wsClient.ts` | **Refactor** — добавить поддержку topics, retry, patch-apply | WS client фасад (уже есть, доработать) | Нет e2e → план Playwright | Нужен reference `patch-ws.md` |
+| Admin Logger / RBAC | пока отсутствует (только модель `AdminActionLog` в Prisma) | **Rewrite** (нет текущего кода) | Планируемые файлы: `backend/src/routes/adminRoutes.ts`, `backend/src/utils/adminLogger.ts` | Нет | До появления исходных артефактов разрабатываем минимальный прототип |
+| Store Façade (Zustand) | `frontend/src` (store ещё не создан) | **Reuse/Rewrite** — создать фасад по контракту `docs/state.md` | `frontend/src/store/facade.ts` | Нет | Нужно получить `store-patterns.md` |
+| Admin UI Theme | пока отсутствует | **Rewrite** (стилизованный неокубизм) | Общие стили: `frontend/src/app.css` + будущий `admin/src/theme.css` | Визуальные тесты не настроены | Нужен reference по UI токенам |
 
-## 2. Классификация и решение по артефактам 
+---
 
-Для каждого артефакта/паттерна:
-1. Путь / модуль — где он используется в существующем проекте или где будет использоваться в новом.
-2. Стратегия: reuse, refactor, rewrite
-3. Адаптер / фасад нужен? — указать имя файла фасада и интерфейс.
-4. Покрытие тестами (unit, integration).
-5. Риски и mitigations.
+## 3. Отсутствующие артефакты и действия
 
-# Пример сегмента:
-Модуль: etag-fetch (frontend)  
-Ключ mcp: etag-swr  
-Локальный файл: audit/context7/etag-swr.md  
-Стратегия: reuse (port to TS)  
-Фасад: frontend/src/api/etag.ts  
-Тесты: unit + mock HTTP server  
-Риски: нестабильные ETag → лишние fetches; mitigation: строгий JSON-сериализатор, тесты.
+| Тема | Что нужно | Статус | Действие |
+|------|-----------|--------|----------|
+| admin-logger | mcp key `admin/logger` или аналог | ❌ | Запросить через mcp context7, до получения использовать stub логирование через Fastify logger |
+| admin UI layout | `admin/dashboard` шаблон | ❌ | Запросить макет/компоненты; временно создать skeleton с неоновыми панелями |
+| auth guard | `admin/auth` фасад | ❌ | Создать временный Basic Auth по env и отметить необходимость синхронизации |
 
+---
 
-## 3. Расхождения и контроль
+## 4. Риски и mitigation
 
-Если mcp context7 содержит сведения, противоречащие проекту или паттернам — фиксировать:
+1. **Отсутствие context7 артефактов.**  
+  *Mitigation:* фиксируем в этом отчёте, отмечаем каждую временную реализацию как подлежащую доработке после получения материалов. В audit/changes для соответствующих задач обязательно указывать пометку "temporary implementation".
 
-- В файл audit/context7/discrepancies.md:
-описание расхождения
-источник (mcp файл)
-предложение решения / выбор стратегии
-- В PR body при изменении — ссылка на discrepancy файл и justification
+2. **Несоответствие кэша и WS протокола прежним версиям.**  
+  *Mitigation:* при первой возможности свериться с `redis-cache.md` и `patch-ws.md`, добавить интеграционные тесты.
 
+3. **Admin UI без подтверждённого дизайна.**  
+  *Mitigation:* используем tokens из `frontend/src/app.css`, поддерживаем неокубистскую стилистику, делаем компоненты переиспользуемыми.
 
-## 4. Чеклист готовности перед кодом
+---
 
- 1) Все ключевые файлы audit/context7/*.md созданы и частично заполнены
- 2) audit/context7/index.json сформирован
- 3) mcp-context7-summary.md (этот файл) закоммичен
- 4) Проверена полнота по темам: cache, ws, etag, queue, store
- 5) Скeлет фасадов / адаптеров (stubs) подготовлен и покрыт заглушечными тестами
+## 5. Чеклист готовности перед изменениями
 
+- [x] Зафиксировано отсутствие артефактов и подготовлен план по их получению.
+- [ ] Получены и сохранены context7 файлы (`audit/context7/*`).
+- [ ] Подготовлены фасады на основе оригинальных контрактов.
+- [ ] Написаны unit/integration тесты на ключевые адаптеры.
 
-## 5. Пошаговая миграция (инкрементная)
-
-1) Сбор контекста (этот файл + context7 файлы)
-2) Создание скелетов фасадов / адаптеров на основе context7 → без изменения legacy кода
-3) Переключение одного use-case (например: /api/matches) на адаптер
-4) Проверки, тесты, исправления
-5) Последовательный перенос других модулей
-6) Полный cutover, удаление legacy-shims
-
-
-## 6. Примеры имён файлов
-
-audit/context7/prisma-4.12.1.md
-audit/context7/fastify-4.3.0.md
-audit/context7/bullmq-2.0.0.md
-audit/context7/etag-swr.md
-audit/context7/patch-ws.md
-audit/context7/store-patterns.md
-audit/context7/render-deploy.md
-audit/context7/index.json
-audit/mcp-context7-summary.md
+Данный отчёт должен обновляться по мере появления контекстов и прогресса по фасадам.

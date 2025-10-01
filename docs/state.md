@@ -108,3 +108,20 @@ interface DbUser {
 Edge cases / Notes
 - Если token истёк — WS клиент должен попытаться повторно получить токен (refresh flow не реализован — требование для следующего этапа) и переавторизоваться.
 
+
+## Admin Dashboard Store (новый модуль)
+
+- Расположение: `admin/src/store/adminStore.ts` (отдельный Vite-проект `admin/`).
+- Состояние:
+  - `status: 'idle' | 'authenticating' | 'authenticated' | 'error'`
+  - `token?: string` — JWT после успешного входа.
+  - `activeTab: 'teams' | 'matches' | 'stats' | 'players' | 'news'`
+  - `error?: string`
+- Действия:
+  - `login(login: string, password: string)` — обращается к `/api/admin/login`, сохраняет JWT в `localStorage` (`obnliga-admin-token`).
+  - `logout()` — очищает токен, сбрасывает вкладку.
+  - `setTab(tab)` — переключает активную вкладку.
+  - `clearError()` — сбрасывает сообщение об ошибке при фокусе формы.
+- Вкладки пока рендерят заглушки (панель `DashboardLayout`); позже будет подключение к данным (команды, матчи и т.д.).
+- Влияние на realtime/кэш: пока отсутствует, данные не запрашиваются; при подключении API необходимо интегрировать ETag/WS.
+

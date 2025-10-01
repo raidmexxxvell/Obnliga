@@ -42,6 +42,10 @@ server.register(userRoutes)
 import authRoutes from './routes/authRoutes'
 server.register(authRoutes)
 
+// register admin routes (RBAC / dashboard)
+import adminRoutes from './routes/adminRoutes'
+server.register(adminRoutes)
+
 // register fastify websocket & cookie plugins and realtime
 // websocket & cookie plugins and realtime will be registered in start() to avoid top-level await
 import websocketPlugin from '@fastify/websocket'
