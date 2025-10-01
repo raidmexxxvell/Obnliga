@@ -9,14 +9,18 @@ const INIT_DATA_MAX_AGE_SEC = 24 * 60 * 60
 export default async function (server: FastifyInstance) {
   // Simple CORS preflight handlers for auth endpoints (used when frontend is served from a different origin)
   server.options('/api/auth/telegram-init', async (request, reply) => {
-    reply.header('Access-Control-Allow-Origin', '*')
+    const origin = (request.headers.origin as string) || '*'
+    reply.header('Access-Control-Allow-Origin', origin)
+    reply.header('Access-Control-Allow-Credentials', 'true')
     reply.header('Access-Control-Allow-Methods', 'POST, OPTIONS')
     reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
     reply.header('Access-Control-Max-Age', '600')
     return reply.status(204).send()
   })
   server.options('/api/auth/me', async (request, reply) => {
-    reply.header('Access-Control-Allow-Origin', '*')
+    const origin = (request.headers.origin as string) || '*'
+    reply.header('Access-Control-Allow-Origin', origin)
+    reply.header('Access-Control-Allow-Credentials', 'true')
     reply.header('Access-Control-Allow-Methods', 'GET, OPTIONS')
     reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
     reply.header('Access-Control-Max-Age', '600')
@@ -144,7 +148,9 @@ export default async function (server: FastifyInstance) {
       }
 
       const serializedUser = serializePrisma(user)
-      reply.header('Access-Control-Allow-Origin', '*')
+  const origin = (request.headers.origin as string) || '*'
+  reply.header('Access-Control-Allow-Origin', origin)
+  reply.header('Access-Control-Allow-Credentials', 'true')
       return reply.send({ ok: true, user: serializedUser, token })
     } catch (err) {
       server.log.error({ err }, 'telegram-init upsert failed')
@@ -168,7 +174,9 @@ export default async function (server: FastifyInstance) {
       const u = await (prisma as any).user.findUnique({ where: { userId: BigInt(sub) as any } })
       if (!u) return reply.status(404).send({ error: 'not_found' })
       const serializedUser = serializePrisma(u)
-      reply.header('Access-Control-Allow-Origin', '*')
+  const origin = (request.headers.origin as string) || '*'
+  reply.header('Access-Control-Allow-Origin', origin)
+  reply.header('Access-Control-Allow-Credentials', 'true')
       return reply.send({ ok: true, user: serializedUser })
     } catch (e) {
       const msg = (e as any)?.message
