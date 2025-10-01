@@ -23,7 +23,7 @@
     "@fastify/cors": "^8.5.0",
     "@fastify/websocket": "^8.3.1",
     "@prisma/client": "^5.0.0",
-    "@telegram-apps/init-data-node": "^2.1.0",
+  "@telegram-apps/init-data-node": "^2.0.10",
     "dotenv": "^17.2.2",
     "fastify": "^4.0.0",
     "grammy": "^1.38.2",
