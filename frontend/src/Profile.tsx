@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import './profile.css'
 import { wsClient } from './wsClient'
-import ProfileAdmin from './ProfileAdmin'
 
 interface CacheEntry {
   data: any
@@ -286,17 +285,6 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* Админка профиля для тестирования real-time обновлений */}
-      {user && (
-        <ProfileAdmin 
-          user={user}
-          onUpdate={(updatedUser) => {
-            // Локальное обновление (будет заменено WebSocket патчем)
-            setUser(updatedUser)
-            setCachedProfile(updatedUser)
-          }}
-        />
-      )}
     </div>
   )
 }
