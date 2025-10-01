@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import prisma from '../db'
 import jwt from 'jsonwebtoken'
 import { parse as parseInitData, validate as validateInitData, validate3rd as validateInitDataSignature } from '@telegram-apps/init-data-node'
+import { serializePrisma } from '../utils/serialization'
 
 const INIT_DATA_MAX_AGE_SEC = 24 * 60 * 60
 
@@ -62,7 +63,7 @@ export default async function (server: FastifyInstance) {
         photoUrl = u.photo_url || u.photoUrl
         if (u.auth_date) authDateSec = Number(u.auth_date)
         server.log.warn({ userId }, 'telegram-init: accepted JSON user payload without signature (dev fallback)')
-  server.log.info({ userId, username, photoUrl, verificationMethod }, 'telegram-init: initData processed via JSON payload')
+        server.log.info({ userId, username, photoUrl, verificationMethod }, 'telegram-init: initData processed via JSON payload')
       } else {
         // Signed initData — verify using hash and fall back to Telegram signature.
         const maxAge = INIT_DATA_MAX_AGE_SEC
@@ -142,8 +143,9 @@ export default async function (server: FastifyInstance) {
         // fallback: send token in body only
       }
 
-  reply.header('Access-Control-Allow-Origin', '*')
-  return reply.send({ ok: true, user, token })
+      const serializedUser = serializePrisma(user)
+      reply.header('Access-Control-Allow-Origin', '*')
+      return reply.send({ ok: true, user: serializedUser, token })
     } catch (err) {
       server.log.error({ err }, 'telegram-init upsert failed')
       return reply.status(500).send({ error: 'internal' })
@@ -159,14 +161,15 @@ export default async function (server: FastifyInstance) {
     if (!token) return reply.status(401).send({ error: 'no_token' })
     const jwtSecret = process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'dev-secret'
     try {
-      const payload: any = jwt.verify(token, jwtSecret)
-      const sub = payload?.sub
+      const jwtPayload: any = jwt.verify(token, jwtSecret)
+      const sub = jwtPayload?.sub
       if (!sub) return reply.status(401).send({ error: 'bad_token' })
       // find user by userId (stored as BigInt in DB)
       const u = await (prisma as any).user.findUnique({ where: { userId: BigInt(sub) as any } })
       if (!u) return reply.status(404).send({ error: 'not_found' })
-  reply.header('Access-Control-Allow-Origin', '*')
-  return reply.send({ ok: true, user: u })
+      const serializedUser = serializePrisma(u)
+      reply.header('Access-Control-Allow-Origin', '*')
+      return reply.send({ ok: true, user: serializedUser })
     } catch (e) {
       const msg = (e as any)?.message
       return reply.status(401).send({ error: 'invalid_token', detail: msg })

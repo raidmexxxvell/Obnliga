@@ -22,6 +22,15 @@ export default function Profile() {
       const tg = (window as any)?.Telegram?.WebApp
       if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
         console.log('Telegram user data:', tg.initDataUnsafe.user)
+        const unsafe = tg.initDataUnsafe.user
+        const fallbackName = unsafe.username || [unsafe.first_name, unsafe.last_name].filter(Boolean).join(' ').trim()
+        if (!user) {
+          setUser({
+            tgUsername: fallbackName || 'Гость',
+            photoUrl: unsafe.photo_url,
+            createdAt: new Date().toISOString()
+          })
+        }
         
         // Try to send initData to backend
         const initUrl = backend ? `${backend.replace(/\/$/, '')}/api/auth/telegram-init` : '/api/auth/telegram-init'
@@ -44,9 +53,15 @@ export default function Profile() {
         }
         
         console.log('Sending initData to backend')
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+        if (typeof initDataValue === 'string' && initDataValue.length > 0) {
+          headers['X-Telegram-Init-Data'] = initDataValue
+        }
+
         const r = await fetch(initUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
+          credentials: 'include',
           body: JSON.stringify({ initData: initDataValue })
         })
         
@@ -55,19 +70,20 @@ export default function Profile() {
           console.log('Backend response:', dd)
           if (dd?.token) {
             localStorage.setItem('session', dd.token)
-            // If user data is directly in response, use it
-            if (dd?.user) {
-              setUser(dd.user)
-              setLoading(false)
-              return
-            }
+          }
+          if (dd?.ok && dd.user) {
+            setUser(dd.user)
+            setLoading(false)
+            return
           }
         } else {
           console.error('Backend auth failed:', await r.text())
+          setUser(null)
         }
       }
     } catch (e) {
       console.error('Telegram WebApp auth error:', e)
+      setUser(null)
     }
 
     // 2) Try token-based load as fallback
@@ -75,7 +91,7 @@ export default function Profile() {
       const token = localStorage.getItem('session')
       if (token) {
         const headers: any = { 'Authorization': `Bearer ${token}` }
-        const resp = await fetch(meUrl, { headers })
+  const resp = await fetch(meUrl, { headers, credentials: 'include' })
         if (resp.ok) {
           const data = await resp.json()
           console.log('Token-based profile load:', data)
