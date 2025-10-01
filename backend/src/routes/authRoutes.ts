@@ -8,22 +8,24 @@ function verifyInitData(initData: string, botToken: string) {
     const params = Object.fromEntries(new URLSearchParams(initData)) as Record<string, string>
     const hash = params.hash
     if (!hash) return false
-    // remove hash
+    
+    // Remove hash and signature from params (signature is not part of the check)
     delete params.hash
-
+    delete params.signature  // Important: signature should not be included in verification
+    
+    // Sort keys and create data check string
     const dataCheckArray = Object.keys(params).sort().map(k => `${k}=${params[k]}`)
     const dataCheckString = dataCheckArray.join('\n')
 
     // secret_key = HMAC_SHA256('WebAppData', bot_token) - according to Telegram documentation
     const secretKey = crypto
-      .createHmac('sha256', botToken)
-      .update('WebAppData')
+      .createHmac('sha256', 'WebAppData')
+      .update(botToken)
       .digest()
     const hmac = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex')
     
     // Log for debugging
     console.log('verifyInitData debug:', {
-      params,
       dataCheckString,
       calculatedHmac: hmac,
       providedHash: hash,
