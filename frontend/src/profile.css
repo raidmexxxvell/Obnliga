@@ -198,3 +198,126 @@
   box-shadow: 0 6px 18px rgba(0,120,255,0.06), 0 0 10px rgba(0,200,255,0.06) inset;
 }
 
+/* Profile Admin Styles */
+.profile-admin {
+  margin-top: 30px;
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(10, 10, 20, 0.6), rgba(26, 26, 46, 0.4));
+  border-radius: 16px;
+  border: 1px solid rgba(0, 212, 255, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.edit-profile-btn {
+  background: linear-gradient(135deg, #00d4ff, #0088ff);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
+}
+
+.edit-profile-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 212, 255, 0.4);
+}
+
+.profile-admin.editing h3 {
+  color: #00d4ff;
+  margin-bottom: 20px;
+  font-size: 18px;
+  text-align: center;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  color: rgba(200, 249, 255, 0.8);
+  margin-bottom: 6px;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 10px 12px;
+  background: rgba(26, 26, 46, 0.6);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 8px;
+  color: #e6f7ff;
+  font-size: 14px;
+  transition: border-color 0.3s ease;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: rgba(0, 212, 255, 0.5);
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.2);
+}
+
+.form-group input::placeholder {
+  color: rgba(159, 232, 255, 0.5);
+}
+
+.photo-preview {
+  margin-top: 8px;
+  text-align: center;
+}
+
+.photo-preview img {
+  border-radius: 8px;
+  border: 2px solid rgba(0, 212, 255, 0.3);
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.save-btn {
+  background: linear-gradient(135deg, #00ff88, #00cc66);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3);
+}
+
+.save-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 255, 136, 0.4);
+}
+
+.save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cancel-btn {
+  background: linear-gradient(135deg, #ff4444, #cc3333);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(255, 68, 68, 0.3);
+}
+
+.cancel-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 68, 68, 0.4);
+}
+

@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import './profile.css'
+import { wsClient } from './wsClient'
+import ProfileAdmin from './ProfileAdmin'
 
 interface CacheEntry {
   data: any
@@ -18,6 +20,63 @@ export default function Profile() {
     loadProfile()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // WebSocket real-time updates для профиля
+  useEffect(() => {
+    if (!user?.userId) return
+
+    const userTopic = `user:${user.userId}`
+    const profileTopic = 'profile' // Глобальные обновления профилей
+    
+    console.log(`Subscribing to topics: ${userTopic}, ${profileTopic}`)
+    
+    // Подписываемся на персональный топик пользователя
+    wsClient.subscribe(userTopic)
+    // Подписываемся на общий топик профилей
+    wsClient.subscribe(profileTopic)
+
+    // Обработчик патчей для реального времени
+    const handlePatch = (msg: any) => {
+      if (msg.type === 'patch') {
+        const { topic, payload } = msg
+        
+        // Персональные обновления пользователя
+        if (topic === userTopic && payload.userId === user.userId) {
+          console.log('Received user patch:', payload)
+          setUser((prev: any) => {
+            const updated = { ...prev, ...payload }
+            // Обновляем кэш
+            setCachedProfile(updated)
+            return updated
+          })
+        }
+        
+        // Глобальные обновления профилей (если касаются текущего пользователя)
+        if (topic === profileTopic && payload.userId === user.userId) {
+          console.log('Received profile patch:', payload)
+          setUser((prev: any) => {
+            const updated = { ...prev, ...payload }
+            setCachedProfile(updated)
+            return updated
+          })
+        }
+      }
+    }
+
+    wsClient.on('patch', handlePatch)
+
+    // Cleanup при размонтировании или смене пользователя
+    return () => {
+      wsClient.unsubscribe(userTopic)
+      wsClient.unsubscribe(profileTopic)
+      // Удаляем обработчик
+      const handlers = (wsClient as any).handlers.get('patch') || []
+      const index = handlers.indexOf(handlePatch)
+      if (index > -1) {
+        handlers.splice(index, 1)
+      }
+    }
+  }, [user?.userId])
 
   function getCachedProfile(): CacheEntry | null {
     try {
@@ -226,6 +285,18 @@ export default function Profile() {
           <div className="stat-label">Рейтинг</div>
         </div>
       </div>
+
+      {/* Админка профиля для тестирования real-time обновлений */}
+      {user && (
+        <ProfileAdmin 
+          user={user}
+          onUpdate={(updatedUser) => {
+            // Локальное обновление (будет заменено WebSocket патчем)
+            setUser(updatedUser)
+            setCachedProfile(updatedUser)
+          }}
+        />
+      )}
     </div>
   )
 }

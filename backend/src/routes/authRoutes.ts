@@ -140,6 +140,34 @@ export default async function (server: FastifyInstance) {
       const userCacheKey = `user:${userId}`
       await defaultCache.invalidate(userCacheKey)
 
+      // Publish real-time updates для WebSocket subscribers
+      try {
+        const userPayload = serializePrisma(user)
+        
+        // Персональный топик пользователя
+        await (server as any).publishTopic(`user:${userId}`, {
+          type: 'profile_updated',
+          userId: userPayload.userId,
+          tgUsername: userPayload.tgUsername,
+          photoUrl: userPayload.photoUrl,
+          updatedAt: userPayload.updatedAt
+        })
+        
+        // Глобальный топик профилей (для админки, статистики и т.д.)
+        await (server as any).publishTopic('profile', {
+          type: 'profile_updated',
+          userId: userPayload.userId,
+          tgUsername: userPayload.tgUsername,
+          photoUrl: userPayload.photoUrl,
+          updatedAt: userPayload.updatedAt
+        })
+        
+        server.log.info({ userId }, 'Published profile updates to WebSocket topics')
+      } catch (wsError) {
+        server.log.warn({ err: wsError }, 'Failed to publish WebSocket updates')
+        // Не прерываем выполнение, WebSocket не критичен для auth flow
+      }
+
       // Create a JWT session token (short lived) and set as httpOnly cookie
       const jwtSecret = process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'dev-secret'
       const token = jwt.sign({ sub: String(user.userId), username: user.tgUsername }, jwtSecret, { expiresIn: '7d' })
