@@ -1,43 +1,9 @@
 import { FastifyInstance } from 'fastify'
 import prisma from '../db'
-import crypto from 'crypto'
 import jwt from 'jsonwebtoken'
+import { parse as parseInitData, validate as validateInitData, validate3rd as validateInitDataSignature } from '@telegram-apps/init-data-node'
 
-function verifyInitData(initData: string, botToken: string) {
-  try {
-    const params = Object.fromEntries(new URLSearchParams(initData)) as Record<string, string>
-    const hash = params.hash
-    if (!hash) return false
-    
-    // Remove hash and signature from params (signature is not part of the check)
-    delete params.hash
-    delete params.signature  // Important: signature should not be included in verification
-    
-    // Sort keys and create data check string
-    const dataCheckArray = Object.keys(params).sort().map(k => `${k}=${params[k]}`)
-    const dataCheckString = dataCheckArray.join('\n')
-
-    // secret_key = HMAC_SHA256('WebAppData', bot_token) - according to Telegram documentation
-    const secretKey = crypto
-      .createHmac('sha256', 'WebAppData')
-      .update(botToken)
-      .digest()
-    const hmac = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex')
-    
-    // Log for debugging
-    console.log('verifyInitData debug:', {
-      dataCheckString,
-      calculatedHmac: hmac,
-      providedHash: hash,
-      isValid: hmac === hash
-    });
-    
-    return hmac === hash
-  } catch (e) {
-    console.log('verifyInitData error:', e);
-    return false
- }
-}
+const INIT_DATA_MAX_AGE_SEC = 24 * 60 * 60
 
 export default async function (server: FastifyInstance) {
   // Simple CORS preflight handlers for auth endpoints (used when frontend is served from a different origin)
@@ -69,80 +35,84 @@ export default async function (server: FastifyInstance) {
       return reply.status(500).send({ error: 'server misconfigured' })
     }
 
-    // Support several shapes of initData: flattened querystring (signed), or JSON with `user`.
-    let params: Record<string, string> = {}
-    let ok = false
-    let authDateSec: number | undefined
-    try {
-      const raw = String(rawCandidate || '')
-      const trimmed = raw.trim()
-      if (trimmed.startsWith('{')) {
-        // JSON payload — try to parse and extract `user` and auth_date
-        try {
-          const parsed = JSON.parse(raw) as any
-          if (parsed?.user) {
-            const u = parsed.user
-            if (u.id) params.id = String(u.id)
-            if (u.username) params.username = u.username
-            if (u.first_name) params.first_name = u.first_name
-            if (u.photo_url || u.photoUrl) params.photo_url = u.photo_url || u.photoUrl
-            if (u.auth_date) authDateSec = Number(u.auth_date)
-            ok = true
-            server.log.info({ user: params.id }, 'telegram-init: accepted JSON user payload (unsafe)')
-          }
-        } catch (e) {
-          ok = false
-        }
-      } else {
-        // flatten querystring form -> verify HMAC
-        server.log.info({ initData: raw }, 'Received initData for verification')
-        ok = verifyInitData(raw, botToken)
-        params = Object.fromEntries(new URLSearchParams(raw)) as Record<string, string>
-        server.log.info({ extractedParams: params }, 'Extracted params from initData')
-        if (params.auth_date) authDateSec = Number(params.auth_date)
-      }
-    } catch (e) {
-      ok = false
-    }
+    const rawInitData = String(rawCandidate || '')
+    const trimmedInitData = rawInitData.trim()
 
-    if (!ok) {
-      server.log.warn({ params, rawCandidate }, 'initData verification failed')
+    let userId: string | undefined
+    let username: string | undefined
+    let photoUrl: string | undefined
+    let authDateSec: number | undefined
+    let verificationMethod: 'hash' | 'signature' | 'json' | undefined
+
+    try {
+      if (!trimmedInitData) {
+        throw new Error('empty_init_data')
+      }
+
+      if (trimmedInitData.startsWith('{')) {
+        // JSON payload — fallback for dev environments when initData string is unavailable.
+        verificationMethod = 'json'
+        const parsed = JSON.parse(trimmedInitData)
+        const u = parsed?.user
+        if (!u?.id) {
+          throw new Error('json_payload_missing_user')
+        }
+        userId = String(u.id)
+        username = u.username || u.first_name || u.last_name
+        photoUrl = u.photo_url || u.photoUrl
+        if (u.auth_date) authDateSec = Number(u.auth_date)
+        server.log.warn({ userId }, 'telegram-init: accepted JSON user payload without signature (dev fallback)')
+  server.log.info({ userId, username, photoUrl, verificationMethod }, 'telegram-init: initData processed via JSON payload')
+      } else {
+        // Signed initData — verify using hash and fall back to Telegram signature.
+        const maxAge = INIT_DATA_MAX_AGE_SEC
+        try {
+          validateInitData(trimmedInitData, botToken, { expiresIn: maxAge })
+          verificationMethod = 'hash'
+        } catch (hashErr) {
+          const botId = Number.parseInt(botToken.split(':')[0] ?? '', 10)
+          server.log.warn({ err: hashErr }, 'telegram-init: hash verification failed, attempting signature fallback')
+          if (!Number.isFinite(botId)) {
+            throw hashErr
+          }
+          await validateInitDataSignature(trimmedInitData, botId, { expiresIn: maxAge })
+          verificationMethod = 'signature'
+        }
+
+        const parsed = parseInitData(trimmedInitData, true) as any
+        const parsedUser = parsed?.user
+        if (parsedUser?.id != null) {
+          userId = String(parsedUser.id)
+        }
+        if (parsedUser) {
+          const composedName = [parsedUser.firstName, parsedUser.lastName].filter(Boolean).join(' ').trim()
+          username = parsedUser.username || (composedName.length ? composedName : undefined)
+          photoUrl = parsedUser.photoUrl || photoUrl
+        }
+        const parsedAuth = parsed?.authDate
+        if (parsedAuth instanceof Date) {
+          authDateSec = Math.floor(parsedAuth.getTime() / 1000)
+        } else if (typeof parsedAuth === 'number') {
+          authDateSec = parsedAuth
+        } else if (typeof parsedAuth === 'string') {
+          const parsedNumber = Number(parsedAuth)
+          if (!Number.isNaN(parsedNumber)) authDateSec = parsedNumber
+        }
+
+        server.log.info({ userId, username, photoUrl, verificationMethod }, 'telegram-init: initData verified')
+      }
+    } catch (err) {
+      server.log.warn({ err, rawCandidate }, 'initData verification failed')
       return reply.status(403).send({ error: 'invalid_init_data' })
     }
 
-    // If we have auth_date, enforce freshness (default max 24h)
-    try {
-      if (authDateSec) {
-        const maxAge = 24 * 60 * 60 // seconds
-        const nowSec = Math.floor(Date.now() / 1000)
-        if (nowSec - authDateSec > maxAge) {
-          server.log.info({ auth_date: authDateSec }, 'telegram-init: auth_date expired')
-          return reply.status(403).send({ error: 'init_data_expired' })
-        }
-      }
-    } catch (e) {
-      // ignore date check errors
-    }
-    // Telegram WebApp initData can contain flattened fields (id, username, photo_url)
-    // or a JSON-encoded `user` field. Support both.
-    let userId = params.id
-    let username = params.username || params.first_name
-    let photoUrl = params.photo_url
-    
-    // Try to parse user object if present
-    if (!userId && params.user) {
-      try {
-        const uobj = JSON.parse(params.user)
-        userId = String(uobj.id ?? uobj.user_id)
-        username = username || uobj.username || uobj.first_name
-        photoUrl = photoUrl || uobj.photo_url || uobj.photoUrl
-      } catch (e) {
-        // ignore parse errors
+    if (authDateSec) {
+      const nowSec = Math.floor(Date.now() / 1000)
+      if (nowSec - authDateSec > INIT_DATA_MAX_AGE_SEC) {
+        server.log.info({ auth_date: authDateSec }, 'telegram-init: auth_date expired')
+        return reply.status(403).send({ error: 'init_data_expired' })
       }
     }
-    
-    // Log extracted data for debugging
-    server.log.info({ userId, username, photoUrl }, 'Extracted user data from initData')
 
     if (!userId) return reply.status(400).send({ error: 'user id missing' })
 
