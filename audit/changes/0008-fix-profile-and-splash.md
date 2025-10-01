@@ -34,11 +34,31 @@
 4. Токен сохраняется в `localStorage`
 5. Загружается профиль пользователя через `/api/auth/me`
 
-### 2. Исправление backend для корректного извлечения имени
+### 2. Исправление backend для корректного извлечения имени и проверки initData
 
 **Файл**: `backend/src/routes/authRoutes.ts`
 
 #### Изменения:
+
+**КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ**: Исправлена проверка подписи Telegram initData
+- Telegram отправляет поле `signature` в дополнение к `hash`
+- Поле `signature` НЕ должно участвовать в проверке HMAC
+- Исправлена функция `verifyInitData`:
+  ```typescript
+  // Удаляем hash И signature из params
+  delete params.hash
+  delete params.signature  // Важно! signature не участвует в проверке
+  ```
+
+- Исправлен порядок аргументов в HMAC:
+  ```typescript
+  // Правильный порядок согласно документации Telegram
+  const secretKey = crypto
+    .createHmac('sha256', 'WebAppData')
+    .update(botToken)
+    .digest()
+  ```
+
 - Улучшена логика извлечения `username`:
   ```typescript
   let username = params.username || params.first_name
@@ -54,6 +74,8 @@
   ```typescript
   username = username || uobj.username || uobj.first_name
   ```
+
+**Почему это критично**: Без этого исправления проверка всегда возвращала `isValid: false`, и пользователи не могли авторизоваться!
 
 ### 3. Исправление заставки - убран блок с фоном
 
@@ -87,10 +109,11 @@
 
 ### 4. Настройка CORS на backend
 
-**Файл**: `backend/src/server.ts`
+**Файл**: `backend/src/server.ts` и `backend/package.json`
 
 #### Изменения:
-- Установлен пакет `@fastify/cors`
+- Установлен пакет `@fastify/cors` версии `^8.5.0` (совместимая с Fastify 4.x)
+  - **Важно**: версия 11.x требует Fastify 5.x, мы используем 4.x
 - Добавлена регистрация CORS middleware:
   ```typescript
   import cors from '@fastify/cors'
@@ -102,6 +125,9 @@
   ```
 
 Это позволяет frontend (на другом домене Render) делать запросы к backend API.
+
+**Исправление совместимости версий:**
+- `backend/package.json`: изменено `"@fastify/cors": "^11.1.0"` → `"@fastify/cors": "^8.5.0"`
 
 ### 5. Конфигурация Render.com
 
