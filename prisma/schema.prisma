@@ -29,7 +29,8 @@ model Club {
   clubSeasonStats ClubSeasonStats[]
   careerStats    PlayerClubCareerStats[]
   disqualifications Disqualification[]
-  refereedMatches Match[] @relation("match_referee")
+  lineups        MatchLineup[]
+  eventTeams     MatchEvent[]
 
   @@map("club")
 }
@@ -50,6 +51,7 @@ model Person {
   seasonStats     PlayerSeasonStats[]
   careerStats     PlayerClubCareerStats[]
   disqualifications Disqualification[]
+  refereedMatches Match[] @relation("match_referee")
 
   @@map("person")
 }

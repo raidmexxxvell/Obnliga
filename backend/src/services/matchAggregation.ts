@@ -26,7 +26,7 @@ export async function handleMatchFinalization(matchId: bigint, logger: FastifyBa
       season: { include: { competition: true } },
       events: true,
       lineups: true,
-      series: true,
+      series: { include: { matches: true } },
       predictions: { include: { user: { include: { achievements: true } } } }
     }
   })

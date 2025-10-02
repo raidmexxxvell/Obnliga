@@ -4,10 +4,14 @@ import jwt from 'jsonwebtoken'
 import { timingSafeEqual } from 'crypto'
 import {
   AchievementMetric,
+  CompetitionType,
   DisqualificationReason,
+  LineupRole,
+  MatchEventType,
   MatchStatus,
   PredictionResult,
   Prisma,
+  SeriesFormat,
   SeriesStatus
 } from '@prisma/client'
 import { handleMatchFinalization } from '../services/matchAggregation'
@@ -305,7 +309,7 @@ export default async function (server: FastifyInstance) {
     })
 
     admin.post('/competitions', async (request, reply) => {
-      const body = request.body as { name?: string; type?: Prisma.CompetitionType; seriesFormat?: Prisma.SeriesFormat }
+      const body = request.body as { name?: string; type?: CompetitionType; seriesFormat?: SeriesFormat }
       if (!body?.name || !body?.type || !body?.seriesFormat) {
         return reply.status(400).send({ ok: false, error: 'name_type_series_format_required' })
       }
@@ -321,7 +325,7 @@ export default async function (server: FastifyInstance) {
 
     admin.put('/competitions/:competitionId', async (request, reply) => {
       const competitionId = parseNumericId((request.params as any).competitionId, 'competitionId')
-      const body = request.body as { name?: string; type?: Prisma.CompetitionType; seriesFormat?: Prisma.SeriesFormat }
+      const body = request.body as { name?: string; type?: CompetitionType; seriesFormat?: SeriesFormat }
       const hasActiveSeason = await prisma.season.findFirst({ where: { competitionId } })
       if (hasActiveSeason && body.seriesFormat && hasActiveSeason) {
         return reply.status(409).send({ ok: false, error: 'series_format_locked' })
@@ -650,7 +654,7 @@ export default async function (server: FastifyInstance) {
 
     admin.put('/matches/:matchId/lineup', async (request, reply) => {
       const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
-      const body = request.body as { personId?: number; clubId?: number; role?: Prisma.LineupRole; position?: string }
+      const body = request.body as { personId?: number; clubId?: number; role?: LineupRole; position?: string }
       if (!body?.personId || !body?.clubId || !body?.role) {
         return reply.status(400).send({ ok: false, error: 'lineup_fields_required' })
       }
@@ -700,7 +704,7 @@ export default async function (server: FastifyInstance) {
         playerId?: number
         teamId?: number
         minute?: number
-        eventType?: Prisma.MatchEventType
+        eventType?: MatchEventType
         relatedPlayerId?: number | null
       }
       if (!body?.playerId || !body?.teamId || !body?.minute || !body?.eventType) {
@@ -730,7 +734,7 @@ export default async function (server: FastifyInstance) {
       const eventId = parseBigIntId((request.params as any).eventId, 'eventId')
       const body = request.body as Partial<{
         minute: number
-        eventType: Prisma.MatchEventType
+        eventType: MatchEventType
         teamId: number
         playerId: number
         relatedPlayerId: number | null
