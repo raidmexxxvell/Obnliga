@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { adminDelete, adminPost, adminPut } from '../../api/adminClient'
 import { useAdminStore } from '../../store/adminStore'
 import { Club, Competition, Person, Stadium } from '../../types'
@@ -66,18 +66,13 @@ export const TeamsTab = () => {
 
   const isLoading = Boolean(loading.dictionaries)
 
+  // Одноразовая инициализация словарей, чтобы не зациклиться на пустой БД
+  const bootRef = useRef(false)
   useEffect(() => {
-    if (!token) return
-    if (
-      !isLoading &&
-      data.clubs.length === 0 &&
-      data.persons.length === 0 &&
-      data.stadiums.length === 0 &&
-      data.competitions.length === 0
-    ) {
-      void fetchDictionaries().catch(() => undefined)
-    }
-  }, [token, data.clubs.length, data.persons.length, data.stadiums.length, data.competitions.length, isLoading, fetchDictionaries])
+    if (!token || bootRef.current) return
+    bootRef.current = true
+    void fetchDictionaries().catch(() => undefined)
+  }, [token, fetchDictionaries])
 
   const groupedPersons = useMemo(() => {
     const players: Person[] = []

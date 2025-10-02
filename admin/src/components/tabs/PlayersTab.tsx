@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { adminDelete, adminPost, adminPut } from '../../api/adminClient'
 import { useAdminStore } from '../../store/adminStore'
 import { Disqualification, Person } from '../../types'
@@ -71,15 +71,14 @@ export const PlayersTab = () => {
 
   const isLoading = Boolean(loading.dictionaries || loading.disqualifications)
 
+  // Одноразовая инициализация словарей и дисквалификаций
+  const bootRef = useRef(false)
   useEffect(() => {
-    if (!token) return
-    if (!data.persons.length || !data.clubs.length) {
-      void fetchDictionaries().catch(() => undefined)
-    }
-    if (!data.disqualifications.length && !loading.disqualifications) {
-      void fetchDisqualifications().catch(() => undefined)
-    }
-  }, [token, data.persons.length, data.clubs.length, data.disqualifications.length, fetchDictionaries, fetchDisqualifications, loading.disqualifications])
+    if (!token || bootRef.current) return
+    bootRef.current = true
+    void fetchDictionaries().catch(() => undefined)
+    void fetchDisqualifications().catch(() => undefined)
+  }, [token, fetchDictionaries, fetchDisqualifications])
 
   const handleFeedback = (message: string, level: FeedbackLevel = 'info') => {
     setFeedback(message)

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAdminStore } from '../../store/adminStore'
 import { ClubSeasonStats, PlayerCareerStats, PlayerSeasonStats } from '../../types'
 
@@ -55,19 +55,19 @@ export const StatsTab = () => {
 
   const [activeView, setActiveView] = useState<StatView>('standings')
 
+  // Одноразовая загрузка сезонов
+  const bootRef = useRef(false)
   useEffect(() => {
-    if (!token) return
-    if (!data.seasons.length && !loading.seasons) {
-      void fetchSeasons().catch(() => undefined)
-    }
-  }, [token, data.seasons.length, fetchSeasons, loading.seasons])
+    if (!token || bootRef.current) return
+    bootRef.current = true
+    void fetchSeasons().catch(() => undefined)
+  }, [token, fetchSeasons])
 
+  // Явная загрузка статистики только по выбору сезона
   useEffect(() => {
     if (!token || !selectedSeasonId) return
-    if (!data.clubStats.length && !loading.stats) {
-      void fetchStats(selectedSeasonId).catch(() => undefined)
-    }
-  }, [token, selectedSeasonId, data.clubStats.length, fetchStats, loading.stats])
+    void fetchStats(selectedSeasonId).catch(() => undefined)
+  }, [token, selectedSeasonId, fetchStats])
 
   const selectedSeason = useMemo(
     () => data.seasons.find((season) => season.id === selectedSeasonId),

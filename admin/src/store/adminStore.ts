@@ -333,7 +333,10 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
   }
 
   if (initialToken) {
+    let booted = false
     setTimeout(() => {
+      if (booted) return
+      booted = true
       store.refreshTab('teams').catch(() => undefined)
     }, 0)
   }

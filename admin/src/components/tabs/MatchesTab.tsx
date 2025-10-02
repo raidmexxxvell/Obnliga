@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { adminDelete, adminGet, adminPost, adminPut } from '../../api/adminClient'
 import { useAdminStore } from '../../store/adminStore'
 import {
@@ -202,15 +202,14 @@ export const MatchesTab = () => {
 
   const participantClubIds = useMemo(() => new Set(seasonParticipants.map((entry) => entry.clubId)), [seasonParticipants])
 
+  // Одноразовая инициализация словарей и сезонов
+  const bootRef = useRef(false)
   useEffect(() => {
-    if (!token) return
-    if (!data.competitions.length || !data.clubs.length || !data.persons.length) {
-      void fetchDictionaries().catch(() => undefined)
-    }
-    if (!data.seasons.length && !loading.seasons) {
-      void fetchSeasons().catch(() => undefined)
-    }
-  }, [token, data.competitions.length, data.clubs.length, data.persons.length, data.seasons.length, fetchDictionaries, fetchSeasons, loading.seasons])
+    if (!token || bootRef.current) return
+    bootRef.current = true
+    void fetchDictionaries().catch(() => undefined)
+    void fetchSeasons().catch(() => undefined)
+  }, [token, fetchDictionaries, fetchSeasons])
 
   useEffect(() => {
     if (!selectedSeasonId || !token) return
