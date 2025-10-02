@@ -131,10 +131,12 @@ export default async function (server: FastifyInstance) {
           telegramId: BigInt(userId),
           username: username,
           firstName: firstName || null,
+          photoUrl: photoUrl || null,
         },
         update: {
           username: username,
           firstName: firstName || undefined,
+          photoUrl: photoUrl || undefined,
         },
       })
 

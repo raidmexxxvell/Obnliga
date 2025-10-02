@@ -133,6 +133,7 @@ export default function Profile() {
             telegramId: unsafe.id,
             username: unsafe.username,
             firstName: unsafe.first_name,
+            photoUrl: unsafe.photo_url,
             createdAt: new Date().toISOString()
           })
         }
@@ -249,7 +250,7 @@ export default function Profile() {
       <div className="profile-header">
         <div className="avatar-section">
           {user && user.photoUrl ? (
-            <img src={user.photoUrl} alt={user.tgUsername || 'avatar'} className="profile-avatar" />
+            <img src={user.photoUrl} alt={user.username || user.firstName || 'avatar'} className="profile-avatar" />
           ) : (
             <div className="profile-avatar placeholder">{loading ? '⏳' : '👤'}</div>
           )}

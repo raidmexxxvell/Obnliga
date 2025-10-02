@@ -309,6 +309,7 @@ model AppUser {
   telegramId     BigInt   @unique @map("telegram_id")
   username       String?  @map("username")
   firstName      String?  @map("first_name")
+  photoUrl       String?  @map("photo_url")
   registrationDate DateTime @map("registration_date") @default(now())
   lastLoginDate  DateTime? @map("last_login_date")
   currentStreak  Int      @map("current_streak") @default(0)
