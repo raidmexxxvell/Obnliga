@@ -11,16 +11,15 @@ export default async function (server: FastifyInstance) {
     if (!userId) return reply.status(400).send({ error: 'userId is required' })
 
     try {
-      const user = await (prisma as any).user.upsert({
-        where: { userId: BigInt(userId) as any },
+      const user = await prisma.appUser.upsert({
+        where: { telegramId: BigInt(userId) },
         create: {
-          userId: BigInt(userId) as any,
-          tgUsername: username,
-          photoUrl,
+          telegramId: BigInt(userId),
+          username: username,
+          firstName: null, // Can be updated later if needed
         },
         update: {
-          tgUsername: username,
-          photoUrl,
+          username: username,
         },
       })
 
@@ -70,7 +69,7 @@ export default async function (server: FastifyInstance) {
       // Use cache for user data (5 min TTL)
       const cacheKey = `user:${userId}`
       const u = await defaultCache.get(cacheKey, async () => {
-        return await (prisma as any).user.findUnique({ where: { userId: BigInt(userId) as any } })
+        return await prisma.appUser.findUnique({ where: { telegramId: BigInt(userId) } })
       }, 300) // 5 minutes TTL
       
       if (!u) return reply.status(404).send({ error: 'not_found' })

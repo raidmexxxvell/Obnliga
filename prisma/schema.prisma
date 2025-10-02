@@ -408,21 +408,3 @@ enum DisqualificationReason {
   ACCUMULATED_CARDS
   OTHER
 }
-
-model AdminLog {
-  id              Int      @id @default(autoincrement())
-  adminId         BigInt?  @map("admin_id")
-  action          String
-  description     String
-  endpoint        String?
-  requestData     String?  @map("request_data")
-  resultStatus    String   @map("result_status")
-  resultMessage   String?  @map("result_message")
-  affectedEntities String? @map("affected_entities")
-  executionTimeMs Int?     @map("execution_time_ms")
-  ipAddress       String?  @map("ip_address")
-  userAgent       String?  @map("user_agent")
-  createdAt       DateTime @map("created_at") @default(now())
-
-  @@map("admin_logs")
-}

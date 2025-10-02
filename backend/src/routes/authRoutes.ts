@@ -46,6 +46,7 @@ export default async function (server: FastifyInstance) {
 
     let userId: string | undefined
     let username: string | undefined
+    let firstName: string | undefined
     let photoUrl: string | undefined
     let authDateSec: number | undefined
     let verificationMethod: 'hash' | 'signature' | 'json' | undefined
@@ -64,7 +65,8 @@ export default async function (server: FastifyInstance) {
           throw new Error('json_payload_missing_user')
         }
         userId = String(u.id)
-        username = u.username || u.first_name || u.last_name
+        username = u.username
+        firstName = u.first_name
         photoUrl = u.photo_url || u.photoUrl
         if (u.auth_date) authDateSec = Number(u.auth_date)
         server.log.warn({ userId }, 'telegram-init: accepted JSON user payload without signature (dev fallback)')
@@ -91,8 +93,8 @@ export default async function (server: FastifyInstance) {
           userId = String(parsedUser.id)
         }
         if (parsedUser) {
-          const composedName = [parsedUser.firstName, parsedUser.lastName].filter(Boolean).join(' ').trim()
-          username = parsedUser.username || (composedName.length ? composedName : undefined)
+          username = parsedUser.username
+          firstName = parsedUser.firstName
           photoUrl = parsedUser.photoUrl || photoUrl
         }
         const parsedAuth = parsed?.authDate
@@ -123,16 +125,16 @@ export default async function (server: FastifyInstance) {
     if (!userId) return reply.status(400).send({ error: 'user id missing' })
 
     try {
-      const user = await (prisma as any).user.upsert({
-        where: { userId: BigInt(userId) as any },
+      const user = await prisma.appUser.upsert({
+        where: { telegramId: BigInt(userId) },
         create: {
-          userId: BigInt(userId) as any,
-          tgUsername: username,
-          photoUrl,
+          telegramId: BigInt(userId),
+          username: username,
+          firstName: firstName || null,
         },
         update: {
-          tgUsername: username,
-          photoUrl,
+          username: username,
+          firstName: firstName || undefined,
         },
       })
 
@@ -170,7 +172,7 @@ export default async function (server: FastifyInstance) {
 
       // Create a JWT session token (short lived) and set as httpOnly cookie
       const jwtSecret = process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'dev-secret'
-      const token = jwt.sign({ sub: String(user.userId), username: user.tgUsername }, jwtSecret, { expiresIn: '7d' })
+      const token = jwt.sign({ sub: String(user.telegramId), username: user.username }, jwtSecret, { expiresIn: '7d' })
 
       // set cookie (httpOnly). Fastify reply.setCookie requires fastify-cookie plugin; we fallback to header if not present.
       try {
@@ -207,7 +209,7 @@ export default async function (server: FastifyInstance) {
       // Use cache for user data (5 min TTL)
       const cacheKey = `user:${sub}`
       const u = await defaultCache.get(cacheKey, async () => {
-        return await (prisma as any).user.findUnique({ where: { userId: BigInt(sub) as any } })
+        return await prisma.appUser.findUnique({ where: { telegramId: BigInt(sub) } })
       }, 300) // 5 minutes TTL
       
       if (!u) return reply.status(404).send({ error: 'not_found' })
