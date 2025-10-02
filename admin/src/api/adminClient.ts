@@ -33,3 +33,59 @@ export const adminLogin = async (login: string, password: string): Promise<Admin
     expiresIn: data.expiresIn ?? 0
   }
 }
+
+interface ApiResponseEnvelope<T> {
+  ok: boolean
+  data?: T
+  error?: string
+}
+
+const ensureToken = (token?: string): string => {
+  if (!token) {
+    throw new Error('missing_token')
+  }
+  return token
+}
+
+export const adminRequest = async <T>(token: string | undefined, path: string, init: RequestInit = {}): Promise<T> => {
+  const safeToken = ensureToken(token)
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${safeToken}`,
+      ...(init.headers || {})
+    }
+  })
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as ApiResponseEnvelope<T>
+    const error = payload?.error || response.statusText || 'request_failed'
+    throw new Error(error)
+  }
+
+  const payload = (await response.json().catch(() => ({}))) as ApiResponseEnvelope<T>
+  if (!payload?.ok) {
+    throw new Error(payload?.error || 'request_failed')
+  }
+
+  return payload.data as T
+}
+
+export const adminGet = async <T>(token: string | undefined, path: string): Promise<T> =>
+  adminRequest<T>(token, path, { method: 'GET' })
+
+export const adminPost = async <T>(token: string | undefined, path: string, body?: unknown): Promise<T> =>
+  adminRequest<T>(token, path, {
+    method: 'POST',
+    body: body === undefined ? undefined : JSON.stringify(body)
+  })
+
+export const adminPut = async <T>(token: string | undefined, path: string, body?: unknown): Promise<T> =>
+  adminRequest<T>(token, path, {
+    method: 'PUT',
+    body: body === undefined ? undefined : JSON.stringify(body)
+  })
+
+export const adminDelete = async <T>(token: string | undefined, path: string): Promise<T> =>
+  adminRequest<T>(token, path, { method: 'DELETE' })

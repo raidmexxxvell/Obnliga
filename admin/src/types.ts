@@ -1,0 +1,185 @@
+export interface Club {
+  id: number
+  name: string
+  shortName: string
+  logoUrl?: string | null
+}
+
+export interface Person {
+  id: number
+  firstName: string
+  lastName: string
+  isPlayer: boolean
+}
+
+export interface Stadium {
+  id: number
+  name: string
+  city: string
+}
+
+export interface Competition {
+  id: number
+  name: string
+  type: 'LEAGUE' | 'CUP' | 'HYBRID'
+  seriesFormat: 'SINGLE_MATCH' | 'TWO_LEGGED' | 'BEST_OF_N'
+}
+
+export interface SeasonParticipant {
+  seasonId: number
+  clubId: number
+  club: Club
+}
+
+export interface SeasonRosterEntry {
+  seasonId: number
+  clubId: number
+  personId: number
+  shirtNumber: number
+  registrationDate: string
+  person: Person
+  club: Club
+}
+
+export interface Season {
+  id: number
+  competitionId: number
+  name: string
+  startDate: string
+  endDate: string
+  competition: Competition
+  participants: SeasonParticipant[]
+  rosters?: SeasonRosterEntry[]
+}
+
+export interface MatchSeries {
+  id: string
+  seasonId: number
+  stageName: string
+  homeClubId: number
+  awayClubId: number
+  seriesStatus: 'IN_PROGRESS' | 'FINISHED'
+  winnerClubId?: number | null
+}
+
+export interface MatchSummary {
+  id: string
+  seasonId: number
+  matchDateTime: string
+  homeTeamId: number
+  awayTeamId: number
+  homeScore: number
+  awayScore: number
+  status: 'SCHEDULED' | 'LIVE' | 'FINISHED' | 'POSTPONED'
+  stadiumId?: number | null
+  refereeId?: number | null
+  season?: { name: string }
+}
+
+export interface MatchLineupEntry {
+  matchId: string
+  personId: number
+  clubId: number
+  role: 'STARTER' | 'SUBSTITUTE'
+  position?: string | null
+  person: Person
+  club: Club
+}
+
+export interface MatchEventEntry {
+  id: string
+  matchId: string
+  teamId: number
+  minute: number
+  eventType: 'GOAL' | 'YELLOW_CARD' | 'RED_CARD' | 'SUB_IN' | 'SUB_OUT'
+  playerId: number
+  relatedPlayerId?: number | null
+  player: Person
+  relatedPerson?: Person | null
+  team: Club
+}
+
+export interface ClubSeasonStats {
+  seasonId: number
+  clubId: number
+  points: number
+  wins: number
+  losses: number
+  goalsFor: number
+  goalsAgainst: number
+  club: Club
+}
+
+export interface PlayerSeasonStats {
+  seasonId: number
+  personId: number
+  clubId: number
+  goals: number
+  assists: number
+  yellowCards: number
+  person: Person
+  club: Club
+}
+
+export interface PlayerCareerStats {
+  personId: number
+  clubId: number
+  totalGoals: number
+  totalMatches: number
+  person: Person
+  club: Club
+}
+
+export interface AppUser {
+  id: number
+  telegramId: string
+  username?: string | null
+  firstName?: string | null
+  registrationDate: string
+  lastLoginDate?: string | null
+  currentStreak: number
+  totalPredictions: number
+}
+
+export interface Prediction {
+  id: string
+  userId: number
+  matchId: string
+  predictionDate: string
+  result1x2?: 'ONE' | 'DRAW' | 'TWO' | null
+  totalGoalsOver?: number | null
+  penaltyYes?: boolean | null
+  redCardYes?: boolean | null
+  isCorrect?: boolean | null
+  pointsAwarded: number
+  user?: AppUser
+}
+
+export interface AchievementType {
+  id: number
+  name: string
+  description?: string | null
+  requiredValue: number
+  metric: 'DAILY_LOGIN' | 'TOTAL_PREDICTIONS' | 'CORRECT_PREDICTIONS'
+}
+
+export interface UserAchievement {
+  userId: number
+  achievementTypeId: number
+  achievedDate: string
+  user: AppUser
+  achievementType: AchievementType
+}
+
+export interface Disqualification {
+  id: string
+  personId: number
+  clubId?: number | null
+  reason: 'RED_CARD' | 'ACCUMULATED_CARDS' | 'OTHER'
+  sanctionDate: string
+  banDurationMatches: number
+  matchesMissed: number
+  isActive: boolean
+  person: Person
+  club?: Club | null
+}

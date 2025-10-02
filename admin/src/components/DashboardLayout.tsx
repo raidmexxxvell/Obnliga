@@ -1,27 +1,30 @@
-import { Fragment } from 'react'
 import { AdminTab, useAdminStore } from '../store/adminStore'
-import { TabPlaceholder } from './TabPlaceholder'
+import { TeamsTab } from './tabs/TeamsTab'
+import { MatchesTab } from './tabs/MatchesTab'
+import { StatsTab } from './tabs/StatsTab'
+import { PlayersTab } from './tabs/PlayersTab'
+import { UsersTab } from './tabs/UsersTab'
 
 const tabMeta: Record<AdminTab, { title: string; description: string }> = {
   teams: {
     title: 'Команды',
-    description: 'Управление клубами, тренерами и атрибутами клуба. Компоненты будут подключены позднее.'
+    description: 'Справочники: клубы, люди, стадионы и соревнования.'
   },
   matches: {
     title: 'Матчи',
-    description: 'Планирование и редактирование матчей, контроль live-статуса, синхронизация с realtime.'
+    description: 'Сезоны, участники, серии, расписание и фиксация результатов.'
   },
   stats: {
     title: 'Статистика',
-    description: 'Графики и агрегаты лиги. Здесь появятся метрики после подключения источников данных.'
+    description: 'Таблица и индивидуальная статистика по сезонам и карьере.'
   },
   players: {
-    title: 'Управление игроками',
-    description: 'Реестр игроков, трансферы и статусы. Пока отображается заглушка.'
+    title: 'Ростеры и дисквалификации',
+    description: 'Регистрация составов по сезонам, контроль заявок и санкций.'
   },
   news: {
-    title: 'Новости',
-    description: 'Панель редактора новостей. Интеграция с CMS находится в планировании.'
+    title: 'Пользователи и активность',
+    description: 'Управление пользователями, прогнозами и достижениями.'
   }
 }
 
@@ -35,6 +38,23 @@ export const DashboardLayout = () => {
     activeTab: state.activeTab,
     setTab: state.setTab
   }))
+
+  const renderActiveTab = () => {
+    switch (activeTab) {
+      case 'teams':
+        return <TeamsTab />
+      case 'matches':
+        return <MatchesTab />
+      case 'stats':
+        return <StatsTab />
+      case 'players':
+        return <PlayersTab />
+      case 'news':
+        return <UsersTab />
+      default:
+        return null
+    }
+  }
 
   return (
     <div className="dashboard-shell neo-accents">
@@ -61,14 +81,8 @@ export const DashboardLayout = () => {
           </button>
         ))}
       </div>
-      <div className="tab-content" role="tabpanel">
-        {tabsOrder.map((tab) => (
-          <Fragment key={tab}>
-            {activeTab === tab ? (
-              <TabPlaceholder title={tabMeta[tab].title} description={tabMeta[tab].description} />
-            ) : null}
-          </Fragment>
-        ))}
+      <div className="tab-panel" role="tabpanel">
+        {renderActiveTab()}
       </div>
     </div>
   )
