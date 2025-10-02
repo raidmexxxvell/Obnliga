@@ -23,7 +23,7 @@ export default async function registerRealtime(server: FastifyInstance) {
 
   // register websocket route
   // NOTE: plugin @fastify/websocket must be registered in server
-  server.get('/realtime', (connection: any, req: any) => {
+  server.get('/realtime', { websocket: true }, (connection: any, req: any) => {
     // fastify-websocket will set connection.socket
     const socket: any = connection.socket
     // verify token

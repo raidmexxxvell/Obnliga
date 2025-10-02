@@ -22,9 +22,9 @@ export default function Profile() {
 
   // WebSocket real-time updates для профиля
   useEffect(() => {
-    if (!user?.userId) return
+    if (!user?.telegramId) return
 
-    const userTopic = `user:${user.userId}`
+    const userTopic = `user:${user.telegramId}`
     const profileTopic = 'profile' // Глобальные обновления профилей
     
     console.log(`Subscribing to topics: ${userTopic}, ${profileTopic}`)
@@ -40,7 +40,7 @@ export default function Profile() {
         const { topic, payload } = msg
         
         // Персональные обновления пользователя
-        if (topic === userTopic && payload.userId === user.userId) {
+        if (topic === userTopic && payload.telegramId === user.telegramId) {
           console.log('Received user patch:', payload)
           setUser((prev: any) => {
             const updated = { ...prev, ...payload }
@@ -51,7 +51,7 @@ export default function Profile() {
         }
         
         // Глобальные обновления профилей (если касаются текущего пользователя)
-        if (topic === profileTopic && payload.userId === user.userId) {
+        if (topic === profileTopic && payload.telegramId === user.telegramId) {
           console.log('Received profile patch:', payload)
           setUser((prev: any) => {
             const updated = { ...prev, ...payload }
@@ -75,7 +75,7 @@ export default function Profile() {
         handlers.splice(index, 1)
       }
     }
-  }, [user?.userId])
+  }, [user?.telegramId])
 
   function getCachedProfile(): CacheEntry | null {
     try {
@@ -130,8 +130,9 @@ export default function Profile() {
         const fallbackName = unsafe.username || [unsafe.first_name, unsafe.last_name].filter(Boolean).join(' ').trim()
         if (!user) {
           setUser({
-            tgUsername: fallbackName || 'Гость',
-            photoUrl: unsafe.photo_url,
+            telegramId: unsafe.id,
+            username: unsafe.username,
+            firstName: unsafe.first_name,
             createdAt: new Date().toISOString()
           })
         }
@@ -257,10 +258,10 @@ export default function Profile() {
         
         <div className="profile-info">
           <h1 className="profile-name">
-            {loading ? 'Загрузка...' : user?.tgUsername || 'Гость'}
+            {loading ? 'Загрузка...' : user?.username || user?.firstName || 'Гость'}
           </h1>
-          {user?.userId && (
-            <div className="profile-id">ID: {user.userId}</div>
+          {user?.telegramId && (
+            <div className="profile-id">ID: {user.telegramId}</div>
           )}
           {user?.createdAt && (
             <div className="profile-joined">
