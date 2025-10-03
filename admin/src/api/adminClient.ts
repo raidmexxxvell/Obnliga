@@ -1,4 +1,4 @@
-import type { ClubPlayerLink, SeasonAutomationResult } from '../types'
+import type { ClubPlayerLink, PlayoffCreationResult, SeasonAutomationResult } from '../types'
 
 const API_BASE = import.meta.env.VITE_ADMIN_API_BASE || 'http://localhost:3000'
 
@@ -111,6 +111,10 @@ export interface ImportClubPlayersPayload {
   lines: string[]
 }
 
+export interface PlayoffCreationPayload {
+  bestOfLength?: number
+}
+
 export const fetchClubPlayers = async (token: string | undefined, clubId: number): Promise<ClubPlayerLink[]> =>
   adminGet<ClubPlayerLink[]>(token, `/api/admin/clubs/${clubId}/players`)
 
@@ -130,3 +134,9 @@ export const createSeasonAutomation = async (
   token: string | undefined,
   payload: SeasonAutomationPayload
 ) => adminPost<SeasonAutomationResult>(token, '/api/admin/seasons/auto', payload)
+
+export const createSeasonPlayoffs = async (
+  token: string | undefined,
+  seasonId: number,
+  payload?: PlayoffCreationPayload
+) => adminPost<PlayoffCreationResult>(token, `/api/admin/seasons/${seasonId}/playoffs`, payload)

@@ -32,6 +32,18 @@ type CompetitionFormState = {
 const competitionTypeOptions: Competition['type'][] = ['LEAGUE', 'CUP', 'HYBRID']
 const seriesFormatOptions: Competition['seriesFormat'][] = ['SINGLE_MATCH', 'TWO_LEGGED', 'BEST_OF_N']
 
+const competitionTypeLabels: Record<Competition['type'], string> = {
+  LEAGUE: 'Лига',
+  CUP: 'Кубок',
+  HYBRID: 'Лига + кубок'
+}
+
+const seriesFormatLabels: Record<Competition['seriesFormat'], string> = {
+  SINGLE_MATCH: 'Один матч (каждый с каждым)',
+  TWO_LEGGED: 'Два матча (дом/гости)',
+  BEST_OF_N: 'Серия до побед (best-of)'
+}
+
 const defaultClubForm: ClubFormState = { name: '', shortName: '', logoUrl: '' }
 const defaultPersonForm: PersonFormState = { firstName: '', lastName: '', isPlayer: true }
 const defaultStadiumForm: StadiumFormState = { name: '', city: '' }
@@ -514,7 +526,7 @@ export const TeamsTab = () => {
               >
                 {competitionTypeOptions.map((option) => (
                   <option key={option} value={option}>
-                    {option}
+                    {competitionTypeLabels[option]}
                   </option>
                 ))}
               </select>
@@ -532,7 +544,7 @@ export const TeamsTab = () => {
               >
                 {seriesFormatOptions.map((option) => (
                   <option key={option} value={option}>
-                    {option}
+                    {seriesFormatLabels[option]}
                   </option>
                 ))}
               </select>
@@ -569,8 +581,8 @@ export const TeamsTab = () => {
               {data.competitions.map((competition) => (
                 <tr key={competition.id}>
                   <td>{competition.name}</td>
-                  <td>{competition.type}</td>
-                  <td>{competition.seriesFormat}</td>
+                  <td>{competitionTypeLabels[competition.type]}</td>
+                  <td>{seriesFormatLabels[competition.seriesFormat]}</td>
                   <td className="table-actions">
                     <button type="button" onClick={() => handleCompetitionEdit(competition)}>
                       Изм.

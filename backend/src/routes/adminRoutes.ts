@@ -15,7 +15,7 @@ import {
   SeriesStatus
 } from '@prisma/client'
 import { handleMatchFinalization } from '../services/matchAggregation'
-import { runSeasonAutomation } from '../services/seasonAutomation'
+import { createSeasonPlayoffs, runSeasonAutomation } from '../services/seasonAutomation'
 import { serializePrisma } from '../utils/serialization'
 
 declare module 'fastify' {
@@ -695,6 +695,35 @@ export default async function (server: FastifyInstance) {
           return reply.status(400).send({ ok: false, error: 'automation_needs_participants' })
         }
         return reply.status(500).send({ ok: false, error: 'automation_failed' })
+      }
+    })
+
+    admin.post('/seasons/:seasonId/playoffs', async (request, reply) => {
+      const seasonId = parseNumericId((request.params as any).seasonId, 'seasonId')
+      const body = request.body as { bestOfLength?: number }
+      const bestOfLength = typeof body?.bestOfLength === 'number' ? body.bestOfLength : undefined
+
+      try {
+        const result = await createSeasonPlayoffs(prisma, request.log, { seasonId, bestOfLength })
+        return reply.send({ ok: true, data: result })
+      } catch (err) {
+        const error = err as Error
+        switch (error.message) {
+          case 'season_not_found':
+            return reply.status(404).send({ ok: false, error: 'season_not_found' })
+          case 'playoffs_not_supported':
+            return reply.status(409).send({ ok: false, error: 'playoffs_not_supported' })
+          case 'series_already_exist':
+            return reply.status(409).send({ ok: false, error: 'playoffs_already_exists' })
+          case 'matches_not_finished':
+            return reply.status(409).send({ ok: false, error: 'regular_season_not_finished' })
+          case 'not_enough_participants':
+          case 'not_enough_pairs':
+            return reply.status(409).send({ ok: false, error: 'not_enough_participants' })
+          default:
+            request.server.log.error({ err, seasonId }, 'playoffs creation failed')
+            return reply.status(500).send({ ok: false, error: 'playoffs_creation_failed' })
+        }
       }
     })
 

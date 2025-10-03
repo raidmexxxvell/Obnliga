@@ -67,6 +67,12 @@ export interface SeasonAutomationResult {
   seriesCreated: number
 }
 
+export interface PlayoffCreationResult {
+  seriesCreated: number
+  matchesCreated: number
+  byeClubId?: number
+}
+
 export interface MatchSeries {
   id: string
   seasonId: number

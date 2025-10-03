@@ -1,5 +1,12 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { adminDelete, adminGet, adminPost, adminPut, createSeasonAutomation } from '../../api/adminClient'
+import {
+  adminDelete,
+  adminGet,
+  adminPost,
+  adminPut,
+  createSeasonAutomation,
+  createSeasonPlayoffs
+} from '../../api/adminClient'
 import { useAdminStore } from '../../store/adminStore'
 import {
   Club,
@@ -10,6 +17,7 @@ import {
   Person,
   Season,
   SeasonAutomationResult,
+  PlayoffCreationResult,
   SeasonParticipant,
   SeasonRosterEntry
 } from '../../types'
@@ -88,6 +96,8 @@ const matchStatuses: MatchSummary['status'][] = ['SCHEDULED', 'LIVE', 'FINISHED'
 const seriesStatuses: MatchSeries['seriesStatus'][] = ['IN_PROGRESS', 'FINISHED']
 const lineupRoles: Array<LineupFormState['role']> = ['STARTER', 'SUBSTITUTE']
 const eventTypes: Array<EventFormState['eventType']> = ['GOAL', 'YELLOW_CARD', 'RED_CARD', 'SUB_IN', 'SUB_OUT']
+
+const playoffBestOfOptions = [3, 5, 7]
 
 const defaultSeasonForm: SeasonFormState = {
   competitionId: 0,
@@ -171,6 +181,12 @@ const automationSeriesLabels: Record<SeasonAutomationFormState['seriesFormat'], 
   BEST_OF_N: `${seriesFormatNames.BEST_OF_N}`
 }
 
+const competitionTypeLabels: Record<'LEAGUE' | 'CUP' | 'HYBRID', string> = {
+  LEAGUE: 'Лига',
+  CUP: 'Кубок',
+  HYBRID: 'Лига + кубок'
+}
+
 const weekdayOptions = [
   { value: '0', label: 'Воскресенье' },
   { value: '1', label: 'Понедельник' },
@@ -234,6 +250,9 @@ export const MatchesTab = () => {
   const [automationForm, setAutomationForm] = useState<SeasonAutomationFormState>(defaultAutomationForm)
   const [automationResult, setAutomationResult] = useState<SeasonAutomationResult | null>(null)
   const [automationLoading, setAutomationLoading] = useState(false)
+  const [playoffBestOf, setPlayoffBestOf] = useState<number>(playoffBestOfOptions[0])
+  const [playoffLoading, setPlayoffLoading] = useState(false)
+  const [playoffResult, setPlayoffResult] = useState<PlayoffCreationResult | null>(null)
 
   const isLoading = Boolean(loading.matches || loading.seasons)
 
@@ -274,6 +293,10 @@ export const MatchesTab = () => {
       if (firstClub) setRosterClubFilter(firstClub)
     }
   }, [selectedSeason, data.clubs.length, rosterClubFilter])
+
+  useEffect(() => {
+    setPlayoffResult(null)
+  }, [selectedSeasonId])
 
   const handleFeedback = (message: string, level: FeedbackLevel) => {
     setFeedback(message)
@@ -386,6 +409,40 @@ export const MatchesTab = () => {
       handleFeedback(message, 'error')
     } finally {
       setAutomationLoading(false)
+    }
+  }
+
+  const handleCreatePlayoffs = async () => {
+    const seasonId = ensureSeasonSelected()
+    if (!seasonId) return
+    if (!token) {
+      handleFeedback('Нет токена авторизации', 'error')
+      return
+    }
+    if (playoffsDisabledReason) {
+      handleFeedback(playoffsDisabledReason, 'error')
+      return
+    }
+    try {
+      setPlayoffLoading(true)
+      const result = await createSeasonPlayoffs(token, seasonId, {
+        bestOfLength: playoffBestOf
+      })
+      setPlayoffResult(result)
+      const byeClubName = result.byeClubId
+        ? data.clubs.find((club) => club.id === result.byeClubId)?.name ?? `клуб #${result.byeClubId}`
+        : null
+      const successMessage = [`Серий: ${result.seriesCreated}`, `Матчей: ${result.matchesCreated}`]
+      if (byeClubName) {
+        successMessage.push(`${byeClubName} автоматически проходит дальше`)
+      }
+      handleFeedback(`Плей-офф создан (${successMessage.join(', ')})`, 'success')
+      await Promise.all([fetchSeries(seasonId), fetchMatches(seasonId), fetchSeasons()])
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Не удалось создать плей-офф'
+      handleFeedback(message, 'error')
+    } finally {
+      setPlayoffLoading(false)
     }
   }
 
@@ -650,6 +707,26 @@ export const MatchesTab = () => {
   const players = data.persons.filter((person) => person.isPlayer)
   const seasonSeries = data.series.filter((series) => series.seasonId === selectedSeasonId)
   const seasonMatches = data.matches.filter((match) => match.seasonId === selectedSeasonId)
+  const hasUnfinishedMatches = seasonMatches.some((match) => match.status !== 'FINISHED')
+  const playoffFormatEnabled = selectedSeason?.competition.seriesFormat === 'BEST_OF_N'
+  const playoffsDisabledReason = useMemo(() => {
+    if (!selectedSeasonId) return 'Выберите сезон, чтобы запускать плей-офф'
+    if (!selectedSeason) return 'Сезон не найден'
+    if (!playoffFormatEnabled) return 'Текущее соревнование не использует формат плей-офф'
+    if (seasonSeries.length > 0) return 'Серии уже созданы для этого сезона'
+    if (seasonParticipants.length < 2) return 'Недостаточно участников для плей-офф'
+    if (seasonMatches.length === 0) return 'Нет матчей регулярного сезона'
+    if (hasUnfinishedMatches) return 'Сначала завершите все матчи регулярного этапа'
+    return null
+  }, [
+    hasUnfinishedMatches,
+    playoffFormatEnabled,
+    seasonMatches.length,
+    seasonParticipants.length,
+    seasonSeries.length,
+    selectedSeason,
+    selectedSeasonId
+  ])
 
   return (
     <div className="tab-sections">
@@ -871,7 +948,7 @@ export const MatchesTab = () => {
               <option value="">—</option>
               {data.seasons.map((season) => (
                 <option key={season.id} value={season.id}>
-                  {season.name} ({season.competition.name})
+                  {season.name} — {season.competition.name} ({competitionTypeLabels[season.competition.type]})
                 </option>
               ))}
             </select>
@@ -909,7 +986,7 @@ export const MatchesTab = () => {
                 <option value="">—</option>
                 {data.competitions.map((competition) => (
                   <option key={competition.id} value={competition.id}>
-                    {competition.name} ({competition.type})
+                    {competition.name} ({competitionTypeLabels[competition.type]})
                   </option>
                 ))}
               </select>
@@ -1079,6 +1156,58 @@ export const MatchesTab = () => {
       </section>
 
       <section className="card-grid">
+        <article className="card playoff-card">
+          <header>
+            <h4>Плей-офф после регулярки</h4>
+            <p>Когда все матчи сыграны, сформируйте сетку автоматически с учётом посева.</p>
+          </header>
+          {!selectedSeason ? (
+            <p className="muted">Выберите сезон, чтобы управлять плей-офф.</p>
+          ) : !playoffFormatEnabled ? (
+            <p className="muted">Соревнование «{selectedSeason.competition.name}» не предполагает серию до побед.</p>
+          ) : (
+            <div className="stacked">
+              <label>
+                Формат серий
+                <select
+                  value={playoffBestOf}
+                  onChange={(event) => setPlayoffBestOf(Number(event.target.value))}
+                  disabled={playoffLoading}
+                >
+                  {playoffBestOfOptions.map((option) => (
+                    <option key={option} value={option}>
+                      До {option === 3 ? 'двух' : option === 5 ? 'трёх' : 'четырёх'} побед (best-of-{option})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                className="button-primary"
+                type="button"
+                onClick={handleCreatePlayoffs}
+                disabled={playoffLoading || Boolean(playoffsDisabledReason)}
+                title={playoffsDisabledReason ?? undefined}
+              >
+                {playoffLoading ? 'Создаём…' : 'Сгенерировать плей-офф'}
+              </button>
+              {playoffsDisabledReason ? (
+                <p className="muted">{playoffsDisabledReason}</p>
+              ) : (
+                <p className="muted">
+                  Серии создаются по посеву из списка участников сезонов. Каждая вторая игра проводится на площадке соперника.
+                </p>
+              )}
+              {playoffResult ? (
+                <div className="inline-feedback success">
+                  Серий: {playoffResult.seriesCreated}, матчей: {playoffResult.matchesCreated}
+                  {playoffResult.byeClubId
+                    ? `, ${data.clubs.find((club) => club.id === playoffResult.byeClubId)?.shortName ?? `клуб #${playoffResult.byeClubId}`} проходит дальше`
+                    : ''}
+                </div>
+              ) : null}
+            </div>
+          )}
+        </article>
         <article className="card">
           <header>
             <h4>{editingSeriesId ? 'Редактирование серии' : 'Создать серию'}</h4>
@@ -1164,38 +1293,40 @@ export const MatchesTab = () => {
               ) : null}
             </div>
           </form>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Стадия</th>
-                <th>Хозяева</th>
-                <th>Гости</th>
-                <th>Статус</th>
-                <th aria-label="Действия" />
-              </tr>
-            </thead>
-            <tbody>
-              {seasonSeries.map((series) => (
-                <tr key={series.id}>
-                  <td>{series.stageName}</td>
-                  <td>{availableClubs.find((club) => club.id === series.homeClubId)?.name ?? series.homeClubId}</td>
-                  <td>{availableClubs.find((club) => club.id === series.awayClubId)?.name ?? series.awayClubId}</td>
-                  <td>
-                    {series.seriesStatus}
-                    {series.winnerClubId ? ` → ${availableClubs.find((club) => club.id === series.winnerClubId)?.shortName}` : ''}
-                  </td>
-                  <td className="table-actions">
-                    <button type="button" onClick={() => handleSeriesEdit(series)}>
-                      Изм.
-                    </button>
-                    <button type="button" className="danger" onClick={() => handleSeriesDelete(series)}>
-                      Удал.
-                    </button>
-                  </td>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Стадия</th>
+                  <th>Хозяева</th>
+                  <th>Гости</th>
+                  <th>Статус</th>
+                  <th aria-label="Действия" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {seasonSeries.map((series) => (
+                  <tr key={series.id}>
+                    <td>{series.stageName}</td>
+                    <td>{availableClubs.find((club) => club.id === series.homeClubId)?.name ?? series.homeClubId}</td>
+                    <td>{availableClubs.find((club) => club.id === series.awayClubId)?.name ?? series.awayClubId}</td>
+                    <td>
+                      {series.seriesStatus}
+                      {series.winnerClubId ? ` → ${availableClubs.find((club) => club.id === series.winnerClubId)?.shortName}` : ''}
+                    </td>
+                    <td className="table-actions">
+                      <button type="button" onClick={() => handleSeriesEdit(series)}>
+                        Изм.
+                      </button>
+                      <button type="button" className="danger" onClick={() => handleSeriesDelete(series)}>
+                        Удал.
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </article>
 
         <article className="card">
@@ -1312,87 +1443,89 @@ export const MatchesTab = () => {
             <h4>Матчи сезона</h4>
             <p>Выберите матч для редактирования счёта, статуса и составов.</p>
           </header>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Дата</th>
-                <th>Матч</th>
-                <th>Счёт</th>
-                <th>Статус</th>
-                <th aria-label="Действия" />
-              </tr>
-            </thead>
-            <tbody>
-              {seasonMatches.map((match) => {
-                const home = availableClubs.find((club) => club.id === match.homeTeamId)
-                const away = availableClubs.find((club) => club.id === match.awayTeamId)
-                const form = matchUpdateForms[match.id] ?? emptyMatchUpdateForm
-                return (
-                  <tr key={match.id} className={selectedMatchId === match.id ? 'active-row' : undefined}>
-                    <td>{new Date(match.matchDateTime).toLocaleString()}</td>
-                    <td>
-                      {home?.shortName ?? match.homeTeamId} vs {away?.shortName ?? match.awayTeamId}
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        value={form.homeScore}
-                        onChange={(event) =>
-                          setMatchUpdateForms((forms) => ({
-                            ...forms,
-                            [match.id]: { ...forms[match.id], homeScore: event.target.value ? Number(event.target.value) : '' }
-                          }))
-                        }
-                        className="score-input"
-                        min={0}
-                      />
-                      :
-                      <input
-                        type="number"
-                        value={form.awayScore}
-                        onChange={(event) =>
-                          setMatchUpdateForms((forms) => ({
-                            ...forms,
-                            [match.id]: { ...forms[match.id], awayScore: event.target.value ? Number(event.target.value) : '' }
-                          }))
-                        }
-                        className="score-input"
-                        min={0}
-                      />
-                    </td>
-                    <td>
-                      <select
-                        value={form.status}
-                        onChange={(event) =>
-                          setMatchUpdateForms((forms) => ({
-                            ...forms,
-                            [match.id]: { ...forms[match.id], status: event.target.value as MatchSummary['status'] }
-                          }))
-                        }
-                      >
-                        {matchStatuses.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="table-actions">
-                      <button type="button" onClick={() => handleMatchSelect(match)}>
-                        Детали
-                      </button>
-                      <button type="button" onClick={() => handleMatchUpdate(match, matchUpdateForms[match.id])}>
-                        Сохранить
-                      </button>
-                      <button type="button" className="danger" onClick={() => handleMatchDelete(match)}>
-                        Удал.
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Матч</th>
+                  <th>Счёт</th>
+                  <th>Статус</th>
+                  <th aria-label="Действия" />
+                </tr>
+              </thead>
+              <tbody>
+                {seasonMatches.map((match) => {
+                  const home = availableClubs.find((club) => club.id === match.homeTeamId)
+                  const away = availableClubs.find((club) => club.id === match.awayTeamId)
+                  const form = matchUpdateForms[match.id] ?? emptyMatchUpdateForm
+                  return (
+                    <tr key={match.id} className={selectedMatchId === match.id ? 'active-row' : undefined}>
+                      <td>{new Date(match.matchDateTime).toLocaleString()}</td>
+                      <td>
+                        {home?.shortName ?? match.homeTeamId} vs {away?.shortName ?? match.awayTeamId}
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          value={form.homeScore}
+                          onChange={(event) =>
+                            setMatchUpdateForms((forms) => ({
+                              ...forms,
+                              [match.id]: { ...forms[match.id], homeScore: event.target.value ? Number(event.target.value) : '' }
+                            }))
+                          }
+                          className="score-input"
+                          min={0}
+                        />
+                        :
+                        <input
+                          type="number"
+                          value={form.awayScore}
+                          onChange={(event) =>
+                            setMatchUpdateForms((forms) => ({
+                              ...forms,
+                              [match.id]: { ...forms[match.id], awayScore: event.target.value ? Number(event.target.value) : '' }
+                            }))
+                          }
+                          className="score-input"
+                          min={0}
+                        />
+                      </td>
+                      <td>
+                        <select
+                          value={form.status}
+                          onChange={(event) =>
+                            setMatchUpdateForms((forms) => ({
+                              ...forms,
+                              [match.id]: { ...forms[match.id], status: event.target.value as MatchSummary['status'] }
+                            }))
+                          }
+                        >
+                          {matchStatuses.map((status) => (
+                            <option key={status} value={status}>
+                              {status}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="table-actions">
+                        <button type="button" onClick={() => handleMatchSelect(match)}>
+                          Детали
+                        </button>
+                        <button type="button" onClick={() => handleMatchUpdate(match, form)}>
+                          Сохранить
+                        </button>
+                        <button type="button" className="danger" onClick={() => handleMatchDelete(match)}>
+                          Удал.
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
           {selectedMatchId ? (
             <div className="match-details">
               <h5>Детали матча</h5>
