@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { adminDelete, adminPost, adminPut } from '../../api/adminClient'
 import { useAdminStore } from '../../store/adminStore'
-import { Club, Competition, Person, Stadium } from '../../types'
+import { Club, ClubPlayerLink, Competition, Person, Stadium } from '../../types'
+import { ClubRosterModal } from '../ClubRosterModal'
 
 type FeedbackLevel = 'success' | 'error' | 'info'
 
@@ -63,6 +64,7 @@ export const TeamsTab = () => {
 
   const [competitionForm, setCompetitionForm] = useState<CompetitionFormState>(defaultCompetitionForm)
   const [editingCompetitionId, setEditingCompetitionId] = useState<number | null>(null)
+  const [activeClub, setActiveClub] = useState<Club | null>(null)
 
   const isLoading = Boolean(loading.dictionaries)
 
@@ -135,6 +137,10 @@ export const TeamsTab = () => {
     await runWithRefresh(async () => {
       await adminDelete(token, `/api/admin/clubs/${club.id}`)
     }, `Клуб «${club.name}» удалён`)
+  }
+
+  const handleRosterSaved = (_players: ClubPlayerLink[]) => {
+    handleFeedback('Состав клуба обновлён', 'success')
   }
 
   const handlePersonSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -298,7 +304,11 @@ export const TeamsTab = () => {
             <tbody>
               {data.clubs.map((club) => (
                 <tr key={club.id}>
-                  <td>{club.name}</td>
+                  <td>
+                    <button type="button" className="link-button" onClick={() => setActiveClub(club)}>
+                      {club.name}
+                    </button>
+                  </td>
                   <td>{club.shortName}</td>
                   <td>{club.logoUrl ? <a href={club.logoUrl}>Ссылка</a> : '—'}</td>
                   <td className="table-actions">
@@ -552,6 +562,18 @@ export const TeamsTab = () => {
           </table>
         </article>
       </section>
+      {activeClub ? (
+        <ClubRosterModal
+          club={activeClub}
+          token={token}
+          persons={data.persons}
+          onClose={() => setActiveClub(null)}
+          onSaved={(players) => {
+            handleRosterSaved(players)
+            setActiveClub(null)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

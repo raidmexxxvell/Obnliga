@@ -25,6 +25,7 @@ model Club {
   wonSeries      MatchSeries[]      @relation("winner_club")
   matchesHome    Match[]            @relation("match_home")
   matchesAway    Match[]            @relation("match_away")
+  clubPlayers    ClubPlayer[]
   playerStats    PlayerSeasonStats[]
   clubSeasonStats ClubSeasonStats[]
   careerStats    PlayerClubCareerStats[]
@@ -52,6 +53,7 @@ model Person {
   careerStats     PlayerClubCareerStats[]
   disqualifications Disqualification[]
   refereedMatches Match[] @relation("match_referee")
+  clubAffiliations ClubPlayer[]
 
   @@map("person")
 }
@@ -128,6 +130,21 @@ model SeasonRoster {
   @@id([seasonId, clubId, personId])
   @@unique([seasonId, clubId, shirtNumber], name: "unique_shirt_per_season_club")
   @@map("season_roster")
+}
+
+model ClubPlayer {
+  clubId   Int @map("club_id")
+  personId Int @map("person_id")
+  defaultShirtNumber Int? @map("default_shirt_number")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  club   Club   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@id([clubId, personId])
+  @@map("club_player")
 }
 
 model Stadium {

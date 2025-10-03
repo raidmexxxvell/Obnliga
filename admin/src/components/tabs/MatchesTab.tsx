@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { adminDelete, adminGet, adminPost, adminPut } from '../../api/adminClient'
+import { adminDelete, adminGet, adminPost, adminPut, createSeasonAutomation } from '../../api/adminClient'
 import { useAdminStore } from '../../store/adminStore'
 import {
   Club,
@@ -9,6 +9,7 @@ import {
   MatchSummary,
   Person,
   Season,
+  SeasonAutomationResult,
   SeasonParticipant,
   SeasonRosterEntry
 } from '../../types'
@@ -70,6 +71,18 @@ type EventFormState = {
   minute: number | ''
   eventType: 'GOAL' | 'YELLOW_CARD' | 'RED_CARD' | 'SUB_IN' | 'SUB_OUT'
   relatedPlayerId: number | ''
+}
+
+type SeasonAutomationFormState = {
+  competitionId: number | ''
+  seasonName: string
+  startDate: string
+  matchDayOfWeek: string
+  matchTime: string
+  clubIds: number[]
+  roundsPerPair: number | ''
+  copyClubPlayersToRoster: boolean
+  bestOfLength: number | ''
 }
 
 const matchStatuses: MatchSummary['status'][] = ['SCHEDULED', 'LIVE', 'FINISHED', 'POSTPONED']
@@ -134,6 +147,28 @@ const defaultEventForm: EventFormState = {
   relatedPlayerId: ''
 }
 
+const defaultAutomationForm: SeasonAutomationFormState = {
+  competitionId: '',
+  seasonName: '',
+  startDate: new Date().toISOString().slice(0, 10),
+  matchDayOfWeek: '0',
+  matchTime: '12:00',
+  clubIds: [],
+  roundsPerPair: '',
+  copyClubPlayersToRoster: true,
+  bestOfLength: ''
+}
+
+const weekdayOptions = [
+  { value: '0', label: 'Воскресенье' },
+  { value: '1', label: 'Понедельник' },
+  { value: '2', label: 'Вторник' },
+  { value: '3', label: 'Среда' },
+  { value: '4', label: 'Четверг' },
+  { value: '5', label: 'Пятница' },
+  { value: '6', label: 'Суббота' }
+]
+
 export const MatchesTab = () => {
   const {
     token,
@@ -184,6 +219,10 @@ export const MatchesTab = () => {
   const [matchLineup, setMatchLineup] = useState<MatchLineupEntry[]>([])
   const [matchEvents, setMatchEvents] = useState<MatchEventEntry[]>([])
 
+  const [automationForm, setAutomationForm] = useState<SeasonAutomationFormState>(defaultAutomationForm)
+  const [automationResult, setAutomationResult] = useState<SeasonAutomationResult | null>(null)
+  const [automationLoading, setAutomationLoading] = useState(false)
+
   const isLoading = Boolean(loading.matches || loading.seasons)
 
   const selectedSeason = useMemo<Season | undefined>(() => {
@@ -201,6 +240,12 @@ export const MatchesTab = () => {
   }, [selectedSeason, rosterClubFilter])
 
   const participantClubIds = useMemo(() => new Set(seasonParticipants.map((entry) => entry.clubId)), [seasonParticipants])
+
+  const automationCompetition = useMemo(() => {
+    const id = typeof automationForm.competitionId === 'number' ? automationForm.competitionId : Number(automationForm.competitionId)
+    if (!id) return null
+    return data.competitions.find((competition) => competition.id === id) ?? null
+  }, [automationForm.competitionId, data.competitions])
 
   // Одноразовая инициализация словарей и сезонов
   const bootRef = useRef(false)
@@ -263,6 +308,79 @@ export const MatchesTab = () => {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Не удалось загрузить детали матча'
       handleFeedback(message, 'error')
+    }
+  }
+
+  const toggleAutomationClub = (clubId: number) => {
+    setAutomationForm((form) => {
+      if (form.clubIds.includes(clubId)) {
+        return { ...form, clubIds: form.clubIds.filter((id) => id !== clubId) }
+      }
+      return { ...form, clubIds: [...form.clubIds, clubId] }
+    })
+  }
+
+  const moveAutomationClub = (clubId: number, direction: -1 | 1) => {
+    setAutomationForm((form) => {
+      const index = form.clubIds.findIndex((id) => id === clubId)
+      if (index === -1) return form
+      const nextIndex = index + direction
+      if (nextIndex < 0 || nextIndex >= form.clubIds.length) return form
+      const next = [...form.clubIds]
+      const [removed] = next.splice(index, 1)
+      next.splice(nextIndex, 0, removed)
+      return { ...form, clubIds: next }
+    })
+  }
+
+  const handleAutomationSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!automationForm.competitionId || !automationForm.seasonName.trim() || !automationForm.startDate) {
+      handleFeedback('Заполните данные соревнования, даты и названия', 'error')
+      return
+    }
+    if (automationForm.clubIds.length < 2) {
+      handleFeedback('Выберите минимум две команды для участия', 'error')
+      return
+    }
+    if (!token) {
+      handleFeedback('Нет токена авторизации', 'error')
+      return
+    }
+
+    const competitionId = Number(automationForm.competitionId)
+    const matchDay = Number(automationForm.matchDayOfWeek)
+    const payload = {
+      competitionId,
+      seasonName: automationForm.seasonName.trim(),
+      startDate: automationForm.startDate,
+      matchDayOfWeek: Number.isFinite(matchDay) ? matchDay : 0,
+      matchTime: automationForm.matchTime || undefined,
+      clubIds: automationForm.clubIds,
+      roundsPerPair: automationForm.roundsPerPair || undefined,
+      copyClubPlayersToRoster: automationForm.copyClubPlayersToRoster,
+      bestOfLength: automationForm.bestOfLength || undefined
+    }
+
+    try {
+      setAutomationLoading(true)
+      const result = await createSeasonAutomation(token, payload)
+      setAutomationResult(result)
+      handleFeedback(
+        `Сезон создан автоматически: ${result.participantsCreated} команд, ${result.matchesCreated} матчей, ${result.rosterEntriesCreated} заявок`,
+        'success'
+      )
+      await fetchSeasons()
+      setSelectedSeason(result.seasonId)
+      setAutomationForm({
+        ...defaultAutomationForm,
+        startDate: new Date().toISOString().slice(0, 10)
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Не удалось запустить автоматизацию'
+      handleFeedback(message, 'error')
+    } finally {
+      setAutomationLoading(false)
     }
   }
 
@@ -543,6 +661,199 @@ export const MatchesTab = () => {
       {error ? <div className="inline-feedback error">{error}</div> : null}
 
       <section className="card-grid">
+        <article className="card automation-card">
+          <header>
+            <h4>Автоматизация сезона</h4>
+            <p>
+              Подготовьте сезон одним действием: выберите команды, дату старта и день недели — расписание и заявки сформируются автоматически.
+            </p>
+          </header>
+          <form className="stacked" onSubmit={handleAutomationSubmit}>
+            <label>
+              Соревнование
+              <select
+                value={automationForm.competitionId || ''}
+                onChange={(event) =>
+                  setAutomationForm((form) => ({
+                    ...form,
+                    competitionId: event.target.value ? Number(event.target.value) : ''
+                  }))
+                }
+                required
+              >
+                <option value="">—</option>
+                {data.competitions.map((competition) => (
+                  <option key={competition.id} value={competition.id}>
+                    {competition.name} ({competition.seriesFormat})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Название сезона
+              <input
+                value={automationForm.seasonName}
+                onChange={(event) =>
+                  setAutomationForm((form) => ({ ...form, seasonName: event.target.value }))
+                }
+                placeholder="Например: Осень 2025"
+                required
+              />
+            </label>
+            <div className="automation-grid">
+              <label>
+                Дата старта
+                <input
+                  type="date"
+                  value={automationForm.startDate}
+                  onChange={(event) =>
+                    setAutomationForm((form) => ({ ...form, startDate: event.target.value }))
+                  }
+                  required
+                />
+              </label>
+              <label>
+                День недели
+                <select
+                  value={automationForm.matchDayOfWeek}
+                  onChange={(event) =>
+                    setAutomationForm((form) => ({ ...form, matchDayOfWeek: event.target.value }))
+                  }
+                  required
+                >
+                  {weekdayOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Время начала
+                <input
+                  type="time"
+                  value={automationForm.matchTime}
+                  onChange={(event) =>
+                    setAutomationForm((form) => ({ ...form, matchTime: event.target.value }))
+                  }
+                />
+              </label>
+            </div>
+            <div className="automation-grid">
+              <label>
+                Раундов между клубами
+                <input
+                  type="number"
+                  min={1}
+                  value={automationForm.roundsPerPair === '' ? '' : automationForm.roundsPerPair}
+                  onChange={(event) =>
+                    setAutomationForm((form) => ({
+                      ...form,
+                      roundsPerPair: event.target.value ? Math.max(1, Number(event.target.value)) : ''
+                    }))
+                  }
+                  placeholder="Берём из формата"
+                />
+              </label>
+              {automationCompetition?.seriesFormat === 'BEST_OF_N' ? (
+                <label>
+                  Best-of значение
+                  <input
+                    type="number"
+                    min={1}
+                    value={automationForm.bestOfLength === '' ? '' : automationForm.bestOfLength}
+                    onChange={(event) =>
+                      setAutomationForm((form) => ({
+                        ...form,
+                        bestOfLength: event.target.value ? Math.max(1, Number(event.target.value)) : ''
+                      }))
+                    }
+                    placeholder="По умолчанию 3"
+                  />
+                </label>
+              ) : null}
+            </div>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={automationForm.copyClubPlayersToRoster}
+                onChange={(event) =>
+                  setAutomationForm((form) => ({ ...form, copyClubPlayersToRoster: event.target.checked }))
+                }
+              />
+              Перенести шаблонные составы клуба в сезонную заявку
+            </label>
+            <div className="club-selection">
+              <div>
+                <h5>Команды</h5>
+                <p className="muted">Выберите участников (минимум 2).</p>
+                <div className="club-selection-list">
+                  {data.clubs.map((club) => (
+                    <label key={club.id} className="checkbox">
+                      <input
+                        type="checkbox"
+                        checked={automationForm.clubIds.includes(club.id)}
+                        onChange={() => toggleAutomationClub(club.id)}
+                      />
+                      {club.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="selected-clubs">
+                <h5>Порядок туров</h5>
+                {automationForm.clubIds.length === 0 ? (
+                  <p className="muted">Список пуст — выберите команды слева.</p>
+                ) : (
+                  <ol>
+                    {automationForm.clubIds.map((clubId, index) => {
+                      const club = data.clubs.find((item) => item.id === clubId)
+                      if (!club) return null
+                      return (
+                        <li key={clubId}>
+                          <span>{club.name}</span>
+                          <span className="reorder-buttons">
+                            <button type="button" onClick={() => moveAutomationClub(clubId, -1)} disabled={index === 0}>
+                              ▲
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveAutomationClub(clubId, 1)}
+                              disabled={index === automationForm.clubIds.length - 1}
+                            >
+                              ▼
+                            </button>
+                          </span>
+                        </li>
+                      )
+                    })}
+                  </ol>
+                )}
+              </div>
+            </div>
+            <div className="form-actions">
+              <button className="button-primary" type="submit" disabled={automationLoading}>
+                {automationLoading ? 'Формируем…' : 'Создать сезон автоматически'}
+              </button>
+              <button
+                className="button-secondary"
+                type="button"
+                onClick={() => setAutomationForm({ ...defaultAutomationForm, startDate: new Date().toISOString().slice(0, 10) })}
+                disabled={automationLoading}
+              >
+                Очистить форму
+              </button>
+            </div>
+          </form>
+          {automationResult ? (
+            <div className="automation-summary">
+              <p>
+                Сезон #{automationResult.seasonId}: команд — {automationResult.participantsCreated}, матчей — {automationResult.matchesCreated},
+                заявок — {automationResult.rosterEntriesCreated}.
+              </p>
+            </div>
+          ) : null}
+        </article>
         <article className="card">
           <header>
             <h4>Выбор сезона</h4>

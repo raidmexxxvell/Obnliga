@@ -5,6 +5,13 @@ export interface Club {
   logoUrl?: string | null
 }
 
+export interface ClubPlayerLink {
+  clubId: number
+  personId: number
+  defaultShirtNumber?: number | null
+  person: Person
+}
+
 export interface Person {
   id: number
   firstName: string
@@ -50,6 +57,13 @@ export interface Season {
   competition: Competition
   participants: SeasonParticipant[]
   rosters?: SeasonRosterEntry[]
+}
+
+export interface SeasonAutomationResult {
+  seasonId: number
+  participantsCreated: number
+  matchesCreated: number
+  rosterEntriesCreated: number
 }
 
 export interface MatchSeries {

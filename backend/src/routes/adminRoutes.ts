@@ -15,6 +15,7 @@ import {
   SeriesStatus
 } from '@prisma/client'
 import { handleMatchFinalization } from '../services/matchAggregation'
+import { runSeasonAutomation } from '../services/seasonAutomation'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -205,6 +206,82 @@ export default async function (server: FastifyInstance) {
       return reply.send({ ok: true })
     })
 
+    admin.get('/clubs/:clubId/players', async (request, reply) => {
+      const clubId = parseNumericId((request.params as any).clubId, 'clubId')
+      const players = await prisma.clubPlayer.findMany({
+        where: { clubId },
+        orderBy: [{ defaultShirtNumber: 'asc' }, { personId: 'asc' }],
+        include: { person: true }
+      })
+      return reply.send({ ok: true, data: players })
+    })
+
+    admin.put('/clubs/:clubId/players', async (request, reply) => {
+      const clubId = parseNumericId((request.params as any).clubId, 'clubId')
+      const body = request.body as {
+        players?: Array<{ personId?: number; defaultShirtNumber?: number | null }>
+      }
+
+      const entries = Array.isArray(body?.players) ? body.players : []
+      if (!entries.length) {
+        await prisma.clubPlayer.deleteMany({ where: { clubId } })
+        return reply.send({ ok: true, data: [] })
+      }
+
+      const normalized: Array<{ personId: number; defaultShirtNumber: number | null }> = []
+      const seenPersons = new Set<number>()
+
+      for (const entry of entries) {
+        if (!entry?.personId || entry.personId <= 0) {
+          return reply.status(400).send({ ok: false, error: 'personId_required' })
+        }
+        if (seenPersons.has(entry.personId)) {
+          return reply.status(409).send({ ok: false, error: 'duplicate_person' })
+        }
+        seenPersons.add(entry.personId)
+
+        const shirtNumber = entry.defaultShirtNumber && entry.defaultShirtNumber > 0 ? Math.floor(entry.defaultShirtNumber) : null
+        normalized.push({ personId: entry.personId, defaultShirtNumber: shirtNumber })
+      }
+
+      try {
+        await prisma.$transaction(async (tx) => {
+          await tx.clubPlayer.deleteMany({
+            where: { clubId, personId: { notIn: normalized.map((item) => item.personId) } }
+          })
+
+          for (const item of normalized) {
+            await tx.clubPlayer.upsert({
+              where: { clubId_personId: { clubId, personId: item.personId } },
+              create: {
+                clubId,
+                personId: item.personId,
+                defaultShirtNumber: item.defaultShirtNumber
+              },
+              update: {
+                defaultShirtNumber: item.defaultShirtNumber
+              }
+            })
+          }
+        })
+      } catch (err) {
+        const prismaErr = err as Prisma.PrismaClientKnownRequestError
+        if (prismaErr?.code === 'P2002') {
+          return reply.status(409).send({ ok: false, error: 'duplicate_shirt_number' })
+        }
+        request.server.log.error({ err }, 'club players update failed')
+        return reply.status(500).send({ ok: false, error: 'club_players_update_failed' })
+      }
+
+      const players = await prisma.clubPlayer.findMany({
+        where: { clubId },
+        orderBy: [{ defaultShirtNumber: 'asc' }, { personId: 'asc' }],
+        include: { person: true }
+      })
+
+      return reply.send({ ok: true, data: players })
+    })
+
     // Persons CRUD
     admin.get('/persons', async (request, reply) => {
       const { isPlayer } = request.query as { isPlayer?: string }
@@ -389,6 +466,60 @@ export default async function (server: FastifyInstance) {
         }
       })
       return reply.send({ ok: true, data: season })
+    })
+
+    admin.post('/seasons/auto', async (request, reply) => {
+      const body = request.body as {
+        competitionId?: number
+        seasonName?: string
+        startDate?: string
+        matchDayOfWeek?: number
+        matchTime?: string
+        clubIds?: number[]
+        roundsPerPair?: number
+        copyClubPlayersToRoster?: boolean
+        bestOfLength?: number
+      }
+
+      if (!body?.competitionId || !body?.seasonName || !body?.startDate || typeof body.matchDayOfWeek !== 'number') {
+        return reply.status(400).send({ ok: false, error: 'automation_fields_required' })
+      }
+
+      const clubIds = Array.isArray(body.clubIds) ? body.clubIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0) : []
+      if (clubIds.length < 2) {
+        return reply.status(400).send({ ok: false, error: 'automation_needs_participants' })
+      }
+
+      const competition = await prisma.competition.findUnique({ where: { id: body.competitionId } })
+      if (!competition) {
+        return reply.status(404).send({ ok: false, error: 'competition_not_found' })
+      }
+
+      const matchDay = Number(body.matchDayOfWeek)
+      const normalizedMatchDay = ((matchDay % 7) + 7) % 7
+
+      try {
+        const result = await runSeasonAutomation(prisma, request.log, {
+          competition,
+          clubIds,
+          seasonName: body.seasonName,
+          startDateISO: body.startDate,
+          matchDayOfWeek: normalizedMatchDay,
+          matchTime: body.matchTime,
+          roundsPerPair: body.roundsPerPair,
+          copyClubPlayersToRoster: body.copyClubPlayersToRoster ?? true,
+          bestOfLength: body.bestOfLength
+        })
+
+        return reply.send({ ok: true, data: result })
+      } catch (err) {
+        const error = err as Error & { code?: string }
+        request.server.log.error({ err }, 'season automation failed')
+        if ((error.message as string) === 'not_enough_participants') {
+          return reply.status(400).send({ ok: false, error: 'automation_needs_participants' })
+        }
+        return reply.status(500).send({ ok: false, error: 'automation_failed' })
+      }
     })
 
     admin.put('/seasons/:seasonId', async (request, reply) => {

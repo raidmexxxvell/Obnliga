@@ -1,3 +1,5 @@
+import type { ClubPlayerLink, SeasonAutomationResult } from '../types'
+
 const API_BASE = import.meta.env.VITE_ADMIN_API_BASE || 'http://localhost:3000'
 
 interface AdminLoginResponse {
@@ -89,3 +91,33 @@ export const adminPut = async <T>(token: string | undefined, path: string, body?
 
 export const adminDelete = async <T>(token: string | undefined, path: string): Promise<T> =>
   adminRequest<T>(token, path, { method: 'DELETE' })
+
+export interface UpdateClubPlayersPayload {
+  players: Array<{ personId: number; defaultShirtNumber?: number | null }>
+}
+
+export interface SeasonAutomationPayload {
+  competitionId: number
+  seasonName: string
+  startDate: string
+  matchDayOfWeek: number
+  matchTime?: string
+  clubIds: number[]
+  roundsPerPair?: number
+  copyClubPlayersToRoster?: boolean
+  bestOfLength?: number
+}
+
+export const fetchClubPlayers = async (token: string | undefined, clubId: number): Promise<ClubPlayerLink[]> =>
+  adminGet<ClubPlayerLink[]>(token, `/api/admin/clubs/${clubId}/players`)
+
+export const updateClubPlayers = async (
+  token: string | undefined,
+  clubId: number,
+  payload: UpdateClubPlayersPayload
+) => adminPut<ClubPlayerLink[]>(token, `/api/admin/clubs/${clubId}/players`, payload)
+
+export const createSeasonAutomation = async (
+  token: string | undefined,
+  payload: SeasonAutomationPayload
+) => adminPost<SeasonAutomationResult>(token, '/api/admin/seasons/auto', payload)
