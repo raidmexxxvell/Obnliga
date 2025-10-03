@@ -55,6 +55,37 @@ const parseBigIntId = (value: string | number | bigint | undefined, field: strin
   }
 }
 
+const formatNameToken = (token: string): string => {
+  return token
+    .split('-')
+    .filter((part) => part.length > 0)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join('-')
+}
+
+const normalizePersonName = (value: string): string => {
+  return value
+    .split(/\s+/)
+    .filter((chunk) => chunk.length > 0)
+    .map(formatNameToken)
+    .join(' ')
+}
+
+const parseFullNameLine = (line: string): { firstName: string; lastName: string } => {
+  const parts = line.trim().split(/\s+/)
+  if (parts.length < 2) {
+    throw new Error('invalid_full_name')
+  }
+  const lastNameRaw = parts[0]
+  const firstNameRaw = parts.slice(1).join(' ')
+  const lastName = normalizePersonName(lastNameRaw)
+  const firstName = normalizePersonName(firstNameRaw)
+  if (!firstName || !lastName) {
+    throw new Error('invalid_full_name')
+  }
+  return { firstName, lastName }
+}
+
 const adminAuthHook = async (request: FastifyRequest, reply: FastifyReply) => {
   const authHeader = request.headers.authorization
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -282,6 +313,102 @@ export default async function (server: FastifyInstance) {
       return reply.send({ ok: true, data: players })
     })
 
+    admin.post('/clubs/:clubId/players/import', async (request, reply) => {
+      const clubId = parseNumericId((request.params as any).clubId, 'clubId')
+      const body = request.body as { lines?: unknown; text?: unknown }
+
+      const rawLines: string[] = []
+      if (Array.isArray(body?.lines)) {
+        for (const item of body.lines) {
+          if (typeof item === 'string') rawLines.push(item)
+        }
+      }
+      if (typeof body?.text === 'string') {
+        rawLines.push(
+          ...body.text
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0)
+        )
+      }
+
+      const normalizedLines = rawLines.map((line) => line.trim()).filter((line) => line.length > 0)
+      if (!normalizedLines.length) {
+        return reply.status(400).send({ ok: false, error: 'no_names_provided' })
+      }
+      if (normalizedLines.length > 200) {
+        return reply.status(400).send({ ok: false, error: 'too_many_names' })
+      }
+
+      const parsedNames: Array<{ firstName: string; lastName: string }> = []
+      try {
+        for (const line of normalizedLines) {
+          parsedNames.push(parseFullNameLine(line))
+        }
+      } catch (err) {
+        return reply.status(400).send({ ok: false, error: 'invalid_full_name' })
+      }
+
+      const club = await prisma.club.findUnique({ where: { id: clubId } })
+      if (!club) {
+        return reply.status(404).send({ ok: false, error: 'club_not_found' })
+      }
+
+      try {
+        await prisma.$transaction(async (tx) => {
+          const existingPlayers = await tx.clubPlayer.findMany({
+            where: { clubId },
+            select: { defaultShirtNumber: true }
+          })
+
+          const takenNumbers = new Set<number>()
+          for (const player of existingPlayers) {
+            if (player.defaultShirtNumber && player.defaultShirtNumber > 0) {
+              takenNumbers.add(player.defaultShirtNumber)
+            }
+          }
+
+          const allocateNumber = () => {
+            let candidate = 1
+            while (takenNumbers.has(candidate)) {
+              candidate += 1
+            }
+            takenNumbers.add(candidate)
+            return candidate
+          }
+
+          for (const entry of parsedNames) {
+            const person = await tx.person.create({
+              data: {
+                firstName: entry.firstName,
+                lastName: entry.lastName,
+                isPlayer: true
+              }
+            })
+
+            await tx.clubPlayer.create({
+              data: {
+                clubId,
+                personId: person.id,
+                defaultShirtNumber: allocateNumber()
+              }
+            })
+          }
+        })
+      } catch (err) {
+        request.server.log.error({ err }, 'club players import failed')
+        return reply.status(500).send({ ok: false, error: 'club_players_import_failed' })
+      }
+
+      const players = await prisma.clubPlayer.findMany({
+        where: { clubId },
+        orderBy: [{ defaultShirtNumber: 'asc' }, { personId: 'asc' }],
+        include: { person: true }
+      })
+
+      return reply.send({ ok: true, data: players })
+    })
+
     // Persons CRUD
     admin.get('/persons', async (request, reply) => {
       const { isPlayer } = request.query as { isPlayer?: string }
@@ -476,9 +603,8 @@ export default async function (server: FastifyInstance) {
         matchDayOfWeek?: number
         matchTime?: string
         clubIds?: number[]
-        roundsPerPair?: number
         copyClubPlayersToRoster?: boolean
-        bestOfLength?: number
+        seriesFormat?: string
       }
 
       if (!body?.competitionId || !body?.seasonName || !body?.startDate || typeof body.matchDayOfWeek !== 'number') {
@@ -495,6 +621,12 @@ export default async function (server: FastifyInstance) {
         return reply.status(404).send({ ok: false, error: 'competition_not_found' })
       }
 
+      const allowedFormats = new Set(Object.values(SeriesFormat))
+      const requestedFormat = typeof body.seriesFormat === 'string' ? body.seriesFormat : null
+      const seriesFormat = requestedFormat && allowedFormats.has(requestedFormat as SeriesFormat)
+        ? (requestedFormat as SeriesFormat)
+        : competition.seriesFormat
+
       const matchDay = Number(body.matchDayOfWeek)
       const normalizedMatchDay = ((matchDay % 7) + 7) % 7
 
@@ -506,9 +638,8 @@ export default async function (server: FastifyInstance) {
           startDateISO: body.startDate,
           matchDayOfWeek: normalizedMatchDay,
           matchTime: body.matchTime,
-          roundsPerPair: body.roundsPerPair,
           copyClubPlayersToRoster: body.copyClubPlayersToRoster ?? true,
-          bestOfLength: body.bestOfLength
+          seriesFormat
         })
 
         return reply.send({ ok: true, data: result })

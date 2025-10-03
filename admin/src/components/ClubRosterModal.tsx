@@ -1,11 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { fetchClubPlayers, updateClubPlayers } from '../api/adminClient'
+import { fetchClubPlayers, importClubPlayers, updateClubPlayers } from '../api/adminClient'
 import { Club, ClubPlayerLink, Person } from '../types'
 
 type ClubRosterModalProps = {
   club: Club
   token: string | undefined
-  persons: Person[]
   onClose: () => void
   onSaved: (players: ClubPlayerLink[]) => void
 }
@@ -16,13 +15,13 @@ type EditablePlayer = {
   person: Person
 }
 
-export const ClubRosterModal = ({ club, token, persons, onClose, onSaved }: ClubRosterModalProps) => {
+export const ClubRosterModal = ({ club, token, onClose, onSaved }: ClubRosterModalProps) => {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
-  const [playersOnly, setPlayersOnly] = useState(true)
-  const [selectedAvailable, setSelectedAvailable] = useState<number[]>([])
+  const [feedback, setFeedback] = useState<string | null>(null)
+  const [bulkValue, setBulkValue] = useState('')
+  const [bulkLoading, setBulkLoading] = useState(false)
   const [roster, setRoster] = useState<EditablePlayer[]>([])
 
   useEffect(() => {
@@ -52,52 +51,60 @@ export const ClubRosterModal = ({ club, token, persons, onClose, onSaved }: Club
     }
   }, [club.id, token])
 
-  const availablePersons = useMemo(() => {
-    return persons.filter((person) => {
-      if (playersOnly && !person.isPlayer) return false
-      if (roster.some((entry) => entry.personId === person.id)) return false
-      if (!search) return true
-      const haystack = `${person.lastName} ${person.firstName}`.toLowerCase()
-      return haystack.includes(search.toLowerCase())
+  const sortedRoster = useMemo(() => {
+    return [...roster].sort((a, b) => {
+      const left = a.defaultShirtNumber ?? 9999
+      const right = b.defaultShirtNumber ?? 9999
+      if (left !== right) return left - right
+      return a.person.lastName.localeCompare(b.person.lastName)
     })
-  }, [persons, roster, search, playersOnly])
+  }, [roster])
 
-  const handleAddSelected = () => {
-    if (!selectedAvailable.length) return
-    const takenNumbers = new Set<number>()
-    roster.forEach((entry) => {
-      if (typeof entry.defaultShirtNumber === 'number' && entry.defaultShirtNumber > 0) {
-        takenNumbers.add(entry.defaultShirtNumber)
-      }
-    })
+  const handleBulkAdd = async () => {
+    const lines = bulkValue
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
 
-    const nextEntries: EditablePlayer[] = []
-    selectedAvailable.forEach((personId) => {
-      const person = persons.find((item) => item.id === personId)
-      if (!person) return
-      let nextNumber = 1
-      while (takenNumbers.has(nextNumber)) {
-        nextNumber += 1
-      }
-      takenNumbers.add(nextNumber)
-      nextEntries.push({
-        personId,
-        defaultShirtNumber: nextNumber,
-        person
-      })
-    })
-
-    if (nextEntries.length) {
-      setRoster((prev) => [...prev, ...nextEntries])
+    if (!lines.length) {
+      setError('Введите хотя бы одну строку с фамилией и именем.')
+      return
     }
-    setSelectedAvailable([])
+
+    try {
+      setBulkLoading(true)
+      setError(null)
+      setFeedback(null)
+      const previousCount = roster.length
+      const data = await importClubPlayers(token, club.id, { lines })
+      const next = data.map((entry) => ({
+        personId: entry.personId,
+        defaultShirtNumber: entry.defaultShirtNumber ?? null,
+        person: entry.person
+      }))
+      setRoster(next)
+      setBulkValue('')
+      const diff = data.length - previousCount
+      if (diff > 0) {
+        setFeedback(`Создано и добавлено ${diff} ${diff === 1 ? 'игрок' : diff < 5 ? 'игрока' : 'игроков'}.`)
+      } else {
+        setFeedback('Состав обновлён.')
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Не удалось создать игроков'
+      setError(message)
+    } finally {
+      setBulkLoading(false)
+    }
   }
 
   const handleRemove = (personId: number) => {
+    setFeedback(null)
     setRoster((prev) => prev.filter((entry) => entry.personId !== personId))
   }
 
   const handleNumberChange = (personId: number, value: string) => {
+    setFeedback(null)
     const numeric = value.replace(/[^0-9]/g, '')
     const parsed = numeric ? Math.min(999, Number(numeric)) : null
     setRoster((prev) =>
@@ -120,6 +127,7 @@ export const ClubRosterModal = ({ club, token, persons, onClose, onSaved }: Club
     try {
       setSaving(true)
       setError(null)
+      setFeedback(null)
       const payload = {
         players: roster.map((entry) => ({
           personId: entry.personId,
@@ -160,46 +168,29 @@ export const ClubRosterModal = ({ club, token, persons, onClose, onSaved }: Club
         </header>
         <form className="modal-body" onSubmit={handleSubmit}>
           {error ? <div className="inline-feedback error">{error}</div> : null}
+          {feedback ? <div className="inline-feedback success">{feedback}</div> : null}
           {loading ? <div className="inline-feedback info">Загружаем состав…</div> : null}
           <div className="modal-content-grid">
             <section className="modal-panel">
               <header>
-                <h5>Доступные игроки</h5>
-                <p>Отфильтруйте список и добавьте несколько игроков за один раз.</p>
+                <h5>Создание игроков</h5>
+                <p>Вставьте список строк формата «Фамилия Имя». Игроки будут созданы и привязаны к клубу автоматически.</p>
               </header>
               <div className="stacked">
                 <label>
-                  Поиск
-                  <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Фамилия или имя" />
-                </label>
-                <label className="checkbox">
-                  <input
-                    type="checkbox"
-                    checked={playersOnly}
-                    onChange={(event) => setPlayersOnly(event.target.checked)}
+                  Список фамилий и имён
+                  <textarea
+                    className="bulk-import-textarea"
+                    value={bulkValue}
+                    onChange={(event) => setBulkValue(event.target.value)}
+                    placeholder={'Например:\nИванов Сергей\nКапустин Илья'}
                   />
-                  Только игроки
                 </label>
-                <label>
-                  Список
-                  <select
-                    multiple
-                    size={12}
-                    value={selectedAvailable.map(String)}
-                    onChange={(event) => {
-                      const options = Array.from(event.target.selectedOptions).map((option) => Number(option.value))
-                      setSelectedAvailable(options)
-                    }}
-                  >
-                    {availablePersons.map((person) => (
-                      <option key={person.id} value={person.id}>
-                        {person.lastName} {person.firstName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button className="button-primary" type="button" onClick={handleAddSelected} disabled={!selectedAvailable.length}>
-                  Добавить выбранных
+                <p className="muted">
+                  Каждая строка — отдельный игрок. Будет создан максимум 200 записей за один импорт.
+                </p>
+                <button className="button-primary" type="button" onClick={handleBulkAdd} disabled={bulkLoading}>
+                  {bulkLoading ? 'Создаём…' : 'Создать и добавить'}
                 </button>
               </div>
             </section>
@@ -209,8 +200,8 @@ export const ClubRosterModal = ({ club, token, persons, onClose, onSaved }: Club
                 <p>Настройте игровые номера и удалите лишних игроков.</p>
               </header>
               <div className="roster-list">
-                {roster.length === 0 ? (
-                  <p className="empty-placeholder">Состав пуст. Добавьте игроков из списка слева.</p>
+                {sortedRoster.length === 0 ? (
+                  <p className="empty-placeholder">Состав пуст. Добавьте игроков через форму слева.</p>
                 ) : (
                   <table className="data-table">
                     <thead>
@@ -221,7 +212,7 @@ export const ClubRosterModal = ({ club, token, persons, onClose, onSaved }: Club
                       </tr>
                     </thead>
                     <tbody>
-                      {roster.map((entry) => (
+                      {sortedRoster.map((entry) => (
                         <tr key={entry.personId}>
                           <td>
                             {entry.person.lastName} {entry.person.firstName}

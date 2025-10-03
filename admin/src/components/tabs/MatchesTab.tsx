@@ -80,9 +80,8 @@ type SeasonAutomationFormState = {
   matchDayOfWeek: string
   matchTime: string
   clubIds: number[]
-  roundsPerPair: number | ''
   copyClubPlayersToRoster: boolean
-  bestOfLength: number | ''
+  seriesFormat: 'SINGLE_MATCH' | 'TWO_LEGGED' | 'BEST_OF_N'
 }
 
 const matchStatuses: MatchSummary['status'][] = ['SCHEDULED', 'LIVE', 'FINISHED', 'POSTPONED']
@@ -154,9 +153,16 @@ const defaultAutomationForm: SeasonAutomationFormState = {
   matchDayOfWeek: '0',
   matchTime: '12:00',
   clubIds: [],
-  roundsPerPair: '',
   copyClubPlayersToRoster: true,
-  bestOfLength: ''
+  seriesFormat: 'SINGLE_MATCH'
+}
+
+const automationSeriesFormatOptions: SeasonAutomationFormState['seriesFormat'][] = ['SINGLE_MATCH', 'TWO_LEGGED', 'BEST_OF_N']
+
+const automationSeriesLabels: Record<SeasonAutomationFormState['seriesFormat'], string> = {
+  SINGLE_MATCH: 'SINGLE_MATCH — один круг',
+  TWO_LEGGED: 'TWO_LEGGED — два круга (дом/гости)',
+  BEST_OF_N: 'BEST_OF_N — группа + плей-офф до двух побед'
 }
 
 const weekdayOptions = [
@@ -240,12 +246,6 @@ export const MatchesTab = () => {
   }, [selectedSeason, rosterClubFilter])
 
   const participantClubIds = useMemo(() => new Set(seasonParticipants.map((entry) => entry.clubId)), [seasonParticipants])
-
-  const automationCompetition = useMemo(() => {
-    const id = typeof automationForm.competitionId === 'number' ? automationForm.competitionId : Number(automationForm.competitionId)
-    if (!id) return null
-    return data.competitions.find((competition) => competition.id === id) ?? null
-  }, [automationForm.competitionId, data.competitions])
 
   // Одноразовая инициализация словарей и сезонов
   const bootRef = useRef(false)
@@ -357,9 +357,8 @@ export const MatchesTab = () => {
       matchDayOfWeek: Number.isFinite(matchDay) ? matchDay : 0,
       matchTime: automationForm.matchTime || undefined,
       clubIds: automationForm.clubIds,
-      roundsPerPair: automationForm.roundsPerPair || undefined,
       copyClubPlayersToRoster: automationForm.copyClubPlayersToRoster,
-      bestOfLength: automationForm.bestOfLength || undefined
+      seriesFormat: automationForm.seriesFormat
     }
 
     try {
@@ -367,7 +366,7 @@ export const MatchesTab = () => {
       const result = await createSeasonAutomation(token, payload)
       setAutomationResult(result)
       handleFeedback(
-        `Сезон создан автоматически: ${result.participantsCreated} команд, ${result.matchesCreated} матчей, ${result.rosterEntriesCreated} заявок`,
+        `Сезон создан автоматически: ${result.participantsCreated} команд, ${result.matchesCreated} матчей, ${result.rosterEntriesCreated} заявок, ${result.seriesCreated} серий плей-офф`,
         'success'
       )
       await fetchSeasons()
@@ -673,12 +672,17 @@ export const MatchesTab = () => {
               Соревнование
               <select
                 value={automationForm.competitionId || ''}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const nextId = event.target.value ? Number(event.target.value) : ''
+                  const nextFormat = nextId
+                    ? data.competitions.find((competition) => competition.id === Number(nextId))?.seriesFormat ?? 'SINGLE_MATCH'
+                    : 'SINGLE_MATCH'
                   setAutomationForm((form) => ({
                     ...form,
-                    competitionId: event.target.value ? Number(event.target.value) : ''
+                    competitionId: nextId,
+                    seriesFormat: nextFormat
                   }))
-                }
+                }}
                 required
               >
                 <option value="">—</option>
@@ -739,40 +743,30 @@ export const MatchesTab = () => {
                 />
               </label>
             </div>
-            <div className="automation-grid">
-              <label>
-                Раундов между клубами
-                <input
-                  type="number"
-                  min={1}
-                  value={automationForm.roundsPerPair === '' ? '' : automationForm.roundsPerPair}
-                  onChange={(event) =>
-                    setAutomationForm((form) => ({
-                      ...form,
-                      roundsPerPair: event.target.value ? Math.max(1, Number(event.target.value)) : ''
-                    }))
-                  }
-                  placeholder="Берём из формата"
-                />
-              </label>
-              {automationCompetition?.seriesFormat === 'BEST_OF_N' ? (
-                <label>
-                  Best-of значение
-                  <input
-                    type="number"
-                    min={1}
-                    value={automationForm.bestOfLength === '' ? '' : automationForm.bestOfLength}
-                    onChange={(event) =>
-                      setAutomationForm((form) => ({
-                        ...form,
-                        bestOfLength: event.target.value ? Math.max(1, Number(event.target.value)) : ''
-                      }))
-                    }
-                    placeholder="По умолчанию 3"
-                  />
-                </label>
-              ) : null}
-            </div>
+            <label>
+              Формат серий
+              <select
+                value={automationForm.seriesFormat}
+                onChange={(event) =>
+                  setAutomationForm((form) => ({
+                    ...form,
+                    seriesFormat: event.target.value as SeasonAutomationFormState['seriesFormat']
+                  }))
+                }
+              >
+                {automationSeriesFormatOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {automationSeriesLabels[option]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {automationForm.seriesFormat === 'BEST_OF_N' ? (
+              <p className="muted">
+                Группа проходит в один круг. Затем формируется сетка плей-офф до двух побед. При нечётном числе команд
+                последний участник группы автоматически выбывает перед плей-офф.
+              </p>
+            ) : null}
             <label className="checkbox">
               <input
                 type="checkbox"
@@ -849,7 +843,7 @@ export const MatchesTab = () => {
             <div className="automation-summary">
               <p>
                 Сезон #{automationResult.seasonId}: команд — {automationResult.participantsCreated}, матчей — {automationResult.matchesCreated},
-                заявок — {automationResult.rosterEntriesCreated}.
+                заявок — {automationResult.rosterEntriesCreated}, серий — {automationResult.seriesCreated}.
               </p>
             </div>
           ) : null}

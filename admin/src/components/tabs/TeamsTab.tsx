@@ -58,6 +58,7 @@ export const TeamsTab = () => {
 
   const [personForm, setPersonForm] = useState<PersonFormState>(defaultPersonForm)
   const [editingPersonId, setEditingPersonId] = useState<number | null>(null)
+  const [personSearch, setPersonSearch] = useState('')
 
   const [stadiumForm, setStadiumForm] = useState<StadiumFormState>(defaultStadiumForm)
   const [editingStadiumId, setEditingStadiumId] = useState<number | null>(null)
@@ -77,14 +78,17 @@ export const TeamsTab = () => {
   }, [token, fetchDictionaries])
 
   const groupedPersons = useMemo(() => {
+    const query = personSearch.trim().toLowerCase()
     const players: Person[] = []
     const staff: Person[] = []
     for (const person of data.persons) {
+      const haystack = `${person.lastName} ${person.firstName}`.toLowerCase()
+      if (query && !haystack.includes(query)) continue
       if (person.isPlayer) players.push(person)
       else staff.push(person)
     }
     return { players, staff }
-  }, [data.persons])
+  }, [data.persons, personSearch])
 
   const handleFeedback = (message: string, level: FeedbackLevel) => {
     setFeedback(message)
@@ -141,6 +145,7 @@ export const TeamsTab = () => {
 
   const handleRosterSaved = (_players: ClubPlayerLink[]) => {
     handleFeedback('Состав клуба обновлён', 'success')
+    void fetchDictionaries().catch(() => undefined)
   }
 
   const handlePersonSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -292,7 +297,8 @@ export const TeamsTab = () => {
               ) : null}
             </div>
           </form>
-          <table className="data-table">
+          <div className="table-scroll">
+            <table className="data-table">
             <thead>
               <tr>
                 <th>Название</th>
@@ -322,7 +328,8 @@ export const TeamsTab = () => {
                 </tr>
               ))}
             </tbody>
-          </table>
+              </table>
+            </div>
         </article>
 
         <article className="card">
@@ -365,9 +372,22 @@ export const TeamsTab = () => {
               ) : null}
             </div>
           </form>
+          <div className="stacked person-search">
+            <label>
+              Поиск по базе
+              <input
+                value={personSearch}
+                onChange={(event) => setPersonSearch(event.target.value)}
+                placeholder="Введите фамилию или имя"
+              />
+            </label>
+            <p className="muted">
+              Найдено {groupedPersons.players.length + groupedPersons.staff.length} записей
+            </p>
+          </div>
           <div className="split-columns">
             <div>
-              <h5>Игроки</h5>
+              <h5>Игроки ({groupedPersons.players.length})</h5>
               <ul className="list">
                 {groupedPersons.players.map((person) => (
                   <li key={person.id}>
@@ -387,7 +407,7 @@ export const TeamsTab = () => {
               </ul>
             </div>
             <div>
-              <h5>Тренеры и персонал</h5>
+              <h5>Тренеры и персонал ({groupedPersons.staff.length})</h5>
               <ul className="list">
                 {groupedPersons.staff.map((person) => (
                   <li key={person.id}>
@@ -441,7 +461,8 @@ export const TeamsTab = () => {
               ) : null}
             </div>
           </form>
-          <table className="data-table">
+          <div className="table-scroll">
+            <table className="data-table">
             <thead>
               <tr>
                 <th>Стадион</th>
@@ -465,7 +486,8 @@ export const TeamsTab = () => {
                 </tr>
               ))}
             </tbody>
-          </table>
+              </table>
+            </div>
         </article>
 
         <article className="card">
@@ -533,7 +555,8 @@ export const TeamsTab = () => {
               ) : null}
             </div>
           </form>
-          <table className="data-table">
+          <div className="table-scroll">
+            <table className="data-table">
             <thead>
               <tr>
                 <th>Название</th>
@@ -559,14 +582,14 @@ export const TeamsTab = () => {
                 </tr>
               ))}
             </tbody>
-          </table>
+              </table>
+            </div>
         </article>
       </section>
       {activeClub ? (
         <ClubRosterModal
           club={activeClub}
           token={token}
-          persons={data.persons}
           onClose={() => setActiveClub(null)}
           onSaved={(players) => {
             handleRosterSaved(players)

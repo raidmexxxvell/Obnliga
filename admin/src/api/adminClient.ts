@@ -103,9 +103,12 @@ export interface SeasonAutomationPayload {
   matchDayOfWeek: number
   matchTime?: string
   clubIds: number[]
-  roundsPerPair?: number
   copyClubPlayersToRoster?: boolean
-  bestOfLength?: number
+  seriesFormat: 'SINGLE_MATCH' | 'TWO_LEGGED' | 'BEST_OF_N'
+}
+
+export interface ImportClubPlayersPayload {
+  lines: string[]
 }
 
 export const fetchClubPlayers = async (token: string | undefined, clubId: number): Promise<ClubPlayerLink[]> =>
@@ -116,6 +119,12 @@ export const updateClubPlayers = async (
   clubId: number,
   payload: UpdateClubPlayersPayload
 ) => adminPut<ClubPlayerLink[]>(token, `/api/admin/clubs/${clubId}/players`, payload)
+
+export const importClubPlayers = async (
+  token: string | undefined,
+  clubId: number,
+  payload: ImportClubPlayersPayload
+) => adminPost<ClubPlayerLink[]>(token, `/api/admin/clubs/${clubId}/players/import`, payload)
 
 export const createSeasonAutomation = async (
   token: string | undefined,

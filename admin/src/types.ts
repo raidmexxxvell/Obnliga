@@ -64,6 +64,7 @@ export interface SeasonAutomationResult {
   participantsCreated: number
   matchesCreated: number
   rosterEntriesCreated: number
+  seriesCreated: number
 }
 
 export interface MatchSeries {
