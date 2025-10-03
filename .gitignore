@@ -17,7 +17,7 @@ frontend/.env
 # Prisma
 prisma/dev.db
 backend/dev.db
-**/prisma/migrations/
+
 
 # Vite / Frontend
 frontend/dist/
