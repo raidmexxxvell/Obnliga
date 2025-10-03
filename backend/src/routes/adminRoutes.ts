@@ -16,6 +16,7 @@ import {
 } from '@prisma/client'
 import { handleMatchFinalization } from '../services/matchAggregation'
 import { runSeasonAutomation } from '../services/seasonAutomation'
+import { serializePrisma } from '../utils/serialization'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -85,6 +86,8 @@ const parseFullNameLine = (line: string): { firstName: string; lastName: string 
   }
   return { firstName, lastName }
 }
+
+const sendSerialized = <T>(reply: FastifyReply, data: T) => reply.send({ ok: true, data: serializePrisma(data) })
 
 const adminAuthHook = async (request: FastifyRequest, reply: FastifyReply) => {
   const authHeader = request.headers.authorization
@@ -356,15 +359,44 @@ export default async function (server: FastifyInstance) {
 
       try {
         await prisma.$transaction(async (tx) => {
+          const nameKey = (firstName: string, lastName: string) =>
+            `${lastName.toLowerCase()}|${firstName.toLowerCase()}`
+
+          const uniqueEntries: Array<{ key: string; firstName: string; lastName: string }> = []
+          const seenNames = new Set<string>()
+          for (const entry of parsedNames) {
+            const key = nameKey(entry.firstName, entry.lastName)
+            if (seenNames.has(key)) continue
+            seenNames.add(key)
+            uniqueEntries.push({ key, firstName: entry.firstName, lastName: entry.lastName })
+          }
+
           const existingPlayers = await tx.clubPlayer.findMany({
             where: { clubId },
-            select: { defaultShirtNumber: true }
+            select: { defaultShirtNumber: true, personId: true }
           })
 
           const takenNumbers = new Set<number>()
+          const clubPersonIds = new Set<number>()
           for (const player of existingPlayers) {
             if (player.defaultShirtNumber && player.defaultShirtNumber > 0) {
               takenNumbers.add(player.defaultShirtNumber)
+            }
+            clubPersonIds.add(player.personId)
+          }
+
+          const personsByKey = new Map<string, { id: number }>()
+          if (uniqueEntries.length) {
+            const existingPersons = await tx.person.findMany({
+              where: {
+                OR: uniqueEntries.map((entry) => ({
+                  firstName: entry.firstName,
+                  lastName: entry.lastName
+                }))
+              }
+            })
+            for (const person of existingPersons) {
+              personsByKey.set(nameKey(person.firstName, person.lastName), person)
             }
           }
 
@@ -377,14 +409,22 @@ export default async function (server: FastifyInstance) {
             return candidate
           }
 
-          for (const entry of parsedNames) {
-            const person = await tx.person.create({
-              data: {
-                firstName: entry.firstName,
-                lastName: entry.lastName,
-                isPlayer: true
-              }
-            })
+          for (const entry of uniqueEntries) {
+            let person = personsByKey.get(entry.key)
+            if (!person) {
+              person = await tx.person.create({
+                data: {
+                  firstName: entry.firstName,
+                  lastName: entry.lastName,
+                  isPlayer: true
+                }
+              })
+              personsByKey.set(entry.key, person)
+            }
+
+            if (clubPersonIds.has(person.id)) {
+              continue
+            }
 
             await tx.clubPlayer.create({
               data: {
@@ -393,6 +433,7 @@ export default async function (server: FastifyInstance) {
                 defaultShirtNumber: allocateNumber()
               }
             })
+            clubPersonIds.add(person.id)
           }
         })
       } catch (err) {
@@ -406,7 +447,7 @@ export default async function (server: FastifyInstance) {
         include: { person: true }
       })
 
-      return reply.send({ ok: true, data: players })
+      return sendSerialized(reply, players)
     })
 
     // Persons CRUD
@@ -547,12 +588,16 @@ export default async function (server: FastifyInstance) {
 
     admin.delete('/competitions/:competitionId', async (request, reply) => {
       const competitionId = parseNumericId((request.params as any).competitionId, 'competitionId')
-      const hasSeasons = await prisma.season.findFirst({ where: { competitionId } })
-      if (hasSeasons) {
-        return reply.status(409).send({ ok: false, error: 'competition_in_use' })
+      try {
+        await prisma.$transaction(async (tx) => {
+          await tx.season.deleteMany({ where: { competitionId } })
+          await tx.competition.delete({ where: { id: competitionId } })
+        })
+        return reply.send({ ok: true })
+      } catch (err) {
+        request.server.log.error({ err, competitionId }, 'competition delete failed')
+        return reply.status(500).send({ ok: false, error: 'competition_delete_failed' })
       }
-      await prisma.competition.delete({ where: { id: competitionId } })
-      return reply.send({ ok: true })
     })
 
     // Seasons & configuration
@@ -761,7 +806,7 @@ export default async function (server: FastifyInstance) {
         orderBy: [{ createdAt: 'desc' }],
         include: { season: true }
       })
-      return reply.send({ ok: true, data: series })
+      return sendSerialized(reply, series)
     })
 
     admin.post('/series', async (request, reply) => {
@@ -783,7 +828,7 @@ export default async function (server: FastifyInstance) {
           seriesStatus: SeriesStatus.IN_PROGRESS
         }
       })
-      return reply.send({ ok: true, data: series })
+      return sendSerialized(reply, series)
     })
 
     admin.put('/series/:seriesId', async (request, reply) => {
@@ -796,7 +841,7 @@ export default async function (server: FastifyInstance) {
           winnerClubId: body.winnerClubId
         }
       })
-      return reply.send({ ok: true, data: series })
+      return sendSerialized(reply, series)
     })
 
     admin.delete('/series/:seriesId', async (request, reply) => {
@@ -821,7 +866,7 @@ export default async function (server: FastifyInstance) {
           stadium: true
         }
       })
-      return reply.send({ ok: true, data: matches })
+      return sendSerialized(reply, matches)
     })
 
     admin.post('/matches', async (request, reply) => {
@@ -851,7 +896,7 @@ export default async function (server: FastifyInstance) {
           status: MatchStatus.SCHEDULED
         }
       })
-      return reply.send({ ok: true, data: match })
+      return sendSerialized(reply, match)
     })
 
     admin.put('/matches/:matchId', async (request, reply) => {
@@ -886,7 +931,7 @@ export default async function (server: FastifyInstance) {
         await handleMatchFinalization(matchId, request.server.log)
       }
 
-      return reply.send({ ok: true, data: updated })
+      return sendSerialized(reply, updated)
     })
 
     admin.delete('/matches/:matchId', async (request, reply) => {
@@ -911,7 +956,7 @@ export default async function (server: FastifyInstance) {
           club: true
         }
       })
-      return reply.send({ ok: true, data: lineup })
+      return sendSerialized(reply, lineup)
     })
 
     admin.put('/matches/:matchId/lineup', async (request, reply) => {
@@ -935,7 +980,7 @@ export default async function (server: FastifyInstance) {
           position: body.position ?? null
         }
       })
-      return reply.send({ ok: true, data: entry })
+      return sendSerialized(reply, entry)
     })
 
     admin.delete('/matches/:matchId/lineup/:personId', async (request, reply) => {
@@ -957,7 +1002,7 @@ export default async function (server: FastifyInstance) {
           team: true
         }
       })
-      return reply.send({ ok: true, data: events })
+      return sendSerialized(reply, events)
     })
 
     admin.post('/matches/:matchId/events', async (request, reply) => {
@@ -988,7 +1033,7 @@ export default async function (server: FastifyInstance) {
         await handleMatchFinalization(matchId, request.server.log)
       }
 
-      return reply.send({ ok: true, data: event })
+      return sendSerialized(reply, event)
     })
 
     admin.put('/matches/:matchId/events/:eventId', async (request, reply) => {
@@ -1017,7 +1062,7 @@ export default async function (server: FastifyInstance) {
         await handleMatchFinalization(matchId, request.server.log)
       }
 
-      return reply.send({ ok: true, data: event })
+  return sendSerialized(reply, event)
     })
 
     admin.delete('/matches/:matchId/events/:eventId', async (request, reply) => {

@@ -73,6 +73,8 @@ const toOdd = (value: number): number => {
   return normalized % 2 === 0 ? normalized + 1 : normalized
 }
 
+type SeedSlot = { clubId: number; seed: number }
+
 const createBestOfPlayoffPlans = (
   seeds: number[],
   startDate: Date,
@@ -80,17 +82,28 @@ const createBestOfPlayoffPlans = (
   bestOfLength: number
 ): PlayoffSeriesPlan[] => {
   if (seeds.length < 2) return []
-  const plans: PlayoffSeriesPlan[] = []
-  let roundSeeds = [...seeds]
+
+  const seeded: SeedSlot[] = seeds.map((clubId, index) => ({ clubId, seed: index + 1 }))
+  let roundSeeds: SeedSlot[] = [...seeded]
   let roundStart = new Date(startDate)
+  const plans: PlayoffSeriesPlan[] = []
 
   while (roundSeeds.length > 1) {
-    const pairCount = Math.floor(roundSeeds.length / 2)
-    const nextRoundSeeds: number[] = []
+    const sorted = [...roundSeeds].sort((a, b) => a.seed - b.seed)
+    const working = [...sorted]
+    const nextRound: SeedSlot[] = []
 
+    if (working.length % 2 === 1) {
+      const bye = working.shift()
+      if (bye) {
+        nextRound.push(bye)
+      }
+    }
+
+    const pairCount = Math.floor(working.length / 2)
     for (let i = 0; i < pairCount; i++) {
-      const home = roundSeeds[i]
-      const away = roundSeeds[roundSeeds.length - 1 - i]
+      const home = working[i]
+      const away = working[working.length - 1 - i]
       const seriesBaseDate = addDays(roundStart, i * 2)
       const matchDates: Date[] = []
       for (let game = 0; game < bestOfLength; game++) {
@@ -98,21 +111,22 @@ const createBestOfPlayoffPlans = (
         matchDates.push(applyTimeToDate(scheduled, matchTime))
       }
       plans.push({
-        stageName: stageNameForTeams(roundSeeds.length),
-        homeClubId: home,
-        awayClubId: away,
+        stageName: stageNameForTeams(sorted.length),
+        homeClubId: home.clubId,
+        awayClubId: away.clubId,
         matchDateTimes: matchDates
       })
-      nextRoundSeeds.push(home)
+      nextRound.push(home)
     }
 
-    if (roundSeeds.length % 2 === 1) {
-      const middleSeed = roundSeeds[Math.floor(roundSeeds.length / 2)]
-      nextRoundSeeds.push(middleSeed)
+    if (nextRound.length === 0) {
+      break
     }
 
-    roundSeeds = nextRoundSeeds.sort((a, b) => a - b)
-    roundStart = addDays(roundStart, Math.max(7, pairCount > 0 ? 7 : 0))
+    roundSeeds = nextRound
+    if (pairCount > 0) {
+      roundStart = addDays(roundStart, 7)
+    }
   }
 
   return plans
@@ -228,15 +242,12 @@ export const runSeasonAutomation = async (
   let seasonEndDate = totalRounds > 0 ? addDays(kickoffDate, (totalRounds - 1) * 7) : kickoffDate
   let playoffPlans: PlayoffSeriesPlan[] = []
   let bestOfLength = 3
-  let droppedSeeds = 0
+  let firstRoundByes = 0
 
   if (input.seriesFormat === SeriesFormat.BEST_OF_N) {
     const playoffSeeds = [...uniqueClubIds]
-    if (playoffSeeds.length % 2 === 1) {
-      playoffSeeds.pop()
-      droppedSeeds = 1
-    }
     if (playoffSeeds.length >= 2) {
+      firstRoundByes = playoffSeeds.length % 2 === 1 ? 1 : 0
       const playoffStart = totalRounds > 0 ? addDays(kickoffDate, totalRounds * 7) : kickoffDate
       const configuredBestOf = input.bestOfLength && input.bestOfLength >= 3 ? input.bestOfLength : 3
       bestOfLength = toOdd(configuredBestOf)
@@ -374,7 +385,7 @@ export const runSeasonAutomation = async (
       rosterEntriesCreated,
       seriesCreated,
       bestOfLength,
-      droppedSeeds
+      firstRoundByes
     }, 'season automation completed')
 
     return {

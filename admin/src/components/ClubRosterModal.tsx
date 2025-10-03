@@ -86,9 +86,10 @@ export const ClubRosterModal = ({ club, token, onClose, onSaved }: ClubRosterMod
       setBulkValue('')
       const diff = data.length - previousCount
       if (diff > 0) {
-        setFeedback(`Создано и добавлено ${diff} ${diff === 1 ? 'игрок' : diff < 5 ? 'игрока' : 'игроков'}.`)
+        const suffix = diff < lines.length ? ' Повторяющиеся ФИО пропущены.' : ''
+        setFeedback(`Добавлено ${diff} ${diff === 1 ? 'игрок' : diff < 5 ? 'игрока' : 'игроков'}.${suffix}`)
       } else {
-        setFeedback('Состав обновлён.')
+        setFeedback('Новых игроков не добавлено: вероятно, все указанные фамилии уже есть в составе.')
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Не удалось создать игроков'

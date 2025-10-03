@@ -416,5 +416,14 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx) {
         winnerClubId
       }
     })
+
+    await tx.match.deleteMany({
+      where: {
+        seriesId: series.id,
+        status: {
+          in: [MatchStatus.SCHEDULED, MatchStatus.LIVE, MatchStatus.POSTPONED]
+        }
+      }
+    })
   }
 }

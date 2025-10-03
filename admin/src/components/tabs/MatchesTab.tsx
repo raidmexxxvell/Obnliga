@@ -159,10 +159,16 @@ const defaultAutomationForm: SeasonAutomationFormState = {
 
 const automationSeriesFormatOptions: SeasonAutomationFormState['seriesFormat'][] = ['SINGLE_MATCH', 'TWO_LEGGED', 'BEST_OF_N']
 
+const seriesFormatNames: Record<SeasonAutomationFormState['seriesFormat'], string> = {
+  SINGLE_MATCH: 'Лига: один круг',
+  TWO_LEGGED: 'Лига: два круга (дом и гости)',
+  BEST_OF_N: 'Лига + плей-офф до двух побед'
+}
+
 const automationSeriesLabels: Record<SeasonAutomationFormState['seriesFormat'], string> = {
-  SINGLE_MATCH: 'SINGLE_MATCH — один круг',
-  TWO_LEGGED: 'TWO_LEGGED — два круга (дом/гости)',
-  BEST_OF_N: 'BEST_OF_N — группа + плей-офф до двух побед'
+  SINGLE_MATCH: `${seriesFormatNames.SINGLE_MATCH} (каждый с каждым)`,
+  TWO_LEGGED: `${seriesFormatNames.TWO_LEGGED}`,
+  BEST_OF_N: `${seriesFormatNames.BEST_OF_N}`
 }
 
 const weekdayOptions = [
@@ -688,7 +694,7 @@ export const MatchesTab = () => {
                 <option value="">—</option>
                 {data.competitions.map((competition) => (
                   <option key={competition.id} value={competition.id}>
-                    {competition.name} ({competition.seriesFormat})
+                    {competition.name} ({seriesFormatNames[competition.seriesFormat]})
                   </option>
                 ))}
               </select>
@@ -763,8 +769,9 @@ export const MatchesTab = () => {
             </label>
             {automationForm.seriesFormat === 'BEST_OF_N' ? (
               <p className="muted">
-                Группа проходит в один круг. Затем формируется сетка плей-офф до двух побед. При нечётном числе команд
-                последний участник группы автоматически выбывает перед плей-офф.
+                Групповой этап проходит в один круг. Порядок списка справа задаёт посев плей-офф: первая команда играет с
+                последней, вторая — с предпоследней и т.д. Если участников нечётное число, верхняя по посеву команда
+                автоматически проходит в следующий раунд.
               </p>
             ) : null}
             <label className="checkbox">
@@ -795,9 +802,9 @@ export const MatchesTab = () => {
                 </div>
               </div>
               <div className="selected-clubs">
-                <h5>Порядок туров</h5>
+                <h5>Посев и порядок матчей</h5>
                 {automationForm.clubIds.length === 0 ? (
-                  <p className="muted">Список пуст — выберите команды слева.</p>
+                  <p className="muted">Список пуст — отметьте команды слева.</p>
                 ) : (
                   <ol>
                     {automationForm.clubIds.map((clubId, index) => {
@@ -805,7 +812,9 @@ export const MatchesTab = () => {
                       if (!club) return null
                       return (
                         <li key={clubId}>
-                          <span>{club.name}</span>
+                          <span>
+                            №{index + 1}. {club.name}
+                          </span>
                           <span className="reorder-buttons">
                             <button type="button" onClick={() => moveAutomationClub(clubId, -1)} disabled={index === 0}>
                               ▲
