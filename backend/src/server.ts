@@ -46,6 +46,10 @@ server.register(authRoutes)
 import adminRoutes from './routes/adminRoutes'
 server.register(adminRoutes)
 
+// register lineup portal routes (captain portal)
+import lineupRoutes from './routes/lineupRoutes'
+server.register(lineupRoutes)
+
 // register fastify websocket & cookie plugins and realtime
 // websocket & cookie plugins and realtime will be registered in start() to avoid top-level await
 import websocketPlugin from '@fastify/websocket'

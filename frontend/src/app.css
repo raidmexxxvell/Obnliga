@@ -208,6 +208,55 @@
   font-size:14px;
 }
 
+.portal-feedback.success{
+  background: rgba(0, 240, 255, 0.18);
+  border-color: rgba(0, 240, 255, 0.36);
+  color: #b7f7ff;
+}
+
+.portal-feedback.error{
+  background: rgba(255, 77, 130, 0.16);
+  border-color: rgba(255, 77, 130, 0.42);
+  color: #ffc3d4;
+}
+.portal-card-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.portal-ghost{
+  border:1px solid rgba(0,240,255,0.24);
+  border-radius:12px;
+  background:transparent;
+  color:var(--neon-cyan);
+  padding:8px 14px;
+  text-transform:uppercase;
+  font-size:12px;
+  letter-spacing:0.6px;
+  cursor:pointer;
+  transition: background 160ms ease;
+}
+
+.portal-ghost:disabled{
+  opacity:0.6;
+  cursor:progress;
+}
+
+.portal-ghost:hover:not(:disabled){
+  background:rgba(0,240,255,0.14);
+}
+
+.portal-steps{
+  margin:0;
+  padding-left:18px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  font-size:14px;
+}
+
 .portal-form{
   display:grid;
   gap:14px;
@@ -381,6 +430,74 @@
   gap:12px;
   font-size:13px;
   color:#9ecbe0;
+}
+
+.portal-overlay{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(7, 12, 24, 0.78);
+  backdrop-filter: blur(12px);
+  z-index:9999;
+  padding:18px;
+}
+
+.portal-modal{
+  width:min(540px, 100%);
+  background: rgba(10,18,32,0.92);
+  border-radius:20px;
+  border:1px solid rgba(0,240,255,0.24);
+  box-shadow:0 26px 60px rgba(2,6,23,0.7);
+  padding:20px;
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+
+.portal-modal-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+}
+
+.portal-modal-header h3{
+  margin:0;
+  text-transform:uppercase;
+  letter-spacing:0.9px;
+}
+
+.portal-modal-header p{
+  margin:6px 0 0 0;
+  font-size:13px;
+  color:#9ecbe0;
+}
+
+.club-switcher{
+  display:flex;
+  gap:10px;
+}
+
+.club-chip{
+  flex:1;
+  border:1px solid rgba(255,255,255,0.18);
+  border-radius:999px;
+  padding:10px 14px;
+  text-transform:uppercase;
+  font-size:12px;
+  letter-spacing:0.8px;
+  background:rgba(3,8,18,0.6);
+  color:#e6f7ff;
+  cursor:pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.club-chip.active{
+  border-color:rgba(0,240,255,0.38);
+  background:rgba(0,240,255,0.18);
+  color:#fff;
 }
 
 @media (max-width:780px){

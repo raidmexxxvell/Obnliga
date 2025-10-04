@@ -1,0 +1,390 @@
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import jwt from 'jsonwebtoken'
+import { MatchStatus, LineupRole, Prisma } from '@prisma/client'
+import prisma from '../db'
+import { serializePrisma } from '../utils/serialization'
+
+interface LineupJwtPayload {
+  sub: string
+  role: 'lineup'
+}
+
+interface LineupLoginBody {
+  login?: string
+  password?: string
+}
+
+interface LineupMatchesQuery {
+  clubId?: string
+}
+
+interface LineupRosterQuery {
+  clubId?: string
+}
+
+interface LineupRosterBody {
+  clubId?: number
+  personIds?: number[]
+}
+
+const getLineupSecret = () =>
+  process.env.LINEUP_JWT_SECRET || process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'lineup-portal-secret'
+
+const getLineupCredentials = () => ({
+  login: process.env.LINEUP_LOGIN || 'captain',
+  password: process.env.LINEUP_PASSWORD || 'captain'
+})
+
+const verifyLineupToken = async (request: FastifyRequest, reply: FastifyReply) => {
+  const authHeader = request.headers.authorization
+  if (!authHeader?.startsWith('Bearer ')) {
+    return reply.status(401).send({ ok: false, error: 'unauthorized' })
+  }
+  const token = authHeader.slice('Bearer '.length)
+  try {
+    const decoded = jwt.verify(token, getLineupSecret()) as LineupJwtPayload
+    if (decoded.role !== 'lineup') {
+      return reply.status(401).send({ ok: false, error: 'unauthorized' })
+    }
+    ;(request as any).lineupUser = decoded
+  } catch (error) {
+    request.log.warn({ err: error }, 'lineup token verification failed')
+    return reply.status(401).send({ ok: false, error: 'unauthorized' })
+  }
+}
+
+const parseBigIntId = (value: string | number | bigint | undefined, field: string): bigint => {
+  try {
+    if (typeof value === 'bigint') return value
+    if (typeof value === 'number') return BigInt(value)
+    return BigInt(value ?? '')
+  } catch (err) {
+    throw new Error(`${field}_invalid`)
+  }
+}
+
+const parseNumericId = (value: string | number | undefined, field: string): number => {
+  const numeric = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    throw new Error(`${field}_invalid`)
+  }
+  return numeric
+}
+
+const adjustMatchesCounters = async (
+  tx: Prisma.TransactionClient,
+  seasonId: number,
+  clubId: number,
+  personId: number,
+  delta: number
+) => {
+  if (!delta) return
+  const seasonStats = await tx.playerSeasonStats.findUnique({
+    where: { seasonId_personId: { seasonId, personId } }
+  })
+
+  const nextSeasonMatches = Math.max(0, (seasonStats?.matchesPlayed ?? 0) + delta)
+
+  if (!seasonStats) {
+    if (delta > 0) {
+      await tx.playerSeasonStats.create({
+        data: {
+          seasonId,
+          personId,
+          clubId,
+          goals: 0,
+          assists: 0,
+          yellowCards: 0,
+          redCards: 0,
+          matchesPlayed: delta
+        }
+      })
+    }
+  } else {
+    await tx.playerSeasonStats.update({
+      where: { seasonId_personId: { seasonId, personId } },
+      data: {
+        clubId,
+        matchesPlayed: nextSeasonMatches
+      }
+    })
+  }
+
+  const careerStats = await tx.playerClubCareerStats.findUnique({
+    where: { personId_clubId: { personId, clubId } }
+  })
+
+  const nextCareerMatches = Math.max(0, (careerStats?.totalMatches ?? 0) + delta)
+
+  if (!careerStats) {
+    if (delta > 0) {
+      await tx.playerClubCareerStats.create({
+        data: {
+          personId,
+          clubId,
+          totalGoals: 0,
+          totalAssists: 0,
+          yellowCards: 0,
+          redCards: 0,
+          totalMatches: delta
+        }
+      })
+    }
+  } else {
+    await tx.playerClubCareerStats.update({
+      where: { personId_clubId: { personId, clubId } },
+      data: {
+        totalMatches: nextCareerMatches
+      }
+    })
+  }
+}
+
+const sendSerialized = <T>(reply: FastifyReply, data: T) => reply.send({ ok: true, data: serializePrisma(data) })
+
+export default async function lineupRoutes(server: FastifyInstance) {
+  server.post('/api/lineup/login', async (request, reply) => {
+    const body = request.body as LineupLoginBody | undefined
+    const { login, password } = getLineupCredentials()
+
+    if (!body?.login || !body?.password) {
+      return reply.status(400).send({ ok: false, error: 'login_required' })
+    }
+
+    if (body.login !== login || body.password !== password) {
+      return reply.status(401).send({ ok: false, error: 'invalid_credentials' })
+    }
+
+    const token = jwt.sign({ sub: body.login, role: 'lineup' } satisfies LineupJwtPayload, getLineupSecret(), {
+      expiresIn: '24h'
+    })
+
+    return reply.send({ ok: true, token })
+  })
+
+  server.get(
+    '/api/lineup/matches',
+    { preHandler: verifyLineupToken },
+    async (request, reply) => {
+      const query = request.query as LineupMatchesQuery | undefined
+      const now = new Date()
+      const nextDay = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+
+      const where: any = {
+        matchDateTime: {
+          gte: now,
+          lte: nextDay
+        },
+        status: { in: [MatchStatus.SCHEDULED, MatchStatus.LIVE] as MatchStatus[] }
+      }
+
+      if (query?.clubId) {
+        const clubId = parseNumericId(query.clubId, 'clubId')
+        where.OR = [{ homeTeamId: clubId }, { awayTeamId: clubId }]
+      }
+
+      const matches = await prisma.match.findMany({
+        where,
+        orderBy: { matchDateTime: 'asc' },
+        include: {
+          season: { select: { id: true, name: true } },
+          homeClub: true,
+          awayClub: true,
+          round: true
+        }
+      })
+
+      const response = matches.map((match) => ({
+        id: match.id.toString(),
+        matchDateTime: match.matchDateTime.toISOString(),
+        status: match.status,
+        season: match.season,
+        round: match.round,
+        homeClub: {
+          id: match.homeClub.id,
+          name: match.homeClub.name,
+          shortName: match.homeClub.shortName,
+          logoUrl: match.homeClub.logoUrl
+        },
+        awayClub: {
+          id: match.awayClub.id,
+          name: match.awayClub.name,
+          shortName: match.awayClub.shortName,
+          logoUrl: match.awayClub.logoUrl
+        }
+      }))
+
+      return sendSerialized(reply, response)
+    }
+  )
+
+  server.get(
+    '/api/lineup/matches/:matchId/roster',
+    { preHandler: verifyLineupToken },
+    async (request, reply) => {
+      const params = request.params as { matchId?: string }
+      const query = request.query as LineupRosterQuery | undefined
+
+      let matchId: bigint
+      try {
+        matchId = parseBigIntId(params.matchId, 'matchId')
+      } catch (error) {
+        return reply.status(400).send({ ok: false, error: 'match_invalid' })
+      }
+
+      const match = await prisma.match.findUnique({
+        where: { id: matchId },
+        select: {
+          id: true,
+          seasonId: true,
+          homeTeamId: true,
+          awayTeamId: true
+        }
+      })
+
+      if (!match) {
+        return reply.status(404).send({ ok: false, error: 'match_not_found' })
+      }
+
+      if (!query?.clubId) {
+        return reply.status(400).send({ ok: false, error: 'club_required' })
+      }
+
+      const clubId = parseNumericId(query.clubId, 'clubId')
+      if (clubId !== match.homeTeamId && clubId !== match.awayTeamId) {
+        return reply.status(400).send({ ok: false, error: 'club_not_in_match' })
+      }
+
+      const roster = await prisma.seasonRoster.findMany({
+        where: { seasonId: match.seasonId, clubId },
+        include: {
+          person: true
+        },
+        orderBy: [{ shirtNumber: 'asc' }, { person: { lastName: 'asc' } }]
+      })
+
+      const lineup = await prisma.matchLineup.findMany({
+        where: { matchId, clubId },
+        select: { personId: true }
+      })
+
+      const selectedIds = new Set(lineup.map((entry) => entry.personId))
+
+      const response = roster.map((entry) => ({
+        personId: entry.personId,
+        person: {
+          id: entry.person.id,
+          firstName: entry.person.firstName,
+          lastName: entry.person.lastName
+        },
+        shirtNumber: entry.shirtNumber,
+        selected: selectedIds.has(entry.personId)
+      }))
+
+      return sendSerialized(reply, response)
+    }
+  )
+
+  server.put(
+    '/api/lineup/matches/:matchId/roster',
+    { preHandler: verifyLineupToken },
+    async (request, reply) => {
+      const params = request.params as { matchId?: string }
+      const body = request.body as LineupRosterBody | undefined
+
+      let matchId: bigint
+      try {
+        matchId = parseBigIntId(params.matchId, 'matchId')
+      } catch (error) {
+        return reply.status(400).send({ ok: false, error: 'match_invalid' })
+      }
+
+      if (!body?.clubId || !Array.isArray(body.personIds)) {
+        return reply.status(400).send({ ok: false, error: 'payload_invalid' })
+      }
+
+      const clubId = parseNumericId(body.clubId, 'clubId')
+      const personIds = Array.from(new Set(body.personIds.map((id) => parseNumericId(id, 'personId'))))
+
+      const match = await prisma.match.findUnique({
+        where: { id: matchId },
+        select: {
+          seasonId: true,
+          homeTeamId: true,
+          awayTeamId: true
+        }
+      })
+
+      if (!match) {
+        return reply.status(404).send({ ok: false, error: 'match_not_found' })
+      }
+
+      if (clubId !== match.homeTeamId && clubId !== match.awayTeamId) {
+        return reply.status(400).send({ ok: false, error: 'club_not_in_match' })
+      }
+
+      const allowedRoster = await prisma.seasonRoster.findMany({
+        where: {
+          seasonId: match.seasonId,
+          clubId,
+          personId: { in: personIds }
+        }
+      })
+
+      if (allowedRoster.length !== personIds.length) {
+        return reply.status(400).send({ ok: false, error: 'persons_not_in_roster' })
+      }
+
+      const existingLineup = await prisma.matchLineup.findMany({
+        where: { matchId, clubId },
+        select: { personId: true }
+      })
+
+      const existingIds = new Set(existingLineup.map((entry) => entry.personId))
+
+      const toAdd = personIds.filter((id) => !existingIds.has(id))
+      const toRemove = Array.from(existingIds).filter((id) => !personIds.includes(id))
+
+      await prisma.$transaction(async (tx) => {
+        if (toRemove.length) {
+          await tx.matchLineup.deleteMany({
+            where: {
+              matchId,
+              clubId,
+              personId: { in: toRemove }
+            }
+          })
+        }
+
+        if (toAdd.length) {
+          for (const personId of toAdd) {
+            await tx.matchLineup.upsert({
+              where: { matchId_personId: { matchId, personId } },
+              create: {
+                matchId,
+                personId,
+                clubId,
+                role: LineupRole.STARTER,
+                position: null
+              },
+              update: {
+                clubId,
+                role: LineupRole.STARTER,
+                position: null
+              }
+            })
+          }
+        }
+
+        for (const personId of toAdd) {
+          await adjustMatchesCounters(tx, match.seasonId, clubId, personId, 1)
+        }
+        for (const personId of toRemove) {
+          await adjustMatchesCounters(tx, match.seasonId, clubId, personId, -1)
+        }
+      })
+
+      return reply.send({ ok: true })
+    }
+  )
+}

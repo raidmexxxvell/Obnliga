@@ -1,99 +1,390 @@
-import React, { FormEvent, useMemo, useState } from 'react'
+import React, { FormEvent, useEffect, useMemo, useState } from 'react'
 import './app.css'
 
-// temporary stub: портал для подтверждения составов ожидает интеграции с API lineup
-
-type AuthState = 'LOGIN' | 'ROSTER'
-
-type DemoMatch = {
+type LineupMatch = {
   id: string
-  kickoff: string
-  opponent: string
-  venue: string
-  roundLabel: string
+  matchDateTime: string
+  status: 'SCHEDULED' | 'LIVE' | 'FINISHED' | 'POSTPONED'
+  season: { id: number; name: string }
+  round?: { id: number; label: string | null }
+  homeClub: { id: number; name: string; shortName: string; logoUrl?: string | null }
+  awayClub: { id: number; name: string; shortName: string; logoUrl?: string | null }
 }
 
-type DemoPlayer = {
-  id: number
-  name: string
-  shirt: number
-  position: string
+type LineupRosterEntry = {
+  personId: number
+  person: { id: number; firstName: string; lastName: string }
+  shirtNumber: number
+  selected: boolean
 }
 
-const demoMatches: DemoMatch[] = [
-  {
-    id: 'demo-1',
-    kickoff: new Date(Date.now() + 1000 * 60 * 60 * 18).toISOString(),
-    opponent: 'ФК «Звезда»',
-    venue: 'Стадион «Текстильщик»',
-    roundLabel: '5 тур'
-  },
-  {
-    id: 'demo-2',
-    kickoff: new Date(Date.now() + 1000 * 60 * 60 * 42).toISOString(),
-    opponent: 'ФК «Полёт»',
-    venue: 'Манеж «Обнинск»',
-    roundLabel: '6 тур'
-  }
-]
+type ApiResponse<T> = { ok: true; data: T } | { ok: false; error: string }
 
-const demoRoster: DemoPlayer[] = [
-  { id: 11, name: 'Алексей Кудрявцев', shirt: 7, position: 'FW' },
-  { id: 12, name: 'Илья Воронцов', shirt: 9, position: 'FW' },
-  { id: 13, name: 'Марк Яковлев', shirt: 4, position: 'DF' },
-  { id: 14, name: 'Юрий Самарин', shirt: 1, position: 'GK' },
-  { id: 15, name: 'Павел Лебедев', shirt: 8, position: 'MF' },
-  { id: 16, name: 'Антон Молотов', shirt: 17, position: 'MF' }
-]
-
-const formatKickoff = (iso: string) => {
-  return new Date(iso).toLocaleString('ru-RU', {
+const formatKickoff = (iso: string) =>
+  new Date(iso).toLocaleString('ru-RU', {
     day: 'numeric',
     month: 'long',
     hour: '2-digit',
     minute: '2-digit'
   })
+
+const mapError = (code: string) => {
+  switch (code) {
+    case 'invalid_credentials':
+      return 'Неверный логин или пароль.'
+    case 'unauthorized':
+      return 'Сессия истекла. Войдите заново.'
+    case 'persons_not_in_roster':
+      return 'Некоторые игроки отсутствуют в заявке сезона.'
+    case 'club_not_in_match':
+      return 'Выбранная команда не участвует в этом матче.'
+    case 'match_not_found':
+      return 'Матч не найден или удалён.'
+    default:
+      return 'Не удалось выполнить запрос. Повторите попытку.'
+  }
 }
 
 const LineupPortal: React.FC = () => {
-  const [authState, setAuthState] = useState<AuthState>('LOGIN')
-  const [clubName, setClubName] = useState<string>('')
-  const [clubCode, setClubCode] = useState('')
-  const [accessCode, setAccessCode] = useState('')
-  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(demoMatches[0]?.id ?? null)
+  const [login, setLogin] = useState('')
+  const [password, setPassword] = useState('')
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('lineupToken'))
+  const [matches, setMatches] = useState<LineupMatch[]>([])
+  const [matchesLoading, setMatchesLoading] = useState(false)
+  const [portalMessage, setPortalMessage] = useState<string | null>(null)
+  const [portalError, setPortalError] = useState<string | null>(null)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [activeMatch, setActiveMatch] = useState<LineupMatch | null>(null)
+  const [activeClubId, setActiveClubId] = useState<number | null>(null)
+  const [roster, setRoster] = useState<LineupRosterEntry[]>([])
+  const [rosterLoading, setRosterLoading] = useState(false)
   const [selectedPlayers, setSelectedPlayers] = useState<Record<number, boolean>>({})
-  const [feedback, setFeedback] = useState<string>('')
+  const [saving, setSaving] = useState(false)
 
-  const activeMatch = useMemo(() => demoMatches.find((match) => match.id === selectedMatchId) ?? null, [selectedMatchId])
+  const selectedCount = useMemo(
+    () => roster.reduce((count, entry) => (selectedPlayers[entry.personId] ? count + 1 : count), 0),
+    [roster, selectedPlayers]
+  )
 
-  const availableCount = useMemo(() => Object.values(selectedPlayers).filter(Boolean).length, [selectedPlayers])
-
-  const handleLogin = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!clubCode.trim() || !accessCode.trim()) {
-      setFeedback('Введите код клуба и пароль доступа')
-      return
-    }
-    setFeedback('Вход выполнен в демонстрационном режиме — дождитесь реальной интеграции')
-    setClubName(`Команда ${clubCode.toUpperCase()}`)
-    setAuthState('ROSTER')
+  const resetState = () => {
+    setMatches([])
+    setActiveMatch(null)
+    setActiveClubId(null)
+    setRoster([])
+    setSelectedPlayers({})
   }
 
-  const togglePlayer = (playerId: number) => {
-    setSelectedPlayers((prev) => ({ ...prev, [playerId]: !prev[playerId] }))
+  const logout = () => {
+    setToken(null)
+    localStorage.removeItem('lineupToken')
+    resetState()
   }
 
-  const handleRosterSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const apiRequest = async <T,>(path: string, init?: RequestInit, requireAuth = true): Promise<T> => {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json'
+    }
+    if (requireAuth) {
+      if (!token) {
+        throw new Error('unauthorized')
+      }
+      headers.Authorization = `Bearer ${token}`
+    }
+
+    const response = await fetch(path, {
+      ...init,
+      headers: {
+        ...headers,
+        ...(init?.headers ?? {})
+      }
+    })
+
+    if (response.status === 401) {
+      throw new Error('unauthorized')
+    }
+
+    const payload = (await response.json()) as ApiResponse<T> | { ok: true; token: string }
+
+    if ('token' in payload) {
+      return payload as unknown as T
+    }
+
+    if (!payload.ok) {
+      throw new Error(payload.error)
+    }
+
+    return payload.data
+  }
+
+  const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!selectedMatchId) {
-      setFeedback('Выберите матч из списка ближайших игр')
+    setPortalError(null)
+    setPortalMessage(null)
+
+    if (!login.trim() || !password.trim()) {
+      setPortalError('Введите логин и пароль, выданные администратором.')
       return
     }
-    if (!availableCount) {
-      setFeedback('Отметьте хотя бы одного игрока, который выйдет на поле')
-      return
+
+    try {
+      const payload = await apiRequest<{ ok: true; token: string }>('/api/lineup/login', {
+        method: 'POST',
+        body: JSON.stringify({ login, password })
+      }, false)
+
+      if (payload && 'token' in payload) {
+        localStorage.setItem('lineupToken', payload.token)
+        setToken(payload.token)
+        setPortalMessage('Вход выполнен. Выберите матч для подтверждения состава.')
+        setPassword('')
+      }
+    } catch (error) {
+      setPortalError(mapError(error instanceof Error ? error.message : ''))
     }
-    setFeedback('temporary stub: заявка сохранена локально. После подключения API будем отправлять данные на сервер.')
+  }
+
+  const fetchMatches = async () => {
+    if (!token) return
+    setMatchesLoading(true)
+    setPortalError(null)
+    try {
+      const data = await apiRequest<LineupMatch[]>('/api/lineup/matches')
+      setMatches(data)
+      if (!data.length) {
+        setPortalMessage('В ближайшие сутки матчей не найдено. Проверьте позже.')
+      }
+    } catch (error) {
+      const code = error instanceof Error ? error.message : ''
+      if (code === 'unauthorized') {
+        logout()
+        setPortalError('Сессия истекла. Пожалуйста, войдите снова.')
+      } else {
+        setPortalError(mapError(code))
+      }
+    } finally {
+      setMatchesLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (token) {
+      void fetchMatches()
+    }
+  }, [token])
+
+  const openMatchModal = (match: LineupMatch) => {
+    setActiveMatch(match)
+    setActiveClubId(match.homeClub.id)
+    setModalOpen(true)
+    setRoster([])
+    setSelectedPlayers({})
+  }
+
+  const closeModal = () => {
+    setModalOpen(false)
+    setActiveClubId(null)
+    setRoster([])
+    setSelectedPlayers({})
+  }
+
+  useEffect(() => {
+    const loadRoster = async () => {
+      if (!modalOpen || !token || !activeMatch || !activeClubId) return
+      setRosterLoading(true)
+      setPortalError(null)
+      try {
+        const data = await apiRequest<LineupRosterEntry[]>(
+          `/api/lineup/matches/${activeMatch.id}/roster?clubId=${activeClubId}`
+        )
+        setRoster(data)
+        const selectedMap: Record<number, boolean> = {}
+        data.forEach((entry) => {
+          selectedMap[entry.personId] = entry.selected
+        })
+        setSelectedPlayers(selectedMap)
+      } catch (error) {
+        const code = error instanceof Error ? error.message : ''
+        if (code === 'unauthorized') {
+          logout()
+          setPortalError('Сессия истекла. Войдите заново, чтобы продолжить.')
+          setModalOpen(false)
+        } else {
+          setPortalError(mapError(code))
+        }
+      } finally {
+        setRosterLoading(false)
+      }
+    }
+
+    void loadRoster()
+  }, [modalOpen, token, activeMatch, activeClubId])
+
+  const togglePlayer = (personId: number) => {
+    setSelectedPlayers((prev) => ({ ...prev, [personId]: !prev[personId] }))
+  }
+
+  const handleSubmitRoster = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!activeMatch || !activeClubId) return
+    const payloadIds = Object.entries(selectedPlayers)
+      .filter(([, isSelected]) => isSelected)
+      .map(([id]) => Number(id))
+
+    setSaving(true)
+    setPortalError(null)
+    try {
+      await apiRequest<{ ok: true }>(`/api/lineup/matches/${activeMatch.id}/roster`, {
+        method: 'PUT',
+        body: JSON.stringify({ clubId: activeClubId, personIds: payloadIds })
+      })
+      setPortalMessage('Состав сохранён. Заявленные игроки получили +1 к числу игр.')
+      closeModal()
+      void fetchMatches()
+    } catch (error) {
+      const code = error instanceof Error ? error.message : ''
+      if (code === 'unauthorized') {
+        logout()
+        setPortalError('Сессия истекла. Авторизуйтесь повторно.')
+      } else {
+        setPortalError(mapError(code))
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const renderLogin = () => (
+    <form className="portal-form" onSubmit={handleLogin}>
+      <label>
+        Логин
+        <input value={login} onChange={(event) => setLogin(event.target.value)} placeholder="например, captain01" />
+      </label>
+      <label>
+        Пароль
+        <input
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          placeholder="получите у администратора"
+        />
+      </label>
+      <button type="submit" className="portal-primary">Войти</button>
+      <p className="portal-hint">Доступ получают капитаны команд. После авторизации выберите матч в ближайшие сутки.</p>
+    </form>
+  )
+
+  const renderMatches = () => (
+    <div className="portal-grid">
+      <aside className="portal-card">
+        <header className="portal-card-header">
+          <h2>Ближайшие матчи</h2>
+          <button type="button" className="portal-ghost" onClick={() => void fetchMatches()} disabled={matchesLoading}>
+            {matchesLoading ? 'Обновляем…' : 'Обновить'}
+          </button>
+        </header>
+        <p className="portal-sub">Отображаются игры в ближайшие 24 часа.</p>
+        <ul className="portal-match-list">
+          {matches.map((match) => {
+            const title = `${match.homeClub.shortName} vs ${match.awayClub.shortName}`
+            const roundLabel = match.round?.label ? match.round.label : 'Без стадии'
+            return (
+              <li key={match.id}>
+                <button type="button" onClick={() => openMatchModal(match)}>
+                  <span className="match-date">{formatKickoff(match.matchDateTime)}</span>
+                  <span className="match-round">{roundLabel}</span>
+                  <span className="match-opponent">{title}</span>
+                  <span className="match-venue">Статус: {match.status === 'SCHEDULED' ? 'Запланирован' : match.status === 'LIVE' ? 'В игре' : match.status === 'FINISHED' ? 'Завершён' : 'Перенесён'}</span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+        {matches.length === 0 ? <p className="portal-hint">Нет матчей, требующих подтверждения состава.</p> : null}
+      </aside>
+
+      <section className="portal-card">
+        <header className="portal-card-header">
+          <h2>Инструкция</h2>
+          <button type="button" className="portal-ghost" onClick={logout}>
+            Выйти
+          </button>
+        </header>
+        <ol className="portal-steps">
+          <li>Выберите матч из списка слева. Доступны игры, которые начнутся в ближайшие сутки.</li>
+          <li>В появившемся окне выберите свою команду (дом или гости).</li>
+          <li>Отметьте галочками игроков, которые выйдут на поле. Можно отмечать и снимать отметки до свистка.</li>
+          <li>Сохраните изменения — игрокам сразу зачтётся +1 игра, а матч появится в админке с подтверждённым составом.</li>
+        </ol>
+        <p className="portal-hint">Если состав меняется в последний момент, откройте матч снова и обновите список перед стартом.</p>
+      </section>
+    </div>
+  )
+
+  const renderModal = () => {
+    if (!modalOpen || !activeMatch) return null
+    const homeActive = activeClubId === activeMatch.homeClub.id
+    const awayActive = activeClubId === activeMatch.awayClub.id
+
+    return (
+      <div className="portal-overlay" role="dialog" aria-modal="true">
+        <div className="portal-modal">
+          <header className="portal-modal-header">
+            <div>
+              <h3>Подтверждение состава</h3>
+              <p>{formatKickoff(activeMatch.matchDateTime)} · {activeMatch.homeClub.shortName} vs {activeMatch.awayClub.shortName}</p>
+            </div>
+            <button type="button" className="portal-ghost" onClick={closeModal} aria-label="Закрыть окно">
+              Закрыть
+            </button>
+          </header>
+
+          <div className="club-switcher">
+            <button
+              type="button"
+              className={`club-chip${homeActive ? ' active' : ''}`}
+              onClick={() => setActiveClubId(activeMatch.homeClub.id)}
+            >
+              {activeMatch.homeClub.shortName}
+            </button>
+            <button
+              type="button"
+              className={`club-chip${awayActive ? ' active' : ''}`}
+              onClick={() => setActiveClubId(activeMatch.awayClub.id)}
+            >
+              {activeMatch.awayClub.shortName}
+            </button>
+          </div>
+
+          <form className="portal-roster" onSubmit={handleSubmitRoster}>
+            {rosterLoading ? <p className="portal-hint">Загружаем заявку клуба…</p> : null}
+            <div className="portal-roster-grid">
+              {roster.map((entry) => {
+                const checked = Boolean(selectedPlayers[entry.personId])
+                const surname = `${entry.person.lastName} ${entry.person.firstName}`.trim()
+                return (
+                  <label key={entry.personId} className={checked ? 'selected' : ''}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => togglePlayer(entry.personId)}
+                      aria-label={`Игрок ${surname}`}
+                      disabled={saving}
+                    />
+                    <span className="player-name">№{entry.shirtNumber} · {surname}</span>
+                  </label>
+                )
+              })}
+            </div>
+            <footer className="portal-actions">
+              <span>Отмечено: {selectedCount} из {roster.length}</span>
+              <button type="submit" className="portal-primary" disabled={saving}>
+                {saving ? 'Сохраняем…' : 'Сохранить состав'}
+              </button>
+            </footer>
+          </form>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -103,88 +394,18 @@ const LineupPortal: React.FC = () => {
         <header className="portal-header">
           <div>
             <h1>Протокол матча</h1>
-            <p>Отметьте состав за сутки до игры, чтобы статистика обновилась автоматически.</p>
+            <p>Подтвердите состав, чтобы участникам сразу засчиталась игра и админ получил готовую заявку.</p>
           </div>
           <span className="portal-badge">β</span>
         </header>
 
-        {feedback ? <div className="portal-feedback">{feedback}</div> : null}
+        {portalMessage ? <div className="portal-feedback success">{portalMessage}</div> : null}
+        {portalError ? <div className="portal-feedback error">{portalError}</div> : null}
 
-        {authState === 'LOGIN' ? (
-          <form className="portal-form" onSubmit={handleLogin}>
-            <label>
-              Код клуба
-              <input value={clubCode} onChange={(event) => setClubCode(event.target.value)} placeholder="например, FC-OBN" />
-            </label>
-            <label>
-              Пароль доступа
-              <input
-                type="password"
-                value={accessCode}
-                onChange={(event) => setAccessCode(event.target.value)}
-                placeholder="получите у администратора"
-              />
-            </label>
-            <button type="submit" className="portal-primary">Войти</button>
-            <p className="portal-hint">После внедрения API здесь появится проверка токена и WebSocket подтверждения.</p>
-          </form>
-        ) : null}
-
-        {authState === 'ROSTER' ? (
-          <div className="portal-grid">
-            <aside className="portal-card">
-              <h2>{clubName || 'Клуб'}</h2>
-              <p className="portal-sub">Выберите игру, которую нужно подтвердить.</p>
-              <ul className="portal-match-list">
-                {demoMatches.map((match) => (
-                  <li key={match.id} className={match.id === selectedMatchId ? 'active' : ''}>
-                    <button type="button" onClick={() => setSelectedMatchId(match.id)}>
-                      <span className="match-date">{formatKickoff(match.kickoff)}</span>
-                      <span className="match-round">{match.roundLabel}</span>
-                      <span className="match-opponent">vs {match.opponent}</span>
-                      <span className="match-venue">{match.venue}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <p className="portal-hint">Реальные данные появятся после подключения эндпоинта /api/lineup/matches.</p>
-            </aside>
-
-            <section className="portal-card">
-              <h2>Состав на матч</h2>
-              <p className="portal-sub">
-                {activeMatch ? `Матч начинается ${formatKickoff(activeMatch.kickoff)} · ${activeMatch.opponent}` : 'Выберите матч слева.'}
-              </p>
-              <form className="portal-roster" onSubmit={handleRosterSubmit}>
-                <div className="portal-roster-grid">
-                  {demoRoster.map((player) => {
-                    const checked = Boolean(selectedPlayers[player.id])
-                    return (
-                      <label key={player.id} className={checked ? 'selected' : ''}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => togglePlayer(player.id)}
-                          aria-label={`Игрок ${player.name}`}
-                        />
-                        <span className="player-name">№{player.shirt} · {player.name}</span>
-                        <span className="player-pos">{player.position}</span>
-                      </label>
-                    )
-                  })}
-                </div>
-                <footer className="portal-actions">
-                  <span>Отмечено: {availableCount} из {demoRoster.length}</span>
-                  <button type="submit" className="portal-primary">Подтвердить состав</button>
-                </footer>
-              </form>
-              <p className="portal-hint">
-                После интеграции с backend система будет фиксировать подтверждение и запускать пересчёт статистики.
-              </p>
-            </section>
-          </div>
-        ) : null}
+        {!token ? renderLogin() : renderMatches()}
       </div>
+
+      {renderModal()}
     </div>
   )
 }
