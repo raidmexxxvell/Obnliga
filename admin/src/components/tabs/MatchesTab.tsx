@@ -24,23 +24,6 @@ import {
 
 type FeedbackLevel = 'success' | 'error' | 'info'
 
-type SeasonFormState = {
-  competitionId: number
-  name: string
-  startDate: string
-  endDate: string
-}
-
-type ParticipantFormState = {
-  clubId: number | ''
-}
-
-type RosterFormState = {
-  clubId: number | ''
-  personId: number | ''
-  shirtNumber: number | ''
-}
-
 type SeriesFormState = {
   stageName: string
   homeClubId: number | ''
@@ -116,23 +99,6 @@ const eventTypeLabels: Record<EventFormState['eventType'], string> = {
 }
 
 const playoffBestOfOptions = [3, 5, 7]
-
-const defaultSeasonForm: SeasonFormState = {
-  competitionId: 0,
-  name: '',
-  startDate: '',
-  endDate: ''
-}
-
-const defaultParticipantForm: ParticipantFormState = {
-  clubId: ''
-}
-
-const defaultRosterForm: RosterFormState = {
-  clubId: '',
-  personId: '',
-  shirtNumber: ''
-}
 
 const defaultSeriesForm: SeriesFormState = {
   stageName: '',
@@ -251,13 +217,6 @@ export const MatchesTab = () => {
   const [feedback, setFeedback] = useState<string | null>(null)
   const [feedbackLevel, setFeedbackLevel] = useState<FeedbackLevel>('info')
 
-  const [seasonForm, setSeasonForm] = useState<SeasonFormState>(defaultSeasonForm)
-  const [editingSeasonId, setEditingSeasonId] = useState<number | null>(null)
-
-  const [participantForm, setParticipantForm] = useState<ParticipantFormState>(defaultParticipantForm)
-  const [rosterForm, setRosterForm] = useState<RosterFormState>(defaultRosterForm)
-  const [rosterClubFilter, setRosterClubFilter] = useState<number | ''>('')
-
   const [seriesForm, setSeriesForm] = useState<SeriesFormState>(defaultSeriesForm)
   const [editingSeriesId, setEditingSeriesId] = useState<string | null>(null)
   const [seriesStatusUpdate, setSeriesStatusUpdate] = useState<MatchSeries['seriesStatus']>('IN_PROGRESS')
@@ -292,14 +251,6 @@ export const MatchesTab = () => {
     return selectedSeason?.participants ?? []
   }, [selectedSeason])
 
-  const rosterEntries = useMemo<SeasonRosterEntry[]>(() => {
-    const entries = selectedSeason?.rosters ?? []
-    if (!rosterClubFilter) return entries
-    return entries.filter((entry) => entry.clubId === rosterClubFilter)
-  }, [selectedSeason, rosterClubFilter])
-
-  const participantClubIds = useMemo(() => new Set(seasonParticipants.map((entry) => entry.clubId)), [seasonParticipants])
-
   // Одноразовая инициализация словарей и сезонов
   const bootRef = useRef(false)
   useEffect(() => {
@@ -314,13 +265,6 @@ export const MatchesTab = () => {
     void fetchSeries(selectedSeasonId).catch(() => undefined)
     void fetchMatches(selectedSeasonId).catch(() => undefined)
   }, [selectedSeasonId, token, fetchSeries, fetchMatches])
-
-  useEffect(() => {
-    if (selectedSeason && data.clubs.length && !rosterClubFilter) {
-      const firstClub = selectedSeason.participants[0]?.clubId
-      if (firstClub) setRosterClubFilter(firstClub)
-    }
-  }, [selectedSeason, data.clubs.length, rosterClubFilter])
 
   useEffect(() => {
     setPlayoffResult(null)
@@ -472,94 +416,6 @@ export const MatchesTab = () => {
     } finally {
       setPlayoffLoading(false)
     }
-  }
-
-  const handleSeasonSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!seasonForm.competitionId || !seasonForm.name || !seasonForm.startDate || !seasonForm.endDate) {
-      handleFeedback('Все поля сезона обязательны', 'error')
-      return
-    }
-    await runWithMessages(async () => {
-      const payload = {
-        competitionId: seasonForm.competitionId,
-        name: seasonForm.name.trim(),
-        startDate: seasonForm.startDate,
-        endDate: seasonForm.endDate
-      }
-      if (editingSeasonId) {
-        await adminPut(token, `/api/admin/seasons/${editingSeasonId}`, payload)
-      } else {
-        await adminPost(token, '/api/admin/seasons', payload)
-      }
-      await fetchSeasons()
-    }, 'Сезон сохранён')
-    setSeasonForm(defaultSeasonForm)
-    setEditingSeasonId(null)
-  }
-
-  const handleSeasonEdit = (season: Season) => {
-    setEditingSeasonId(season.id)
-    setSeasonForm({
-      competitionId: season.competitionId,
-      name: season.name,
-      startDate: season.startDate.slice(0, 10),
-      endDate: season.endDate.slice(0, 10)
-    })
-  }
-
-  const handleParticipantAdd = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const seasonId = ensureSeasonSelected()
-    if (!seasonId || !participantForm.clubId) return
-    await runWithMessages(async () => {
-      await adminPost(token, `/api/admin/seasons/${seasonId}/participants`, {
-        clubId: participantForm.clubId
-      })
-      await fetchSeasons()
-      await fetchSeries(seasonId)
-      await fetchMatches(seasonId)
-    }, 'Команда добавлена в сезон')
-    setParticipantForm(defaultParticipantForm)
-  }
-
-  const handleParticipantRemove = async (club: Club) => {
-    const seasonId = ensureSeasonSelected()
-    if (!seasonId) return
-    await runWithMessages(async () => {
-      await adminDelete(token, `/api/admin/seasons/${seasonId}/participants/${club.id}`)
-      await fetchSeasons()
-      await fetchSeries(seasonId)
-      await fetchMatches(seasonId)
-    }, `Клуб «${club.name}» исключён из сезона`)
-  }
-
-  const handleRosterSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const seasonId = ensureSeasonSelected()
-    if (!seasonId || !rosterForm.clubId || !rosterForm.personId || !rosterForm.shirtNumber) {
-      handleFeedback('Для заявки заполните клуб, игрока и номер', 'error')
-      return
-    }
-    await runWithMessages(async () => {
-      await adminPost(token, `/api/admin/seasons/${seasonId}/roster`, {
-        clubId: rosterForm.clubId,
-        personId: rosterForm.personId,
-        shirtNumber: rosterForm.shirtNumber,
-        registrationDate: new Date().toISOString()
-      })
-      await fetchSeasons()
-    }, 'Игрок заявлен на сезон')
-    setRosterForm(defaultRosterForm)
-  }
-
-  const handleRosterRemove = async (entry: SeasonRosterEntry) => {
-    const seasonId = ensureSeasonSelected()
-    if (!seasonId) return
-    await runWithMessages(async () => {
-      await adminDelete(token, `/api/admin/seasons/${seasonId}/roster/${entry.personId}?clubId=${entry.clubId}`)
-      await fetchSeasons()
-    }, `${entry.person.lastName} ${entry.person.firstName} исключён из заявки`)
   }
 
   const handleSeriesSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -1223,197 +1079,8 @@ export const MatchesTab = () => {
               <p>
                 Период: {selectedSeason.startDate.slice(0, 10)} — {selectedSeason.endDate.slice(0, 10)}
               </p>
-              <button className="button-secondary" type="button" onClick={() => handleSeasonEdit(selectedSeason)}>
-                Редактировать сезон
-              </button>
             </div>
           ) : null}
-        </article>
-
-        <article className="card">
-          <header>
-            <h4>{editingSeasonId ? 'Редактирование сезона' : 'Создать сезон'}</h4>
-            <p>Дата закрывается автоматически после завершения матчей.</p>
-          </header>
-          <form className="stacked" onSubmit={handleSeasonSubmit}>
-            <label>
-              Соревнование
-              <select
-                value={seasonForm.competitionId || ''}
-                onChange={(event) =>
-                  setSeasonForm((form) => ({ ...form, competitionId: Number(event.target.value) }))
-                }
-                required
-              >
-                <option value="">—</option>
-                {data.competitions.map((competition) => (
-                  <option key={competition.id} value={competition.id}>
-                    {competition.name} ({competitionTypeLabels[competition.type]})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Название
-              <input value={seasonForm.name} onChange={(event) => setSeasonForm((form) => ({ ...form, name: event.target.value }))} required />
-            </label>
-            <label>
-              Старт
-              <input type="date" value={seasonForm.startDate} onChange={(event) => setSeasonForm((form) => ({ ...form, startDate: event.target.value }))} required />
-            </label>
-            <label>
-              Завершение
-              <input type="date" value={seasonForm.endDate} onChange={(event) => setSeasonForm((form) => ({ ...form, endDate: event.target.value }))} required />
-            </label>
-            <div className="form-actions">
-              <button className="button-primary" type="submit" disabled={isLoading}>
-                {editingSeasonId ? 'Сохранить сезон' : 'Создать сезон'}
-              </button>
-              {editingSeasonId ? (
-                <button
-                  className="button-secondary"
-                  type="button"
-                  onClick={() => {
-                    setEditingSeasonId(null)
-                    setSeasonForm(defaultSeasonForm)
-                  }}
-                >
-                  Отмена
-                </button>
-              ) : null}
-            </div>
-          </form>
-        </article>
-
-        <article className="card">
-          <header>
-            <h4>Участники сезона</h4>
-            <p>Добавляйте или удаляйте команды из текущего сезона.</p>
-          </header>
-          <form className="stacked" onSubmit={handleParticipantAdd}>
-            <label>
-              Команда
-              <select
-                value={participantForm.clubId}
-                onChange={(event) =>
-                  setParticipantForm({ clubId: event.target.value ? Number(event.target.value) : '' })
-                }
-                required
-              >
-                <option value="">—</option>
-                {availableClubs
-                  .filter((club) => !participantClubIds.has(club.id))
-                  .map((club) => (
-                    <option key={club.id} value={club.id}>
-                      {club.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <button className="button-primary" type="submit" disabled={isLoading || !selectedSeasonId}>
-              Добавить участника
-            </button>
-          </form>
-          <ul className="list">
-            {seasonParticipants.map((participant) => (
-              <li key={participant.clubId}>
-                <span>{participant.club.name}</span>
-                <span className="list-actions">
-                  <button type="button" className="danger" onClick={() => handleParticipantRemove(participant.club)}>
-                    Удал.
-                  </button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </article>
-
-        <article className="card">
-          <header>
-            <h4>Заявки на сезон</h4>
-            <p>Добавляйте игроков в конкретную команду с номером.</p>
-          </header>
-          <form className="stacked" onSubmit={handleRosterSubmit}>
-            <label>
-              Команда
-              <select
-                value={rosterForm.clubId}
-                onChange={(event) => {
-                  const value = event.target.value ? Number(event.target.value) : ''
-                  setRosterForm((form) => ({ ...form, clubId: value }))
-                  setRosterClubFilter(value || '')
-                }}
-                required
-              >
-                <option value="">—</option>
-                {seasonParticipants.map((participant) => (
-                  <option key={participant.clubId} value={participant.clubId}>
-                    {participant.club.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Игрок
-              <select
-                value={rosterForm.personId}
-                onChange={(event) =>
-                  setRosterForm((form) => ({ ...form, personId: event.target.value ? Number(event.target.value) : '' }))
-                }
-                required
-              >
-                <option value="">—</option>
-                {playerDirectory.map((player) => (
-                  <option key={player.id} value={player.id}>
-                    {player.lastName} {player.firstName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Номер
-              <input
-                type="number"
-                value={rosterForm.shirtNumber}
-                onChange={(event) =>
-                  setRosterForm((form) => ({ ...form, shirtNumber: event.target.value ? Number(event.target.value) : '' }))
-                }
-                min={1}
-                required
-              />
-            </label>
-            <button className="button-primary" type="submit" disabled={!selectedSeasonId}>
-              Добавить в заявку
-            </button>
-          </form>
-          <label className="stacked">
-            Отображать состав
-            <select
-              value={rosterClubFilter}
-              onChange={(event) => setRosterClubFilter(event.target.value ? Number(event.target.value) : '')}
-            >
-              <option value="">Все клубы</option>
-              {seasonParticipants.map((participant) => (
-                <option key={participant.clubId} value={participant.clubId}>
-                  {participant.club.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <ul className="list">
-            {rosterEntries.map((entry) => (
-              <li key={`${entry.seasonId}-${entry.clubId}-${entry.personId}`}>
-                <span>
-                  #{entry.shirtNumber} — {entry.person.lastName} {entry.person.firstName} ({entry.club.shortName})
-                </span>
-                <span className="list-actions">
-                  <button type="button" className="danger" onClick={() => handleRosterRemove(entry)}>
-                    Удал.
-                  </button>
-                </span>
-              </li>
-            ))}
-          </ul>
         </article>
       </section>
 

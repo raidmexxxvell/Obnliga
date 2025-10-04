@@ -1,4 +1,10 @@
-import type { ClubPlayerLink, PlayoffCreationResult, SeasonAutomationResult } from '../types'
+import type {
+  ClubPlayerLink,
+  LineupPortalMatch,
+  LineupPortalRosterEntry,
+  PlayoffCreationResult,
+  SeasonAutomationResult
+} from '../types'
 
 const API_BASE = import.meta.env.VITE_ADMIN_API_BASE || 'http://localhost:3000'
 
@@ -140,3 +146,89 @@ export const createSeasonPlayoffs = async (
   seasonId: number,
   payload?: PlayoffCreationPayload
 ) => adminPost<PlayoffCreationResult>(token, `/api/admin/seasons/${seasonId}/playoffs`, payload)
+
+interface LineupLoginResponse {
+  ok: boolean
+  token?: string
+  error?: string
+}
+
+export const lineupLogin = async (login: string, password: string): Promise<LineupLoginResponse> => {
+  const response = await fetch(`${API_BASE}/api/lineup-portal/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ login, password })
+  })
+
+  const payload = (await response.json().catch(() => ({}))) as LineupLoginResponse
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: payload.error || 'login_failed'
+    }
+  }
+
+  return {
+    ok: Boolean(payload.token),
+    token: payload.token,
+    error: payload.error
+  }
+}
+
+const ensureLineupToken = (token?: string): string => {
+  if (!token) {
+    throw new Error('missing_lineup_token')
+  }
+  return token
+}
+
+const lineupRequest = async <T>(token: string | undefined, path: string, init: RequestInit = {}): Promise<T> => {
+  const authToken = ensureLineupToken(token)
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${authToken}`,
+      ...(init.headers || {})
+    }
+  })
+
+  const payload = (await response.json().catch(() => ({}))) as ApiResponseEnvelope<T>
+
+  if (response.status === 401) {
+    throw new Error('unauthorized')
+  }
+
+  if (!response.ok) {
+    throw new Error(payload?.error || 'request_failed')
+  }
+
+  if (!payload?.ok) {
+    throw new Error(payload?.error || 'request_failed')
+  }
+
+  return (payload.data ?? undefined) as T
+}
+
+export const lineupFetchMatches = async (token: string | undefined) =>
+  lineupRequest<LineupPortalMatch[]>(token, '/api/lineup-portal/matches', { method: 'GET' })
+
+export const lineupFetchRoster = async (token: string | undefined, matchId: string, clubId: number) =>
+  lineupRequest<LineupPortalRosterEntry[]>(
+    token,
+    `/api/lineup-portal/matches/${matchId}/roster?clubId=${clubId}`,
+    { method: 'GET' }
+  )
+
+export const lineupUpdateRoster = async (
+  token: string | undefined,
+  matchId: string,
+  payload: { clubId: number; personIds: number[] }
+) =>
+  lineupRequest<unknown>(token, `/api/lineup-portal/matches/${matchId}/roster`, {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  })

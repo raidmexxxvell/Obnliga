@@ -216,3 +216,20 @@ export interface Disqualification {
   person: Person
   club?: Club | null
 }
+
+export interface LineupPortalMatch {
+  id: string
+  matchDateTime: string
+  status: 'SCHEDULED' | 'LIVE' | 'FINISHED' | 'POSTPONED'
+  season: { id: number; name: string }
+  round?: { id: number; label: string | null }
+  homeClub: { id: number; name: string; shortName: string; logoUrl?: string | null }
+  awayClub: { id: number; name: string; shortName: string; logoUrl?: string | null }
+}
+
+export interface LineupPortalRosterEntry {
+  personId: number
+  person: { id: number; firstName: string; lastName: string }
+  shirtNumber: number
+  selected: boolean
+}

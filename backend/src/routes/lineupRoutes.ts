@@ -154,7 +154,7 @@ const registerLineupRouteGroup = (
   basePath: string,
   credentialsGetter: CredentialsGetter
 ) => {
-  server.get(basePath, async (_request, reply) => {
+  const sendDiscovery = async (_request: FastifyRequest, reply: FastifyReply) => {
     return reply.send({
       ok: true,
       service: 'lineup-portal',
@@ -164,7 +164,10 @@ const registerLineupRouteGroup = (
         roster: `${basePath}/matches/:matchId/roster`
       }
     })
-  })
+  }
+
+  server.get(basePath, sendDiscovery)
+  server.get(`${basePath}/`, sendDiscovery)
 
   server.post(`${basePath}/login`, async (request, reply) => {
     const body = request.body as LineupLoginBody | undefined

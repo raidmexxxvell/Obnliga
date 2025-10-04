@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { adminGet, adminLogin } from '../api/adminClient'
+import { adminGet, adminLogin, lineupLogin } from '../api/adminClient'
 import {
   AchievementType,
   AppUser,
@@ -21,6 +21,7 @@ import {
 export type AdminTab = 'teams' | 'matches' | 'stats' | 'players' | 'news'
 
 const storageKey = 'obnliga-admin-token'
+const lineupStorageKey = 'obnliga-lineup-token'
 
 const readPersistedToken = () => {
   if (typeof window === 'undefined') return undefined
@@ -33,7 +34,29 @@ const readPersistedToken = () => {
   }
 }
 
-const initialToken = readPersistedToken()
+const readPersistedLineupToken = () => {
+  if (typeof window === 'undefined') return undefined
+  try {
+    const stored = window.localStorage.getItem(lineupStorageKey)
+    return stored ?? undefined
+  } catch (err) {
+    console.warn('admin store: failed to read lineup token', err)
+    return undefined
+  }
+}
+
+const initialAdminToken = readPersistedToken()
+const initialLineupToken = readPersistedLineupToken()
+
+type AuthMode = 'admin' | 'lineup'
+
+const initialMode: AuthMode | undefined = initialAdminToken
+  ? 'admin'
+  : initialLineupToken
+    ? 'lineup'
+    : undefined
+
+const initialStatus: AdminState['status'] = initialMode ? 'authenticated' : 'idle'
 
 interface AdminData {
   clubs: Club[]
@@ -55,7 +78,9 @@ interface AdminData {
 
 interface AdminState {
   status: 'idle' | 'authenticating' | 'authenticated' | 'error'
+  mode?: AuthMode
   token?: string
+  lineupToken?: string
   error?: string
   activeTab: AdminTab
   selectedCompetitionId?: number
@@ -102,6 +127,23 @@ const createEmptyData = (): AdminData => ({
 })
 
 const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
+  const mapAuthError = (code: string) => {
+    switch (code) {
+      case 'invalid_credentials':
+        return 'Неверный логин или пароль.'
+      case 'login_failed':
+      case 'auth_failed':
+        return 'Не удалось выполнить вход. Попробуйте ещё раз.'
+      case 'missing_token':
+        return 'Сессия истекла, авторизуйтесь снова.'
+      default:
+        if (code?.toLowerCase().includes('fetch')) {
+          return 'Нет соединения с сервером. Проверьте подключение.'
+        }
+        return code
+    }
+  }
+
   const run = async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
     set((state) => ({
       loading: { ...state.loading, [key]: true },
@@ -130,36 +172,73 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
   }
 
   const store: AdminState = {
-    status: initialToken ? 'authenticated' : 'idle',
-    token: initialToken,
+    status: initialStatus,
+    mode: initialMode,
+    token: initialMode === 'admin' ? initialAdminToken : undefined,
+    lineupToken: initialMode === 'lineup' ? initialLineupToken : undefined,
     error: undefined,
     activeTab: 'teams',
-  selectedCompetitionId: undefined,
+    selectedCompetitionId: undefined,
     selectedSeasonId: undefined,
     data: createEmptyData(),
     loading: {},
     async login(login: string, password: string) {
       set({ status: 'authenticating', error: undefined })
       try {
-        const result = await adminLogin(login, password)
-        if (!result.ok) {
-          throw new Error(result.error || 'unknown_error')
+        const adminResult = await adminLogin(login, password)
+
+        if (adminResult.ok) {
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem(storageKey, adminResult.token)
+            window.localStorage.removeItem(lineupStorageKey)
+          }
+          set({
+            status: 'authenticated',
+            mode: 'admin',
+            token: adminResult.token,
+            lineupToken: undefined,
+            error: undefined
+          })
+          try {
+            await Promise.all([get().fetchDictionaries(), get().fetchSeasons()])
+          } catch (err) {
+            // Ошибка загрузки данных отображается через store.error
+          }
+          return
         }
+
+        if (adminResult.error && adminResult.error !== 'invalid_credentials') {
+          throw new Error(adminResult.error)
+        }
+
+        const lineupResult = await lineupLogin(login, password)
+        if (!lineupResult.ok || !lineupResult.token) {
+          throw new Error(lineupResult.error || 'invalid_credentials')
+        }
+
         if (typeof window !== 'undefined') {
-          window.localStorage.setItem(storageKey, result.token)
+          window.localStorage.setItem(lineupStorageKey, lineupResult.token)
+          window.localStorage.removeItem(storageKey)
         }
-        set({ status: 'authenticated', token: result.token, error: undefined })
-        try {
-          await Promise.all([get().fetchDictionaries(), get().fetchSeasons()])
-        } catch (err) {
-          // Ошибка загрузки данных отображается через store.error
-        }
+
+        set({
+          status: 'authenticated',
+          mode: 'lineup',
+          token: undefined,
+          lineupToken: lineupResult.token,
+          error: undefined,
+          data: createEmptyData(),
+          loading: {}
+        })
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'auth_failed'
+        const rawMessage = err instanceof Error ? err.message : 'auth_failed'
+        const message = mapAuthError(rawMessage)
         set({
           status: 'error',
+          mode: undefined,
           error: message,
           token: undefined,
+          lineupToken: undefined,
           data: createEmptyData(),
           loading: {}
         })
@@ -168,10 +247,13 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     logout() {
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(storageKey)
+        window.localStorage.removeItem(lineupStorageKey)
       }
       set({
         status: 'idle',
+        mode: undefined,
         token: undefined,
+        lineupToken: undefined,
         activeTab: 'teams',
         selectedSeasonId: undefined,
         error: undefined,
@@ -180,6 +262,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       })
     },
     setTab(tab: AdminTab) {
+      if (get().mode !== 'admin') return
       set({ activeTab: tab })
       void get()
         .refreshTab(tab)
@@ -187,10 +270,12 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     },
     clearError() {
       if (get().error) {
-        set({ error: undefined, status: get().token ? 'authenticated' : 'idle' })
+        const hasToken = Boolean(get().token || get().lineupToken)
+        set({ error: undefined, status: hasToken ? 'authenticated' : 'idle' })
       }
     },
     setSelectedCompetition(competitionId?: number) {
+      if (get().mode !== 'admin') return
       set({ selectedCompetitionId: competitionId })
       const seasons = get().data.seasons
       if (competitionId) {
@@ -204,6 +289,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       get().setSelectedSeason(fallbackSeason?.id)
     },
     setSelectedSeason(seasonId?: number) {
+      if (get().mode !== 'admin') return
       const seasons = get().data.seasons
       const season = seasons.find((item) => item.id === seasonId)
       set({
@@ -223,6 +309,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       })()
     },
     async fetchDictionaries() {
+      if (get().mode !== 'admin') return
       await run('dictionaries', async () => {
         const token = ensureToken()
         const [clubs, persons, stadiums, competitions] = await Promise.all([
@@ -243,6 +330,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       })
     },
     async fetchSeasons() {
+      if (get().mode !== 'admin') return
       await run('seasons', async () => {
         const token = ensureToken()
         const seasons = await adminGet<Season[]>(token, '/api/admin/seasons')
@@ -258,6 +346,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       })
     },
     async fetchSeries(seasonId?: number) {
+      if (get().mode !== 'admin') return
       await run('series', async () => {
         const token = ensureToken()
         const activeSeason = seasonId ?? get().selectedSeasonId
@@ -267,6 +356,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       })
     },
     async fetchMatches(seasonId?: number) {
+      if (get().mode !== 'admin') return
       await run('matches', async () => {
         const token = ensureToken()
         const activeSeason = seasonId ?? get().selectedSeasonId
@@ -276,6 +366,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       })
     },
     async fetchStats(seasonId?: number, competitionId?: number) {
+      if (get().mode !== 'admin') return
       await run('stats', async () => {
         const token = ensureToken()
         const activeSeason = seasonId ?? get().selectedSeasonId
@@ -299,6 +390,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       })
     },
     async fetchUsers() {
+      if (get().mode !== 'admin') return
       await run('users', async () => {
         const token = ensureToken()
         const users = await adminGet<AppUser[]>(token, '/api/admin/users')
@@ -306,6 +398,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       })
     },
     async fetchPredictions() {
+      if (get().mode !== 'admin') return
       await run('predictions', async () => {
         const token = ensureToken()
         const predictions = await adminGet<Prediction[]>(token, '/api/admin/predictions')
@@ -313,6 +406,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       })
     },
     async fetchAchievements() {
+      if (get().mode !== 'admin') return
       await run('achievements', async () => {
         const token = ensureToken()
         const [achievementTypes, userAchievements] = await Promise.all([
@@ -325,6 +419,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       })
     },
     async fetchDisqualifications() {
+      if (get().mode !== 'admin') return
       await run('disqualifications', async () => {
         const token = ensureToken()
         const disqualifications = await adminGet<Disqualification[]>(token, '/api/admin/disqualifications')
@@ -332,6 +427,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       })
     },
     async refreshTab(tab?: AdminTab) {
+      if (get().mode !== 'admin') return
       const target = tab ?? get().activeTab
       if (!get().token) return
       switch (target) {
@@ -364,7 +460,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     }
   }
 
-  if (initialToken) {
+  if (initialMode === 'admin' && initialAdminToken) {
     let booted = false
     setTimeout(() => {
       if (booted) return
