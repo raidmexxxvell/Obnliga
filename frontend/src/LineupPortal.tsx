@@ -28,6 +28,13 @@ const formatKickoff = (iso: string) =>
     minute: '2-digit'
   })
 
+const API_BASE_RAW = ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_LINEUP_API_BASE) ?? ''
+const API_BASE_URL = API_BASE_RAW ? API_BASE_RAW.replace(/\/$/, '') : ''
+const buildApiUrl = (path: string) => {
+  const normalized = path.startsWith('/') ? path : `/${path}`
+  return API_BASE_URL ? `${API_BASE_URL}${normalized}` : normalized
+}
+
 const mapError = (code: string) => {
   switch (code) {
     case 'invalid_credentials':
@@ -91,7 +98,7 @@ const LineupPortal: React.FC = () => {
       headers.Authorization = `Bearer ${token}`
     }
 
-    const response = await fetch(path, {
+  const response = await fetch(buildApiUrl(path), {
       ...init,
       headers: {
         ...headers,

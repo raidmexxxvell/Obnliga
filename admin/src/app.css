@@ -398,6 +398,64 @@
   gap: 6px;
 }
 
+.round-row td {
+  padding: 14px 6px 6px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--neon-cyan);
+  background: rgba(0, 240, 255, 0.06);
+  border-bottom-color: rgba(0, 240, 255, 0.14);
+}
+
+.empty-row {
+  text-align: center;
+  padding: 18px;
+  color: var(--text-muted);
+}
+
+.match-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.status-badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.status-badge.status-scheduled {
+  color: #8ed8ff;
+  border-color: rgba(0, 240, 255, 0.24);
+}
+
+.status-badge.status-live {
+  color: #ffb14d;
+  border-color: rgba(255, 177, 77, 0.4);
+  background: rgba(255, 177, 77, 0.12);
+}
+
+.status-badge.status-finished {
+  color: #9ef7a6;
+  border-color: rgba(158, 247, 166, 0.28);
+  background: rgba(47, 140, 96, 0.18);
+}
+
+.status-badge.status-postponed {
+  color: #ff9db1;
+  border-color: rgba(255, 77, 130, 0.32);
+  background: rgba(255, 77, 130, 0.1);
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;

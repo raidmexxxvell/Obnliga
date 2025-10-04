@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import React, { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import {
   adminDelete,
   adminGet,
@@ -93,6 +93,12 @@ type SeasonAutomationFormState = {
 }
 
 const matchStatuses: MatchSummary['status'][] = ['SCHEDULED', 'LIVE', 'FINISHED', 'POSTPONED']
+const matchStatusLabels: Record<MatchSummary['status'], string> = {
+  SCHEDULED: 'Запланирован',
+  LIVE: 'В игре',
+  FINISHED: 'Завершён',
+  POSTPONED: 'Перенесён'
+}
 const seriesStatuses: MatchSeries['seriesStatus'][] = ['IN_PROGRESS', 'FINISHED']
 const lineupRoles: Array<LineupFormState['role']> = ['STARTER', 'SUBSTITUTE']
 const lineupRoleLabels: Record<LineupFormState['role'], string> = {
@@ -675,6 +681,21 @@ export const MatchesTab = () => {
     })
   }
 
+  const setMatchStatus = (match: MatchSummary, status: MatchSummary['status']) => {
+    setMatchUpdateForms((forms) => {
+      const current = forms[match.id] ?? buildMatchUpdateForm(match)
+      const nextForm: MatchUpdateFormState = { ...current, status }
+      if (status === 'LIVE') {
+        nextForm.homeScore = typeof nextForm.homeScore === 'number' ? nextForm.homeScore : 0
+        nextForm.awayScore = typeof nextForm.awayScore === 'number' ? nextForm.awayScore : 0
+      }
+      return {
+        ...forms,
+        [match.id]: nextForm
+      }
+    })
+  }
+
   useEffect(() => {
     setLineupForm(defaultLineupForm)
     setEventForm(defaultEventForm)
@@ -771,6 +792,26 @@ export const MatchesTab = () => {
   const playerDirectory = useMemo(() => data.persons.filter((person) => person.isPlayer), [data.persons])
   const seasonSeries = data.series.filter((series) => series.seasonId === selectedSeasonId)
   const seasonMatches = data.matches.filter((match) => match.seasonId === selectedSeasonId)
+
+  const matchesSorted = useMemo(() => {
+    if (!seasonMatches.length) return []
+    return [...seasonMatches].sort((a, b) => new Date(a.matchDateTime).getTime() - new Date(b.matchDateTime).getTime())
+  }, [seasonMatches])
+
+  const matchesGrouped = useMemo(() => {
+    if (!matchesSorted.length) return []
+    const map = new Map<string, { label: string; matches: MatchSummary[] }>()
+    for (const match of matchesSorted) {
+      const roundId = match.round?.id ?? 'no-round'
+      const key = typeof roundId === 'number' ? `round-${roundId}` : 'round-none'
+      const label = match.round?.label?.trim() || 'Регулярный сезон'
+      if (!map.has(key)) {
+        map.set(key, { label, matches: [] })
+      }
+      map.get(key)!.matches.push(match)
+    }
+    return Array.from(map.entries()).map(([key, value]) => ({ key, ...value }))
+  }, [matchesSorted])
   const seasonRosterEntries = selectedSeason?.rosters ?? []
 
   const rosterByClub = useMemo(() => {
@@ -904,6 +945,7 @@ export const MatchesTab = () => {
   const matchTeamsLabel = selectedMatchTeams.length
     ? selectedMatchTeams.map((team) => team.shortName).join(' vs ')
     : ''
+  const selectedMatchForm = selectedMatch ? matchUpdateForms[selectedMatch.id] ?? buildMatchUpdateForm(selectedMatch) : null
 
   return (
     <>
@@ -1628,153 +1670,148 @@ export const MatchesTab = () => {
                   <th>Дата</th>
                   <th>Матч</th>
                   <th>Счёт</th>
-                  <th>Статус</th>
                   <th aria-label="Действия" />
                 </tr>
               </thead>
               <tbody>
-                {seasonMatches.map((match) => {
-                  const home = availableClubs.find((club) => club.id === match.homeTeamId)
-                  const away = availableClubs.find((club) => club.id === match.awayTeamId)
-                  const form = matchUpdateForms[match.id] ?? buildMatchUpdateForm(match)
-                  const homeScoreValue = typeof form.homeScore === 'number' ? form.homeScore : match.homeScore
-                  const awayScoreValue = typeof form.awayScore === 'number' ? form.awayScore : match.awayScore
-                  const isLive = form.status === 'LIVE'
-                  return (
-                    <tr key={match.id} className={selectedMatchId === match.id ? 'active-row' : undefined}>
-                      <td>{new Date(match.matchDateTime).toLocaleString()}</td>
-                      <td>
-                        {home?.shortName ?? match.homeTeamId} vs {away?.shortName ?? match.awayTeamId}
-                      </td>
-                      <td>
-                        <div className="score-pair">
-                          <div className={`score-control${isLive ? ' live' : ''}`}>
-                            {isLive ? (
-                              <button
-                                type="button"
-                                className="score-button"
-                                onClick={() => adjustMatchScore(match, 'homeScore', -1)}
-                                disabled={homeScoreValue <= 0}
-                                aria-label="Уменьшить счёт хозяев"
-                              >
-                                −
-                              </button>
-                            ) : null}
-                            <input
-                              type="number"
-                              value={form.homeScore === '' ? '' : form.homeScore}
-                              onChange={(event) =>
-                                setMatchUpdateForms((forms) => {
-                                  const current = forms[match.id] ?? buildMatchUpdateForm(match)
-                                  return {
-                                    ...forms,
-                                    [match.id]: {
-                                      ...current,
-                                      homeScore: event.target.value === '' ? '' : Number(event.target.value)
+                {matchesGrouped.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="empty-row">
+                      Матчи не найдены. Создайте игру или обновите фильтр сезона.
+                    </td>
+                  </tr>
+                ) : (
+                  matchesGrouped.map((group) => (
+                    <React.Fragment key={group.key}>
+                      <tr className="round-row">
+                        <td colSpan={4}>{group.label}</td>
+                      </tr>
+                      {group.matches.map((match) => {
+                        const home = availableClubs.find((club) => club.id === match.homeTeamId)
+                        const away = availableClubs.find((club) => club.id === match.awayTeamId)
+                        const form = matchUpdateForms[match.id] ?? buildMatchUpdateForm(match)
+                        const homeScoreValue = typeof form.homeScore === 'number' ? form.homeScore : match.homeScore
+                        const awayScoreValue = typeof form.awayScore === 'number' ? form.awayScore : match.awayScore
+                        const isLive = form.status === 'LIVE'
+                        return (
+                          <tr key={match.id} className={selectedMatchId === match.id ? 'active-row' : undefined}>
+                            <td>{new Date(match.matchDateTime).toLocaleString('ru-RU')}</td>
+                            <td>
+                              <div className="match-cell">
+                                <span>
+                                  {home?.shortName ?? match.homeTeamId} vs {away?.shortName ?? match.awayTeamId}
+                                </span>
+                                <span className={`status-badge status-${form.status.toLowerCase()}`}>
+                                  {matchStatusLabels[form.status]}
+                                </span>
+                              </div>
+                            </td>
+                            <td>
+                              <div className="score-pair">
+                                <div className={`score-control${isLive ? ' live' : ''}`}>
+                                  {isLive ? (
+                                    <button
+                                      type="button"
+                                      className="score-button"
+                                      onClick={() => adjustMatchScore(match, 'homeScore', -1)}
+                                      disabled={homeScoreValue <= 0}
+                                      aria-label="Уменьшить счёт хозяев"
+                                    >
+                                      −
+                                    </button>
+                                  ) : null}
+                                  <input
+                                    type="number"
+                                    value={form.homeScore === '' ? '' : form.homeScore}
+                                    onChange={(event) =>
+                                      setMatchUpdateForms((forms) => {
+                                        const current = forms[match.id] ?? buildMatchUpdateForm(match)
+                                        return {
+                                          ...forms,
+                                          [match.id]: {
+                                            ...current,
+                                            homeScore: event.target.value === '' ? '' : Number(event.target.value)
+                                          }
+                                        }
+                                      })
                                     }
-                                  }
-                                })
-                              }
-                              className="score-input"
-                              min={0}
-                              aria-label="Счёт хозяев"
-                            />
-                            {isLive ? (
-                              <button
-                                type="button"
-                                className="score-button"
-                                onClick={() => adjustMatchScore(match, 'homeScore', 1)}
-                                aria-label="Увеличить счёт хозяев"
-                              >
-                                +
-                              </button>
-                            ) : null}
-                          </div>
-                          <span className="score-separator">:</span>
-                          <div className={`score-control${isLive ? ' live' : ''}`}>
-                            {isLive ? (
-                              <button
-                                type="button"
-                                className="score-button"
-                                onClick={() => adjustMatchScore(match, 'awayScore', -1)}
-                                disabled={awayScoreValue <= 0}
-                                aria-label="Уменьшить счёт гостей"
-                              >
-                                −
-                              </button>
-                            ) : null}
-                            <input
-                              type="number"
-                              value={form.awayScore === '' ? '' : form.awayScore}
-                              onChange={(event) =>
-                                setMatchUpdateForms((forms) => {
-                                  const current = forms[match.id] ?? buildMatchUpdateForm(match)
-                                  return {
-                                    ...forms,
-                                    [match.id]: {
-                                      ...current,
-                                      awayScore: event.target.value === '' ? '' : Number(event.target.value)
+                                    className="score-input"
+                                    min={0}
+                                    aria-label="Счёт хозяев"
+                                  />
+                                  {isLive ? (
+                                    <button
+                                      type="button"
+                                      className="score-button"
+                                      onClick={() => adjustMatchScore(match, 'homeScore', 1)}
+                                      aria-label="Увеличить счёт хозяев"
+                                    >
+                                      +
+                                    </button>
+                                  ) : null}
+                                </div>
+                                <span className="score-separator">:</span>
+                                <div className={`score-control${isLive ? ' live' : ''}`}>
+                                  {isLive ? (
+                                    <button
+                                      type="button"
+                                      className="score-button"
+                                      onClick={() => adjustMatchScore(match, 'awayScore', -1)}
+                                      disabled={awayScoreValue <= 0}
+                                      aria-label="Уменьшить счёт гостей"
+                                    >
+                                      −
+                                    </button>
+                                  ) : null}
+                                  <input
+                                    type="number"
+                                    value={form.awayScore === '' ? '' : form.awayScore}
+                                    onChange={(event) =>
+                                      setMatchUpdateForms((forms) => {
+                                        const current = forms[match.id] ?? buildMatchUpdateForm(match)
+                                        return {
+                                          ...forms,
+                                          [match.id]: {
+                                            ...current,
+                                            awayScore: event.target.value === '' ? '' : Number(event.target.value)
+                                          }
+                                        }
+                                      })
                                     }
-                                  }
-                                })
-                              }
-                              className="score-input"
-                              min={0}
-                              aria-label="Счёт гостей"
-                            />
-                            {isLive ? (
-                              <button
-                                type="button"
-                                className="score-button"
-                                onClick={() => adjustMatchScore(match, 'awayScore', 1)}
-                                aria-label="Увеличить счёт гостей"
-                              >
-                                +
+                                    className="score-input"
+                                    min={0}
+                                    aria-label="Счёт гостей"
+                                  />
+                                  {isLive ? (
+                                    <button
+                                      type="button"
+                                      className="score-button"
+                                      onClick={() => adjustMatchScore(match, 'awayScore', 1)}
+                                      aria-label="Увеличить счёт гостей"
+                                    >
+                                      +
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="table-actions">
+                              <button type="button" onClick={() => handleMatchSelect(match)}>
+                                Детали
                               </button>
-                            ) : null}
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <select
-                          value={form.status}
-                          onChange={(event) => {
-                            const nextStatus = event.target.value as MatchSummary['status']
-                            setMatchUpdateForms((forms) => {
-                              const current = forms[match.id] ?? buildMatchUpdateForm(match)
-                              const nextForm: MatchUpdateFormState = { ...current, status: nextStatus }
-                              if (nextStatus === 'LIVE') {
-                                nextForm.homeScore = 0
-                                nextForm.awayScore = 0
-                              }
-                              return {
-                                ...forms,
-                                [match.id]: nextForm
-                              }
-                            })
-                          }}
-                        >
-                          {matchStatuses.map((status) => (
-                            <option key={status} value={status}>
-                              {status}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="table-actions">
-                        <button type="button" onClick={() => handleMatchSelect(match)}>
-                          Детали
-                        </button>
-                        <button type="button" onClick={() => handleMatchUpdate(match, form)}>
-                          Сохранить
-                        </button>
-                        <button type="button" className="danger" onClick={() => handleMatchDelete(match)}>
-                          Удал.
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
+                              <button type="button" onClick={() => handleMatchUpdate(match, form)}>
+                                Сохранить
+                              </button>
+                              <button type="button" className="danger" onClick={() => handleMatchDelete(match)}>
+                                Удал.
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </React.Fragment>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -1802,6 +1839,38 @@ export const MatchesTab = () => {
               </button>
             </header>
             <div className="modal-body">
+              <form
+                className="stacked"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  if (selectedMatch && selectedMatchForm) {
+                    void handleMatchUpdate(selectedMatch, selectedMatchForm)
+                  }
+                }}
+              >
+                <h6>Параметры матча</h6>
+                <label>
+                  Статус
+                  <select
+                    value={selectedMatchForm?.status ?? selectedMatch.status}
+                    onChange={(event) => {
+                      if (selectedMatch) {
+                        setMatchStatus(selectedMatch, event.target.value as MatchSummary['status'])
+                      }
+                    }}
+                  >
+                    {matchStatuses.map((status) => (
+                      <option key={status} value={status}>
+                        {matchStatusLabels[status]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button className="button-secondary" type="submit">
+                  Сохранить статус
+                </button>
+              </form>
+
               <form className="stacked" onSubmit={handleLineupSubmit}>
                 <h6>Заявка на матч</h6>
                 <div className="grid-two">
