@@ -127,7 +127,7 @@ const LineupPortal: React.FC = () => {
     }
 
     try {
-      const payload = await apiRequest<{ ok: true; token: string }>('/api/lineup/login', {
+  const payload = await apiRequest<{ ok: true; token: string }>('/api/lineup-portal/login', {
         method: 'POST',
         body: JSON.stringify({ login, password })
       }, false)
@@ -148,7 +148,7 @@ const LineupPortal: React.FC = () => {
     setMatchesLoading(true)
     setPortalError(null)
     try {
-      const data = await apiRequest<LineupMatch[]>('/api/lineup/matches')
+  const data = await apiRequest<LineupMatch[]>('/api/lineup-portal/matches')
       setMatches(data)
       if (!data.length) {
         setPortalMessage('В ближайшие сутки матчей не найдено. Проверьте позже.')
@@ -194,7 +194,7 @@ const LineupPortal: React.FC = () => {
       setPortalError(null)
       try {
         const data = await apiRequest<LineupRosterEntry[]>(
-          `/api/lineup/matches/${activeMatch.id}/roster?clubId=${activeClubId}`
+          `/api/lineup-portal/matches/${activeMatch.id}/roster?clubId=${activeClubId}`
         )
         setRoster(data)
         const selectedMap: Record<number, boolean> = {}
@@ -233,7 +233,7 @@ const LineupPortal: React.FC = () => {
     setSaving(true)
     setPortalError(null)
     try {
-      await apiRequest<{ ok: true }>(`/api/lineup/matches/${activeMatch.id}/roster`, {
+  await apiRequest<{ ok: true }>(`/api/lineup-portal/matches/${activeMatch.id}/roster`, {
         method: 'PUT',
         body: JSON.stringify({ clubId: activeClubId, personIds: payloadIds })
       })

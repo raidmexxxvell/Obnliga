@@ -27,12 +27,19 @@ interface LineupRosterBody {
   personIds?: number[]
 }
 
+type CredentialsGetter = () => { login: string; password: string }
+
 const getLineupSecret = () =>
   process.env.LINEUP_JWT_SECRET || process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'lineup-portal-secret'
 
 const getLineupCredentials = () => ({
   login: process.env.LINEUP_LOGIN || 'captain',
   password: process.env.LINEUP_PASSWORD || 'captain'
+})
+
+const getLineupPortalCredentials = () => ({
+  login: process.env.LINEUP_PORTAL_LOGIN || process.env.LINEUP_LOGIN || 'portal',
+  password: process.env.LINEUP_PORTAL_PASSWORD || process.env.LINEUP_PASSWORD || 'portal'
 })
 
 const verifyLineupToken = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -142,10 +149,14 @@ const adjustMatchesCounters = async (
 
 const sendSerialized = <T>(reply: FastifyReply, data: T) => reply.send({ ok: true, data: serializePrisma(data) })
 
-export default async function lineupRoutes(server: FastifyInstance) {
-  server.post('/api/lineup/login', async (request, reply) => {
+const registerLineupRouteGroup = (
+  server: FastifyInstance,
+  basePath: string,
+  credentialsGetter: CredentialsGetter
+) => {
+  server.post(`${basePath}/login`, async (request, reply) => {
     const body = request.body as LineupLoginBody | undefined
-    const { login, password } = getLineupCredentials()
+    const { login, password } = credentialsGetter()
 
     if (!body?.login || !body?.password) {
       return reply.status(400).send({ ok: false, error: 'login_required' })
@@ -163,7 +174,7 @@ export default async function lineupRoutes(server: FastifyInstance) {
   })
 
   server.get(
-    '/api/lineup/matches',
+    `${basePath}/matches`,
     { preHandler: verifyLineupToken },
     async (request, reply) => {
       const query = request.query as LineupMatchesQuery | undefined
@@ -219,7 +230,7 @@ export default async function lineupRoutes(server: FastifyInstance) {
   )
 
   server.get(
-    '/api/lineup/matches/:matchId/roster',
+    `${basePath}/matches/:matchId/roster`,
     { preHandler: verifyLineupToken },
     async (request, reply) => {
       const params = request.params as { matchId?: string }
@@ -286,7 +297,7 @@ export default async function lineupRoutes(server: FastifyInstance) {
   )
 
   server.put(
-    '/api/lineup/matches/:matchId/roster',
+    `${basePath}/matches/:matchId/roster`,
     { preHandler: verifyLineupToken },
     async (request, reply) => {
       const params = request.params as { matchId?: string }
@@ -387,4 +398,9 @@ export default async function lineupRoutes(server: FastifyInstance) {
       return reply.send({ ok: true })
     }
   )
+}
+
+export default async function lineupRoutes(server: FastifyInstance) {
+  registerLineupRouteGroup(server, '/api/lineup', getLineupCredentials)
+  registerLineupRouteGroup(server, '/api/lineup-portal', getLineupPortalCredentials)
 }

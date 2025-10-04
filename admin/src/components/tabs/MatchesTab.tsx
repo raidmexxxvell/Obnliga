@@ -261,6 +261,7 @@ export const MatchesTab = () => {
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null)
   const [isMatchModalOpen, setMatchModalOpen] = useState(false)
   const [matchUpdateForms, setMatchUpdateForms] = useState<Record<string, MatchUpdateFormState>>({})
+  const matchModalRef = useRef<HTMLDivElement | null>(null)
 
   const [lineupForm, setLineupForm] = useState<LineupFormState>(defaultLineupForm)
   const [eventForm, setEventForm] = useState<EventFormState>(defaultEventForm)
@@ -684,6 +685,19 @@ export const MatchesTab = () => {
       setMatchModalOpen(false)
     }
   }, [selectedMatchId])
+
+  useEffect(() => {
+    if (!isMatchModalOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const timer = window.setTimeout(() => {
+      matchModalRef.current?.focus()
+    }, 0)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.clearTimeout(timer)
+    }
+  }, [isMatchModalOpen])
 
   const handleMatchDelete = async (match: MatchSummary) => {
     const seasonId = ensureSeasonSelected()
@@ -1769,7 +1783,12 @@ export const MatchesTab = () => {
       </div>
       {isMatchModalOpen && selectedMatchId && selectedMatch ? (
         <div className="modal-overlay" role="dialog" aria-modal="true">
-          <div className="modal-card match-modal">
+          <div
+            className="modal-card match-modal"
+            tabIndex={-1}
+            ref={matchModalRef}
+            aria-label={`Подтверждение состава: ${matchTeamsLabel}`}
+          >
             <header className="modal-header">
               <div>
                 <h5>Детали матча</h5>
