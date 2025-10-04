@@ -25,6 +25,7 @@ interface LineupRosterQuery {
 interface LineupRosterBody {
   clubId?: number
   personIds?: number[]
+  numbers?: Array<{ personId?: number; shirtNumber?: number }>
 }
 
 type CredentialsGetter = () => { login: string; password: string }
@@ -349,17 +350,61 @@ const registerLineupRouteGroup = (
         return reply.status(400).send({ ok: false, error: 'club_not_in_match' })
       }
 
-      const allowedRoster = await prisma.seasonRoster.findMany({
+      const clubRoster = await prisma.seasonRoster.findMany({
         where: {
           seasonId: match.seasonId,
-          clubId,
-          personId: { in: personIds }
+          clubId
+        },
+        select: {
+          personId: true,
+          shirtNumber: true
         }
       })
 
-      if (allowedRoster.length !== personIds.length) {
+      const rosterNumbers = new Map<number, number>()
+      for (const entry of clubRoster) {
+        rosterNumbers.set(entry.personId, entry.shirtNumber)
+      }
+
+      if (!personIds.every((id) => rosterNumbers.has(id))) {
         return reply.status(400).send({ ok: false, error: 'persons_not_in_roster' })
       }
+
+      const numberPayload = Array.isArray(body.numbers) ? body.numbers : []
+      const numberMap = new Map<number, number>()
+      for (const item of numberPayload) {
+        if (!item || typeof item !== 'object') continue
+        const rawPersonId = 'personId' in item ? item.personId : undefined
+        const rawShirtNumber = 'shirtNumber' in item ? item.shirtNumber : undefined
+        if (rawPersonId === undefined || rawShirtNumber === undefined) continue
+        const parsedPersonId = parseNumericId(rawPersonId, 'personId')
+        const parsedShirtNumber = Number(rawShirtNumber)
+        if (!Number.isFinite(parsedShirtNumber) || !Number.isInteger(parsedShirtNumber) || parsedShirtNumber <= 0) {
+          return reply.status(400).send({ ok: false, error: 'shirt_invalid' })
+        }
+        numberMap.set(parsedPersonId, parsedShirtNumber)
+      }
+
+      const parsedNumbers = Array.from(numberMap.entries()).map(([personId, shirtNumber]) => ({ personId, shirtNumber }))
+
+      for (const { personId } of parsedNumbers) {
+        if (!rosterNumbers.has(personId)) {
+          return reply.status(400).send({ ok: false, error: 'persons_not_in_roster' })
+        }
+      }
+
+      const updatedNumbers = new Map<number, number>()
+      rosterNumbers.forEach((value, key) => updatedNumbers.set(key, value))
+      for (const { personId, shirtNumber } of parsedNumbers) {
+        updatedNumbers.set(personId, shirtNumber)
+      }
+
+      const uniqueNumbers = new Set(updatedNumbers.values())
+      if (uniqueNumbers.size !== updatedNumbers.size) {
+        return reply.status(400).send({ ok: false, error: 'duplicate_shirt_numbers' })
+      }
+
+      const numbersToUpdate = parsedNumbers.filter(({ personId, shirtNumber }) => rosterNumbers.get(personId) !== shirtNumber)
 
       const existingLineup = await prisma.matchLineup.findMany({
         where: { matchId, clubId },
@@ -372,6 +417,36 @@ const registerLineupRouteGroup = (
       const toRemove = Array.from(existingIds).filter((id) => !personIds.includes(id))
 
       await prisma.$transaction(async (tx) => {
+        if (numbersToUpdate.length) {
+          let tempIndex = 0
+          for (const { personId } of numbersToUpdate) {
+            const tempNumber = -1000 - ++tempIndex
+            await tx.seasonRoster.update({
+              where: {
+                seasonId_clubId_personId: {
+                  seasonId: match.seasonId,
+                  clubId,
+                  personId
+                }
+              },
+              data: { shirtNumber: tempNumber }
+            })
+          }
+
+          for (const { personId, shirtNumber } of numbersToUpdate) {
+            await tx.seasonRoster.update({
+              where: {
+                seasonId_clubId_personId: {
+                  seasonId: match.seasonId,
+                  clubId,
+                  personId
+                }
+              },
+              data: { shirtNumber }
+            })
+          }
+        }
+
         if (toRemove.length) {
           await tx.matchLineup.deleteMany({
             where: {

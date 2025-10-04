@@ -686,6 +686,29 @@
   gap: 12px;
 }
 
+.automation-format {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.16);
+  font-size: 13px;
+}
+
+.automation-format-label {
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+}
+
+.automation-format-value {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 .club-selection {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -711,11 +734,35 @@
 }
 
 .club-selection-list {
+  display: flex;
   max-height: 320px;
   flex-direction: column;
   gap: 6px;
   max-height: 220px;
   overflow: auto;
+}
+
+.club-selection-list .club-checkbox {
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 240, 255, 0.12);
+  background: rgba(0, 240, 255, 0.04);
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.club-selection-list .club-checkbox:hover {
+  border-color: rgba(0, 240, 255, 0.28);
+  background: rgba(0, 240, 255, 0.08);
+}
+
+.club-selection-list .club-checkbox span {
+  flex: 1;
+}
+
+.club-selection-list .club-checkbox input {
+  width: 18px;
+  height: 18px;
 }
 
 .selected-clubs ol {

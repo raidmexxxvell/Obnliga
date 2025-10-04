@@ -18,8 +18,7 @@ import {
   Season,
   SeasonAutomationResult,
   PlayoffCreationResult,
-  SeasonParticipant,
-  SeasonRosterEntry
+  SeasonParticipant
 } from '../../types'
 
 type FeedbackLevel = 'success' | 'error' | 'info'
@@ -49,13 +48,6 @@ type MatchUpdateFormState = {
   matchDateTime: string
 }
 
-type LineupFormState = {
-  clubId: number | ''
-  personId: number | ''
-  role: 'STARTER' | 'SUBSTITUTE'
-  position: string
-}
-
 type EventFormState = {
   teamId: number | ''
   playerId: number | ''
@@ -83,8 +75,9 @@ const matchStatusLabels: Record<MatchSummary['status'], string> = {
   POSTPONED: 'Перенесён'
 }
 const seriesStatuses: MatchSeries['seriesStatus'][] = ['IN_PROGRESS', 'FINISHED']
-const lineupRoles: Array<LineupFormState['role']> = ['STARTER', 'SUBSTITUTE']
-const lineupRoleLabels: Record<LineupFormState['role'], string> = {
+type LineupRole = MatchLineupEntry['role']
+
+const lineupRoleLabels: Record<LineupRole, string> = {
   STARTER: 'В основе',
   SUBSTITUTE: 'Запасной'
 }
@@ -114,13 +107,6 @@ const defaultMatchForm: MatchFormState = {
   refereeId: '',
   seriesId: '',
   seriesMatchNumber: ''
-}
-
-const defaultLineupForm: LineupFormState = {
-  clubId: '',
-  personId: '',
-  role: 'STARTER',
-  position: ''
 }
 
 const defaultEventForm: EventFormState = {
@@ -158,8 +144,6 @@ const buildMatchUpdateForm = (match: MatchSummary): MatchUpdateFormState => ({
   refereeId: match.refereeId ?? '',
   matchDateTime: match.matchDateTime.slice(0, 16)
 })
-
-const automationSeriesFormatOptions: SeasonAutomationFormState['seriesFormat'][] = ['SINGLE_MATCH', 'TWO_LEGGED', 'BEST_OF_N']
 
 const seriesFormatNames: Record<SeasonAutomationFormState['seriesFormat'], string> = {
   SINGLE_MATCH: 'Лига: один круг',
@@ -228,11 +212,11 @@ export const MatchesTab = () => {
   const [matchUpdateForms, setMatchUpdateForms] = useState<Record<string, MatchUpdateFormState>>({})
   const matchModalRef = useRef<HTMLDivElement | null>(null)
 
-  const [lineupForm, setLineupForm] = useState<LineupFormState>(defaultLineupForm)
   const [eventForm, setEventForm] = useState<EventFormState>(defaultEventForm)
 
   const [matchLineup, setMatchLineup] = useState<MatchLineupEntry[]>([])
   const [matchEvents, setMatchEvents] = useState<MatchEventEntry[]>([])
+  const [lineupClubFilter, setLineupClubFilter] = useState<number | ''>('')
 
   const [automationForm, setAutomationForm] = useState<SeasonAutomationFormState>(defaultAutomationForm)
   const [automationResult, setAutomationResult] = useState<SeasonAutomationResult | null>(null)
@@ -490,6 +474,7 @@ export const MatchesTab = () => {
   const handleMatchSelect = (match: MatchSummary) => {
     setSelectedMatchId(match.id)
     setMatchModalOpen(true)
+    setLineupClubFilter('')
     setMatchUpdateForms((forms) => ({
       ...forms,
       [match.id]: buildMatchUpdateForm(match)
@@ -502,6 +487,7 @@ export const MatchesTab = () => {
     setSelectedMatchId(null)
     setMatchLineup([])
     setMatchEvents([])
+    setLineupClubFilter('')
   }
 
   const handleMatchUpdate = async (match: MatchSummary, form: MatchUpdateFormState) => {
@@ -566,8 +552,8 @@ export const MatchesTab = () => {
   }
 
   useEffect(() => {
-    setLineupForm(defaultLineupForm)
     setEventForm(defaultEventForm)
+    setLineupClubFilter('')
   }, [selectedMatchId])
 
   useEffect(() => {
@@ -604,24 +590,6 @@ export const MatchesTab = () => {
     }
   }
 
-  const handleLineupSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!selectedMatchId || !lineupForm.clubId || !lineupForm.personId) {
-      handleFeedback('Выберите клуб и игрока для заявки на матч', 'error')
-      return
-    }
-    await runWithMessages(async () => {
-      await adminPut(token, `/api/admin/matches/${selectedMatchId}/lineup`, {
-        clubId: lineupForm.clubId,
-        personId: lineupForm.personId,
-        role: lineupForm.role,
-        position: lineupForm.position || undefined
-      })
-      await loadMatchDetails(selectedMatchId)
-    }, 'Состав обновлён')
-    setLineupForm(defaultLineupForm)
-  }
-
   const handleLineupRemove = async (entry: MatchLineupEntry) => {
     if (!selectedMatchId) return
     await runWithMessages(async () => {
@@ -635,6 +603,18 @@ export const MatchesTab = () => {
     if (!selectedMatchId || !eventForm.teamId || !eventForm.playerId || !eventForm.minute) {
       handleFeedback('Команда, игрок и минута обязательны для события', 'error')
       return
+    }
+    const playerEntry = matchPlayersById.get(eventForm.playerId)
+    if (!playerEntry || playerEntry.clubId !== eventForm.teamId) {
+      handleFeedback('Игрок должен быть из выбранной команды', 'error')
+      return
+    }
+    if (eventForm.relatedPlayerId) {
+      const relatedEntry = matchPlayersById.get(eventForm.relatedPlayerId)
+      if (!relatedEntry || relatedEntry.clubId !== playerEntry.clubId) {
+        handleFeedback('Второй игрок должен быть из той же команды, что и автор события', 'error')
+        return
+      }
     }
     await runWithMessages(async () => {
       await adminPost(token, `/api/admin/matches/${selectedMatchId}/events`, {
@@ -658,7 +638,6 @@ export const MatchesTab = () => {
   }
 
   const availableClubs = data.clubs
-  const playerDirectory = useMemo(() => data.persons.filter((person) => person.isPlayer), [data.persons])
   const seasonSeries = data.series.filter((series) => series.seasonId === selectedSeasonId)
   const seasonMatches = data.matches.filter((match) => match.seasonId === selectedSeasonId)
 
@@ -681,18 +660,6 @@ export const MatchesTab = () => {
     }
     return Array.from(map.entries()).map(([key, value]) => ({ key, ...value }))
   }, [matchesSorted])
-  const seasonRosterEntries = selectedSeason?.rosters ?? []
-
-  const rosterByClub = useMemo(() => {
-    const map = new Map<number, SeasonRosterEntry[]>()
-    for (const entry of seasonRosterEntries) {
-      const list = map.get(entry.clubId) ?? []
-      list.push(entry)
-      map.set(entry.clubId, list)
-    }
-    return map
-  }, [seasonRosterEntries])
-
   const selectedMatch = useMemo(() => {
     if (!selectedMatchId) return null
     return seasonMatches.find((match) => match.id === selectedMatchId) ?? null
@@ -705,42 +672,79 @@ export const MatchesTab = () => {
     return [home, away].filter(Boolean) as Club[]
   }, [availableClubs, selectedMatch])
 
-  const matchPlayersPool = useMemo<EventPlayerOption[]>(() => {
-    if (!selectedMatch) return []
-    const pool = new Map<number, EventPlayerOption>()
-
-    const pushOption = (personId: number, clubId: number, person: Person, club: Club, source: EventPlayerOption['source']) => {
-      if (!pool.has(personId)) {
-        pool.set(personId, { personId, clubId, person, club, source })
-      }
+  useEffect(() => {
+    if (!lineupClubFilter) return
+    const stillValid = selectedMatchTeams.some((team) => team.id === lineupClubFilter)
+    if (!stillValid) {
+      setLineupClubFilter('')
     }
+  }, [lineupClubFilter, selectedMatchTeams])
 
+  const matchLineupByClub = useMemo(() => {
+    const map = new Map<number, MatchLineupEntry[]>()
     for (const entry of matchLineup) {
-      pushOption(entry.personId, entry.clubId, entry.person, entry.club, 'lineup')
+      if (!map.has(entry.clubId)) {
+        map.set(entry.clubId, [])
+      }
+      map.get(entry.clubId)!.push(entry)
     }
-
-    selectedMatchTeams.forEach((club) => {
-      const roster = rosterByClub.get(club.id) ?? []
-      roster.forEach((entry) => {
-        pushOption(entry.personId, entry.clubId, entry.person, entry.club, 'roster')
+    map.forEach((list) => {
+      list.sort((a, b) => {
+        if (a.role !== b.role) {
+          return a.role === 'STARTER' ? -1 : 1
+        }
+        const last = a.person.lastName.localeCompare(b.person.lastName, 'ru')
+        if (last !== 0) return last
+        return a.person.firstName.localeCompare(b.person.firstName, 'ru')
       })
     })
+    return map
+  }, [matchLineup])
 
-    return Array.from(pool.values()).sort((a, b) => {
+  const filteredMatchLineup = useMemo(() => {
+    if (!lineupClubFilter) return []
+    return matchLineupByClub.get(lineupClubFilter) ?? []
+  }, [lineupClubFilter, matchLineupByClub])
+
+  const matchPlayersPool = useMemo<EventPlayerOption[]>(() => {
+    const options: EventPlayerOption[] = []
+    matchLineupByClub.forEach((entries) => {
+      entries.forEach((entry) => {
+        options.push({
+          personId: entry.personId,
+          clubId: entry.clubId,
+          person: entry.person,
+          club: entry.club,
+          source: 'lineup'
+        })
+      })
+    })
+    return options.sort((a, b) => {
       const last = a.person.lastName.localeCompare(b.person.lastName, 'ru')
       if (last !== 0) return last
       return a.person.firstName.localeCompare(b.person.firstName, 'ru')
     })
-  }, [matchLineup, rosterByClub, selectedMatch, selectedMatchTeams])
+  }, [matchLineupByClub])
+
+  const matchPlayersById = useMemo(() => {
+    const map = new Map<number, EventPlayerOption>()
+    for (const option of matchPlayersPool) {
+      map.set(option.personId, option)
+    }
+    return map
+  }, [matchPlayersPool])
 
   const eventPlayerOptions = useMemo(() => {
-    if (!eventForm.teamId) return matchPlayersPool
+    if (!eventForm.teamId) return []
     return matchPlayersPool.filter((entry) => entry.clubId === eventForm.teamId)
   }, [eventForm.teamId, matchPlayersPool])
-  const currentClubRoster = useMemo(() => {
-    if (!lineupForm.clubId) return []
-    return rosterByClub.get(lineupForm.clubId) ?? []
-  }, [lineupForm.clubId, rosterByClub])
+
+  const relatedEventPlayerOptions = useMemo(() => {
+    if (!eventForm.playerId) return []
+    const primary = matchPlayersById.get(eventForm.playerId)
+    if (!primary) return []
+    return matchPlayersPool.filter((entry) => entry.clubId === primary.clubId && entry.personId !== primary.personId)
+  }, [eventForm.playerId, matchPlayersById, matchPlayersPool])
 
   useEffect(() => {
     setMatchUpdateForms((forms) => {
@@ -755,18 +759,6 @@ export const MatchesTab = () => {
       return changed ? next : forms
     })
   }, [seasonMatches])
-
-  useEffect(() => {
-    setLineupForm((form) => {
-      if (!form.clubId) return form
-      const roster = rosterByClub.get(form.clubId) ?? []
-      if (form.personId && !roster.some((entry) => entry.personId === form.personId)) {
-        return { ...form, personId: '' }
-      }
-      return form
-    })
-  }, [rosterByClub])
-
   useEffect(() => {
     setEventForm((form) => {
       const available = new Set(matchPlayersPool.map((entry) => entry.personId))
@@ -944,24 +936,12 @@ export const MatchesTab = () => {
                 />
               </label>
             </div>
-            <label>
-              Формат серий
-              <select
-                value={automationForm.seriesFormat}
-                onChange={(event) =>
-                  setAutomationForm((form) => ({
-                    ...form,
-                    seriesFormat: event.target.value as SeasonAutomationFormState['seriesFormat']
-                  }))
-                }
-              >
-                {automationSeriesFormatOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {automationSeriesLabels[option]}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="automation-format">
+              <span className="automation-format-label">Формат серий</span>
+              <span className="automation-format-value">
+                {automationForm.competitionId ? automationSeriesLabels[automationForm.seriesFormat] : 'Выберите соревнование'}
+              </span>
+            </div>
             {automationForm.seriesFormat === 'BEST_OF_N' ? (
               <p className="muted">
                 Групповой этап проходит в один круг. Порядок списка справа задаёт посев плей-офф: первая команда играет с
@@ -985,13 +965,13 @@ export const MatchesTab = () => {
                 <p className="muted">Выберите участников (минимум 2).</p>
                 <div className="club-selection-list">
                   {data.clubs.map((club) => (
-                    <label key={club.id} className="checkbox">
+                    <label key={club.id} className="checkbox club-checkbox">
+                      <span>{club.name}</span>
                       <input
                         type="checkbox"
                         checked={automationForm.clubIds.includes(club.id)}
                         onChange={() => toggleAutomationClub(club.id)}
                       />
-                      {club.name}
                     </label>
                   ))}
                 </div>
@@ -1596,81 +1576,46 @@ export const MatchesTab = () => {
                 </button>
               </form>
 
-              <form className="stacked" onSubmit={handleLineupSubmit}>
-                <h6>Заявка на матч</h6>
-                <div className="grid-two">
-                  <label>
-                    Команда
-                    <select
-                      value={lineupForm.clubId}
-                      onChange={(event) => setLineupForm((form) => ({ ...form, clubId: event.target.value ? Number(event.target.value) : '' }))}
-                      required
-                    >
-                      <option value="">—</option>
-                      {seasonParticipants.map((participant) => (
-                        <option key={participant.clubId} value={participant.clubId}>
-                          {participant.club.shortName}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Игрок
-                    <select
-                      value={lineupForm.personId}
-                      onChange={(event) =>
-                        setLineupForm((form) => ({ ...form, personId: event.target.value ? Number(event.target.value) : '' }))
-                      }
-                      required
-                      disabled={!lineupForm.clubId || currentClubRoster.length === 0}
-                    >
-                      <option value="">{lineupForm.clubId ? '—' : 'Сначала выберите клуб'}</option>
-                      {currentClubRoster.map((entry) => (
-                        <option key={entry.personId} value={entry.personId}>
-                          {entry.person.lastName} {entry.person.firstName} · №{entry.shirtNumber}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <div className="grid-two">
-                  <label>
-                    Роль
-                    <select value={lineupForm.role} onChange={(event) => setLineupForm((form) => ({ ...form, role: event.target.value as LineupFormState['role'] }))}>
-                      {lineupRoles.map((role) => (
-                        <option key={role} value={role}>
-                          {lineupRoleLabels[role]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Позиция (опционально)
-                    <input value={lineupForm.position} onChange={(event) => setLineupForm((form) => ({ ...form, position: event.target.value }))} />
-                  </label>
-                </div>
-                <button className="button-primary" type="submit">
-                  Сохранить заявку
-                </button>
-              </form>
-
               <div className="split-columns">
                 <div>
                   <h6>Состав</h6>
-                  <ul className="list">
-                    {matchLineup.map((entry) => (
-                      <li key={`${entry.matchId}-${entry.personId}`}>
-                        <span>
-                          {entry.role === 'STARTER' ? '⏱️' : '↩️'} {entry.person.lastName} {entry.person.firstName} ({entry.club.shortName}) — {lineupRoleLabels[entry.role]}
-                        </span>
-                        <span className="list-actions">
-                          <button type="button" className="danger" onClick={() => handleLineupRemove(entry)}>
-                            Удал.
-                          </button>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                  <label className="stacked">
+                    Команда
+                    <select
+                      value={lineupClubFilter}
+                      onChange={(event) => setLineupClubFilter(event.target.value ? Number(event.target.value) : '')}
+                      disabled={!selectedMatch || selectedMatchTeams.length === 0}
+                    >
+                      <option value="">
+                        {selectedMatch ? (selectedMatchTeams.length ? 'Выберите команду' : 'Клубы не найдены') : 'Выберите матч'}
+                      </option>
+                      {selectedMatchTeams.map((team) => (
+                        <option key={team.id} value={team.id}>
+                          {team.shortName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {!lineupClubFilter ? (
+                    <p className="muted">Сначала выберите команду, чтобы увидеть подтверждённый состав.</p>
+                  ) : filteredMatchLineup.length === 0 ? (
+                    <p className="muted">Для выбранной команды пока нет подтверждённой заявки.</p>
+                  ) : (
+                    <ul className="list">
+                      {filteredMatchLineup.map((entry) => (
+                        <li key={`${entry.matchId}-${entry.personId}`}>
+                          <span>
+                            {entry.role === 'STARTER' ? '⏱️' : '↩️'} {entry.person.lastName} {entry.person.firstName} — {lineupRoleLabels[entry.role]}
+                          </span>
+                          <span className="list-actions">
+                            <button type="button" className="danger" onClick={() => handleLineupRemove(entry)}>
+                              Удал.
+                            </button>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
                 <div>
                   <h6>События</h6>
@@ -1690,7 +1635,7 @@ export const MatchesTab = () => {
                         required
                         disabled={!selectedMatch}
                       >
-                        <option value="">{selectedMatch ? '—' : 'Выберите матч'}</option>
+                        <option value="">{selectedMatch ? 'Выберите команду' : 'Выберите матч'}</option>
                         {selectedMatchTeams.map((team) => (
                           <option key={team.id} value={team.id}>
                             {team.shortName}
@@ -1702,15 +1647,28 @@ export const MatchesTab = () => {
                       Игрок
                       <select
                         value={eventForm.playerId}
-                        onChange={(event) => setEventForm((form) => ({ ...form, playerId: event.target.value ? Number(event.target.value) : '' }))}
+                        onChange={(event) =>
+                          setEventForm((form) => ({
+                            ...form,
+                            playerId: event.target.value ? Number(event.target.value) : '',
+                            relatedPlayerId: ''
+                          }))
+                        }
                         required
-                        disabled={!selectedMatch || eventPlayerOptions.length === 0}
+                        disabled={!selectedMatch || !eventForm.teamId || eventPlayerOptions.length === 0}
                       >
-                        <option value="">{selectedMatch ? '—' : 'Выберите матч'}</option>
+                        <option value="">
+                          {selectedMatch
+                            ? eventForm.teamId
+                              ? eventPlayerOptions.length === 0
+                                ? 'Нет игроков в заявке'
+                                : 'Выберите игрока'
+                              : 'Сначала выберите команду'
+                            : 'Выберите матч'}
+                        </option>
                         {eventPlayerOptions.map((entry) => (
                           <option key={entry.personId} value={entry.personId}>
                             {entry.person.lastName} {entry.person.firstName} ({entry.club.shortName})
-                            {entry.source === 'roster' ? ' · сезонная заявка' : ''}
                           </option>
                         ))}
                       </select>
@@ -1745,13 +1703,20 @@ export const MatchesTab = () => {
                       <select
                         value={eventForm.relatedPlayerId}
                         onChange={(event) => setEventForm((form) => ({ ...form, relatedPlayerId: event.target.value ? Number(event.target.value) : '' }))}
-                        disabled={!selectedMatch || matchPlayersPool.length === 0}
+                        disabled={!selectedMatch || !eventForm.playerId || relatedEventPlayerOptions.length === 0}
                       >
-                        <option value="">{selectedMatch ? '—' : 'Выберите матч'}</option>
-                        {matchPlayersPool.map((entry) => (
+                        <option value="">
+                          {selectedMatch
+                            ? eventForm.playerId
+                              ? relatedEventPlayerOptions.length === 0
+                                ? 'Нет второго игрока'
+                                : 'Выберите игрока'
+                              : 'Сначала выберите основного игрока'
+                            : 'Выберите матч'}
+                        </option>
+                        {relatedEventPlayerOptions.map((entry) => (
                           <option key={entry.personId} value={entry.personId}>
                             {entry.person.lastName} {entry.person.firstName} ({entry.club.shortName})
-                            {entry.source === 'roster' ? ' · сезонная заявка' : ''}
                           </option>
                         ))}
                       </select>
