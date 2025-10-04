@@ -105,6 +105,17 @@ async function rebuildClubSeasonStats(seasonId: number, tx: PrismaTx) {
     totals.set(m.awayTeamId, awayEntry)
   }
 
+  const participants = await tx.seasonParticipant.findMany({
+    where: { seasonId },
+    select: { clubId: true }
+  })
+
+  for (const participant of participants) {
+    if (!totals.has(participant.clubId)) {
+      totals.set(participant.clubId, newClubSeasonStats(seasonId, participant.clubId))
+    }
+  }
+
   const clubIds = Array.from(totals.keys())
   await tx.clubSeasonStats.deleteMany({ where: { seasonId, clubId: { notIn: clubIds } } })
 
@@ -150,6 +161,7 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
       match: { seasonId, status: MatchStatus.FINISHED }
     },
     select: {
+      matchId: true,
       playerId: true,
       relatedPlayerId: true,
       teamId: true,
@@ -161,6 +173,7 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
     number,
     { clubId: number; goals: number; assists: number; yellow: number; red: number; matches: number }
   >()
+  const eventMatchesMap = new Map<number, Set<bigint>>()
 
   for (const ev of events) {
     const primary =
@@ -178,6 +191,10 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
     }
     statsMap.set(ev.playerId, primary)
 
+    const playerMatches = eventMatchesMap.get(ev.playerId) ?? new Set<bigint>()
+    playerMatches.add(ev.matchId)
+    eventMatchesMap.set(ev.playerId, playerMatches)
+
     if (ev.eventType === MatchEventType.GOAL && ev.relatedPlayerId) {
       const assist =
         statsMap.get(ev.relatedPlayerId) ??
@@ -185,6 +202,10 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
       assist.clubId = ev.teamId
       assist.assists += 1
       statsMap.set(ev.relatedPlayerId, assist)
+
+      const assistMatches = eventMatchesMap.get(ev.relatedPlayerId) ?? new Set<bigint>()
+      assistMatches.add(ev.matchId)
+      eventMatchesMap.set(ev.relatedPlayerId, assistMatches)
     }
   }
 
@@ -203,6 +224,13 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
     entry.clubId = lineup.clubId
     entry.matches += lineup._count.matchId ?? 0
     statsMap.set(lineup.personId, entry)
+  }
+
+  for (const [personId, matches] of eventMatchesMap.entries()) {
+    const entry = statsMap.get(personId)
+    if (!entry) continue
+    entry.matches = Math.max(entry.matches, matches.size)
+    statsMap.set(personId, entry)
   }
 
   await tx.playerSeasonStats.deleteMany({ where: { seasonId } })

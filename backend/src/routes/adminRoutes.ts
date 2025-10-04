@@ -1179,12 +1179,138 @@ export default async function (server: FastifyInstance) {
         return reply.status(400).send({ ok: false, error: 'season_or_competition_required' })
       }
 
-      const stats = await prisma.clubSeasonStats.findMany({
-        where: { seasonId: resolvedSeasonId },
-        include: { club: true, season: { include: { competition: true } } },
-        orderBy: [{ points: 'desc' }, { wins: 'desc' }, { goalsFor: 'desc' }]
+      const season = await prisma.season.findUnique({
+        where: { id: resolvedSeasonId },
+        include: {
+          competition: true,
+          participants: { include: { club: true } }
+        }
       })
-      return reply.send({ ok: true, data: stats })
+
+      if (!season) {
+        return reply.status(404).send({ ok: false, error: 'season_not_found' })
+      }
+
+      const rawStats = await prisma.clubSeasonStats.findMany({
+        where: { seasonId: resolvedSeasonId },
+        include: { club: true }
+      })
+
+      const finishedMatches = await prisma.match.findMany({
+        where: { seasonId: resolvedSeasonId, status: MatchStatus.FINISHED },
+        select: {
+          homeTeamId: true,
+          awayTeamId: true,
+          homeScore: true,
+          awayScore: true
+        }
+      })
+
+      const statsByClub = new Map<number, (typeof rawStats)[number]>()
+      for (const stat of rawStats) {
+        statsByClub.set(stat.clubId, stat)
+      }
+
+      const seasonPayload = {
+        id: season.id,
+        competitionId: season.competitionId,
+        name: season.name,
+        startDate: season.startDate,
+        endDate: season.endDate,
+        competition: season.competition
+      }
+
+      const rows = season.participants.map((participant) => {
+        const stat = statsByClub.get(participant.clubId)
+        return {
+          seasonId: season.id,
+          clubId: participant.clubId,
+          points: stat?.points ?? 0,
+          wins: stat?.wins ?? 0,
+          losses: stat?.losses ?? 0,
+          goalsFor: stat?.goalsFor ?? 0,
+          goalsAgainst: stat?.goalsAgainst ?? 0,
+          club: participant.club,
+          season: seasonPayload
+        }
+      })
+
+      for (const stat of rawStats) {
+        if (rows.some((row) => row.clubId === stat.clubId)) continue
+        rows.push({
+          seasonId: season.id,
+          clubId: stat.clubId,
+          points: stat.points,
+          wins: stat.wins,
+          losses: stat.losses,
+          goalsFor: stat.goalsFor,
+          goalsAgainst: stat.goalsAgainst,
+          club: stat.club,
+          season: seasonPayload
+        })
+      }
+
+      type HeadToHeadEntry = { points: number; goalsFor: number; goalsAgainst: number }
+      const headToHead = new Map<number, Map<number, HeadToHeadEntry>>()
+      const ensureHeadToHead = (clubId: number, opponentId: number): HeadToHeadEntry => {
+        let opponents = headToHead.get(clubId)
+        if (!opponents) {
+          opponents = new Map<number, HeadToHeadEntry>()
+          headToHead.set(clubId, opponents)
+        }
+        let record = opponents.get(opponentId)
+        if (!record) {
+          record = { points: 0, goalsFor: 0, goalsAgainst: 0 }
+          opponents.set(opponentId, record)
+        }
+        return record
+      }
+
+      for (const match of finishedMatches) {
+        const home = ensureHeadToHead(match.homeTeamId, match.awayTeamId)
+        const away = ensureHeadToHead(match.awayTeamId, match.homeTeamId)
+
+        home.goalsFor += match.homeScore
+        home.goalsAgainst += match.awayScore
+        away.goalsFor += match.awayScore
+        away.goalsAgainst += match.homeScore
+
+        if (match.homeScore > match.awayScore) {
+          home.points += 3
+        } else if (match.homeScore < match.awayScore) {
+          away.points += 3
+        } else {
+          home.points += 1
+          away.points += 1
+        }
+      }
+
+      const getHeadToHead = (clubId: number, opponentId: number): HeadToHeadEntry => {
+        return headToHead.get(clubId)?.get(opponentId) ?? { points: 0, goalsFor: 0, goalsAgainst: 0 }
+      }
+
+      rows.sort((left, right) => {
+        if (right.points !== left.points) return right.points - left.points
+
+        const leftDiff = left.goalsFor - left.goalsAgainst
+        const rightDiff = right.goalsFor - right.goalsAgainst
+        if (rightDiff !== leftDiff) return rightDiff - leftDiff
+
+        const leftVsRight = getHeadToHead(left.clubId, right.clubId)
+        const rightVsLeft = getHeadToHead(right.clubId, left.clubId)
+
+        if (rightVsLeft.points !== leftVsRight.points) return rightVsLeft.points - leftVsRight.points
+
+        const leftHeadDiff = leftVsRight.goalsFor - leftVsRight.goalsAgainst
+        const rightHeadDiff = rightVsLeft.goalsFor - rightVsLeft.goalsAgainst
+        if (rightHeadDiff !== leftHeadDiff) return rightHeadDiff - leftHeadDiff
+
+        if (rightVsLeft.goalsFor !== leftVsRight.goalsFor) return rightVsLeft.goalsFor - leftVsRight.goalsFor
+
+        return right.goalsFor - left.goalsFor
+      })
+
+      return reply.send({ ok: true, data: serializePrisma(rows) })
     })
 
     admin.get('/stats/player-season', async (request, reply) => {
@@ -1208,7 +1334,11 @@ export default async function (server: FastifyInstance) {
       const stats = await prisma.playerSeasonStats.findMany({
         where: { seasonId: resolvedSeasonId },
         include: { person: true, club: true },
-        orderBy: [{ goals: 'desc' }, { assists: 'desc' }, { matchesPlayed: 'desc' }]
+        orderBy: [
+          { goals: 'desc' },
+          { matchesPlayed: 'asc' },
+          { assists: 'desc' }
+        ]
       })
       return reply.send({ ok: true, data: stats })
     })

@@ -1,15 +1,74 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAdminStore } from '../../store/adminStore'
-import { ClubSeasonStats, PlayerCareerStats, PlayerSeasonStats } from '../../types'
+import { ClubSeasonStats, MatchSummary, PlayerCareerStats, PlayerSeasonStats } from '../../types'
 
 type StatView = 'standings' | 'scorers' | 'discipline' | 'career'
 
-const sortStandings = (rows: ClubSeasonStats[]) => {
-  return [...rows].sort((left, right) => {
+const sortStandings = (rows: ClubSeasonStats[], matches: MatchSummary[]) => {
+  const dataset = [...rows]
+  if (!dataset.length) return dataset
+
+  const seasonIds = new Set(dataset.map((row) => row.seasonId))
+  type HeadToHeadEntry = { points: number; goalsFor: number; goalsAgainst: number }
+  const headToHead = new Map<number, Map<number, HeadToHeadEntry>>()
+
+  const ensureHeadToHead = (clubId: number, opponentId: number): HeadToHeadEntry => {
+    let opponents = headToHead.get(clubId)
+    if (!opponents) {
+      opponents = new Map<number, HeadToHeadEntry>()
+      headToHead.set(clubId, opponents)
+    }
+    let record = opponents.get(opponentId)
+    if (!record) {
+      record = { points: 0, goalsFor: 0, goalsAgainst: 0 }
+      opponents.set(opponentId, record)
+    }
+    return record
+  }
+
+  for (const match of matches) {
+    if (match.status !== 'FINISHED') continue
+    if (!seasonIds.has(match.seasonId)) continue
+    const home = ensureHeadToHead(match.homeTeamId, match.awayTeamId)
+    const away = ensureHeadToHead(match.awayTeamId, match.homeTeamId)
+
+    home.goalsFor += match.homeScore
+    home.goalsAgainst += match.awayScore
+    away.goalsFor += match.awayScore
+    away.goalsAgainst += match.homeScore
+
+    if (match.homeScore > match.awayScore) {
+      home.points += 3
+    } else if (match.homeScore < match.awayScore) {
+      away.points += 3
+    } else {
+      home.points += 1
+      away.points += 1
+    }
+  }
+
+  const getHeadToHead = (clubId: number, opponentId: number): HeadToHeadEntry => {
+    return headToHead.get(clubId)?.get(opponentId) ?? { points: 0, goalsFor: 0, goalsAgainst: 0 }
+  }
+
+  return dataset.sort((left, right) => {
     if (right.points !== left.points) return right.points - left.points
-    const diffLeft = left.goalsFor - left.goalsAgainst
-    const diffRight = right.goalsFor - right.goalsAgainst
-    if (diffRight !== diffLeft) return diffRight - diffLeft
+
+    const leftDiff = left.goalsFor - left.goalsAgainst
+    const rightDiff = right.goalsFor - right.goalsAgainst
+    if (rightDiff !== leftDiff) return rightDiff - leftDiff
+
+    const leftVsRight = getHeadToHead(left.clubId, right.clubId)
+    const rightVsLeft = getHeadToHead(right.clubId, left.clubId)
+
+    if (rightVsLeft.points !== leftVsRight.points) return rightVsLeft.points - leftVsRight.points
+
+    const leftHeadDiff = leftVsRight.goalsFor - leftVsRight.goalsAgainst
+    const rightHeadDiff = rightVsLeft.goalsFor - rightVsLeft.goalsAgainst
+    if (rightHeadDiff !== leftHeadDiff) return rightHeadDiff - leftHeadDiff
+
+    if (rightVsLeft.goalsFor !== leftVsRight.goalsFor) return rightVsLeft.goalsFor - leftVsRight.goalsFor
+
     return right.goalsFor - left.goalsFor
   })
 }
@@ -17,16 +76,21 @@ const sortStandings = (rows: ClubSeasonStats[]) => {
 const sortScorers = (rows: PlayerSeasonStats[]) => {
   return [...rows].sort((left, right) => {
     if (right.goals !== left.goals) return right.goals - left.goals
-    if (right.assists !== left.assists) return right.assists - left.assists
-    return right.matchesPlayed - left.matchesPlayed
+    if (left.matchesPlayed !== right.matchesPlayed) return left.matchesPlayed - right.matchesPlayed
+    const leftName = `${left.person.lastName} ${left.person.firstName}`
+    const rightName = `${right.person.lastName} ${right.person.firstName}`
+    return leftName.localeCompare(rightName, 'ru')
   })
 }
 
 const sortDiscipline = (rows: PlayerSeasonStats[]) => {
-  return [...rows].sort((left, right) => {
+  return rows
+    .filter((row) => row.yellowCards > 0 || row.redCards > 0)
+    .sort((left, right) => {
     if (right.yellowCards !== left.yellowCards) return right.yellowCards - left.yellowCards
-    return right.redCards - left.redCards
-  })
+      if (right.redCards !== left.redCards) return right.redCards - left.redCards
+      return right.matchesPlayed - left.matchesPlayed
+    })
 }
 
 const sortCareer = (rows: PlayerCareerStats[]) => {
@@ -63,6 +127,7 @@ export const StatsTab = () => {
   }))
 
   const [activeView, setActiveView] = useState<StatView>('standings')
+  const [careerClubId, setCareerClubId] = useState<number | undefined>(undefined)
 
   // Одноразовая загрузка сезонов
   const bootRef = useRef(false)
@@ -108,10 +173,43 @@ export const StatsTab = () => {
     return data.seasons.filter((season) => season.competitionId === selectedCompetitionId)
   }, [data.seasons, selectedCompetitionId])
 
-  const standings = useMemo(() => sortStandings(data.clubStats), [data.clubStats])
+  const standings = useMemo(
+    () => sortStandings(data.clubStats, data.matches),
+    [data.clubStats, data.matches]
+  )
   const scorers = useMemo(() => sortScorers(data.playerStats), [data.playerStats])
   const discipline = useMemo(() => sortDiscipline(data.playerStats), [data.playerStats])
-  const career = useMemo(() => sortCareer(data.careerStats), [data.careerStats])
+  const careerSorted = useMemo(() => sortCareer(data.careerStats), [data.careerStats])
+  const career = useMemo(
+    () => (careerClubId ? careerSorted.filter((row) => row.clubId === careerClubId) : careerSorted),
+    [careerSorted, careerClubId]
+  )
+
+  const careerClubOptions = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const row of data.careerStats) {
+      map.set(row.clubId, row.club.shortName)
+    }
+    return Array.from(map.entries()).sort((left, right) => left[1].localeCompare(right[1], 'ru'))
+  }, [data.careerStats])
+
+  const finishedMatchesByClub = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const match of data.matches) {
+      if (selectedSeasonId && match.seasonId !== selectedSeasonId) continue
+      if (match.status !== 'FINISHED') continue
+      map.set(match.homeTeamId, (map.get(match.homeTeamId) ?? 0) + 1)
+      map.set(match.awayTeamId, (map.get(match.awayTeamId) ?? 0) + 1)
+    }
+    return map
+  }, [data.matches, selectedSeasonId])
+
+  useEffect(() => {
+    if (!careerClubId) return
+    if (!careerClubOptions.some(([id]) => id === careerClubId)) {
+      setCareerClubId(undefined)
+    }
+  }, [careerClubId, careerClubOptions])
 
   const isLoading = Boolean(loading.stats || loading.seasons)
 
@@ -202,7 +300,7 @@ export const StatsTab = () => {
         <section className="card">
           <header>
             <h4>Турнирная таблица</h4>
-            <p>Стандартная сортировка: очки, разница голов, забитые голы.</p>
+            <p>Сортировка: очки, разница голов, личные встречи.</p>
           </header>
           <table className="data-table">
             <thead>
@@ -211,6 +309,7 @@ export const StatsTab = () => {
                 <th>Клуб</th>
                 <th>Очки</th>
                 <th>Победы</th>
+                <th>Ничьи</th>
                 <th>Поражения</th>
                 <th>Голы</th>
               </tr>
@@ -222,6 +321,15 @@ export const StatsTab = () => {
                   <td>{row.club.shortName}</td>
                   <td>{row.points}</td>
                   <td>{row.wins}</td>
+                  <td>
+                    {(() => {
+                      const totalMatches = finishedMatchesByClub.get(row.clubId)
+                      if (totalMatches !== undefined) {
+                        return Math.max(0, totalMatches - row.wins - row.losses)
+                      }
+                      return Math.max(0, row.points - row.wins * 3)
+                    })()}
+                  </td>
                   <td>{row.losses}</td>
                   <td>
                     {row.goalsFor}:{row.goalsAgainst} ({row.goalsFor - row.goalsAgainst})
@@ -238,7 +346,7 @@ export const StatsTab = () => {
         <section className="card">
           <header>
             <h4>Список бомбардиров</h4>
-            <p>Ассисты учитываются при равенстве забитых голов.</p>
+            <p>При равенстве голов выше игрок с меньшим количеством матчей.</p>
           </header>
           <table className="data-table">
             <thead>
@@ -247,10 +355,7 @@ export const StatsTab = () => {
                 <th>Игрок</th>
                 <th>Клуб</th>
                 <th>Голы</th>
-                <th>Пасы</th>
                 <th>Матчи</th>
-                <th>ЖК</th>
-                <th>КК</th>
               </tr>
             </thead>
             <tbody>
@@ -260,10 +365,7 @@ export const StatsTab = () => {
                   <td>{row.person.lastName} {row.person.firstName}</td>
                   <td>{row.club.shortName}</td>
                   <td>{row.goals}</td>
-                  <td>{row.assists}</td>
                   <td>{row.matchesPlayed}</td>
-                  <td>{row.yellowCards}</td>
-                  <td>{row.redCards}</td>
                 </tr>
               ))}
             </tbody>
@@ -310,6 +412,20 @@ export const StatsTab = () => {
             <h4>Карьера игроков</h4>
             <p>Показатель учитывает суммарные голы и количество матчей.</p>
           </header>
+          <label className="stacked" style={{ maxWidth: 260 }}>
+            Клуб
+            <select
+              value={careerClubId ?? ''}
+              onChange={(event) => setCareerClubId(event.target.value ? Number(event.target.value) : undefined)}
+            >
+              <option value="">Все клубы</option>
+              {careerClubOptions.map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
           <table className="data-table">
             <thead>
               <tr>
