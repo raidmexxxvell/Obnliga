@@ -307,11 +307,11 @@ export const StatsTab = () => {
               <tr>
                 <th>#</th>
                 <th>Клуб</th>
-                <th>Очки</th>
                 <th>Победы</th>
                 <th>Ничьи</th>
                 <th>Поражения</th>
                 <th>Голы</th>
+                <th>Очки</th>
               </tr>
             </thead>
             <tbody>
@@ -319,7 +319,6 @@ export const StatsTab = () => {
                 <tr key={`${row.seasonId}-${row.clubId}`}>
                   <td>{index + 1}</td>
                   <td>{row.club.shortName}</td>
-                  <td>{row.points}</td>
                   <td>{row.wins}</td>
                   <td>
                     {(() => {
@@ -334,6 +333,7 @@ export const StatsTab = () => {
                   <td>
                     {row.goalsFor}:{row.goalsAgainst} ({row.goalsFor - row.goalsAgainst})
                   </td>
+                  <td>{row.points}</td>
                 </tr>
               ))}
             </tbody>
@@ -354,8 +354,8 @@ export const StatsTab = () => {
                 <th>#</th>
                 <th>Игрок</th>
                 <th>Клуб</th>
-                <th>Голы</th>
                 <th>Матчи</th>
+                <th>Голы</th>
               </tr>
             </thead>
             <tbody>
@@ -364,8 +364,8 @@ export const StatsTab = () => {
                   <td>{index + 1}</td>
                   <td>{row.person.lastName} {row.person.firstName}</td>
                   <td>{row.club.shortName}</td>
-                  <td>{row.goals}</td>
                   <td>{row.matchesPlayed}</td>
+                  <td>{row.goals}</td>
                 </tr>
               ))}
             </tbody>
@@ -432,11 +432,11 @@ export const StatsTab = () => {
                 <th>#</th>
                 <th>Игрок</th>
                 <th>Клуб</th>
-                <th>Голы</th>
-                <th>Пасы</th>
                 <th>Матчи</th>
                 <th>ЖК</th>
                 <th>КК</th>
+                <th>Пасы</th>
+                <th>Голы</th>
               </tr>
             </thead>
             <tbody>
@@ -445,11 +445,11 @@ export const StatsTab = () => {
                   <td>{index + 1}</td>
                   <td>{row.person.lastName} {row.person.firstName}</td>
                   <td>{row.club.shortName}</td>
-                  <td>{row.totalGoals}</td>
-                  <td>{row.totalAssists}</td>
                   <td>{row.totalMatches}</td>
                   <td>{row.yellowCards}</td>
                   <td>{row.redCards}</td>
+                  <td>{row.totalAssists}</td>
+                  <td>{row.totalGoals}</td>
                 </tr>
               ))}
             </tbody>

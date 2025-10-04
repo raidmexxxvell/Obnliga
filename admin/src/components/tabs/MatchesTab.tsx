@@ -681,6 +681,19 @@ export const MatchesTab = () => {
     })
   }
 
+  const setMatchScore = (match: MatchSummary, key: 'homeScore' | 'awayScore', value: number | '') => {
+    setMatchUpdateForms((forms) => {
+      const current = forms[match.id] ?? buildMatchUpdateForm(match)
+      return {
+        ...forms,
+        [match.id]: {
+          ...current,
+          [key]: value === '' ? '' : Math.max(0, value)
+        }
+      }
+    })
+  }
+
   const setMatchStatus = (match: MatchSummary, status: MatchSummary['status']) => {
     setMatchUpdateForms((forms) => {
       const current = forms[match.id] ?? buildMatchUpdateForm(match)
@@ -946,6 +959,35 @@ export const MatchesTab = () => {
     ? selectedMatchTeams.map((team) => team.shortName).join(' vs ')
     : ''
   const selectedMatchForm = selectedMatch ? matchUpdateForms[selectedMatch.id] ?? buildMatchUpdateForm(selectedMatch) : null
+  const selectedMatchStatus: MatchSummary['status'] =
+    selectedMatchForm?.status ?? selectedMatch?.status ?? 'SCHEDULED'
+  const isSelectedMatchLive = selectedMatchStatus === 'LIVE'
+  const homeScoreForControls =
+    typeof selectedMatchForm?.homeScore === 'number'
+      ? selectedMatchForm.homeScore
+      : typeof selectedMatch?.homeScore === 'number'
+        ? selectedMatch.homeScore
+        : 0
+  const awayScoreForControls =
+    typeof selectedMatchForm?.awayScore === 'number'
+      ? selectedMatchForm.awayScore
+      : typeof selectedMatch?.awayScore === 'number'
+        ? selectedMatch.awayScore
+        : 0
+  const homeScoreInputValue: number | '' = selectedMatchForm
+    ? selectedMatchForm.homeScore === ''
+      ? ''
+      : selectedMatchForm.homeScore
+    : typeof selectedMatch?.homeScore === 'number'
+      ? selectedMatch.homeScore
+      : ''
+  const awayScoreInputValue: number | '' = selectedMatchForm
+    ? selectedMatchForm.awayScore === ''
+      ? ''
+      : selectedMatchForm.awayScore
+    : typeof selectedMatch?.awayScore === 'number'
+      ? selectedMatch.awayScore
+      : ''
 
   return (
     <>
@@ -1690,9 +1732,18 @@ export const MatchesTab = () => {
                         const home = availableClubs.find((club) => club.id === match.homeTeamId)
                         const away = availableClubs.find((club) => club.id === match.awayTeamId)
                         const form = matchUpdateForms[match.id] ?? buildMatchUpdateForm(match)
-                        const homeScoreValue = typeof form.homeScore === 'number' ? form.homeScore : match.homeScore
-                        const awayScoreValue = typeof form.awayScore === 'number' ? form.awayScore : match.awayScore
-                        const isLive = form.status === 'LIVE'
+                        const resolvedHomeScore =
+                          form.homeScore === '' || typeof form.homeScore !== 'number'
+                            ? match.homeScore
+                            : form.homeScore
+                        const resolvedAwayScore =
+                          form.awayScore === '' || typeof form.awayScore !== 'number'
+                            ? match.awayScore
+                            : form.awayScore
+                        const homeScoreDisplay =
+                          typeof resolvedHomeScore === 'number' ? resolvedHomeScore : '—'
+                        const awayScoreDisplay =
+                          typeof resolvedAwayScore === 'number' ? resolvedAwayScore : '—'
                         return (
                           <tr key={match.id} className={selectedMatchId === match.id ? 'active-row' : undefined}>
                             <td>{new Date(match.matchDateTime).toLocaleString('ru-RU')}</td>
@@ -1707,100 +1758,15 @@ export const MatchesTab = () => {
                               </div>
                             </td>
                             <td>
-                              <div className="score-pair">
-                                <div className={`score-control${isLive ? ' live' : ''}`}>
-                                  {isLive ? (
-                                    <button
-                                      type="button"
-                                      className="score-button"
-                                      onClick={() => adjustMatchScore(match, 'homeScore', -1)}
-                                      disabled={homeScoreValue <= 0}
-                                      aria-label="Уменьшить счёт хозяев"
-                                    >
-                                      −
-                                    </button>
-                                  ) : null}
-                                  <input
-                                    type="number"
-                                    value={form.homeScore === '' ? '' : form.homeScore}
-                                    onChange={(event) =>
-                                      setMatchUpdateForms((forms) => {
-                                        const current = forms[match.id] ?? buildMatchUpdateForm(match)
-                                        return {
-                                          ...forms,
-                                          [match.id]: {
-                                            ...current,
-                                            homeScore: event.target.value === '' ? '' : Number(event.target.value)
-                                          }
-                                        }
-                                      })
-                                    }
-                                    className="score-input"
-                                    min={0}
-                                    aria-label="Счёт хозяев"
-                                  />
-                                  {isLive ? (
-                                    <button
-                                      type="button"
-                                      className="score-button"
-                                      onClick={() => adjustMatchScore(match, 'homeScore', 1)}
-                                      aria-label="Увеличить счёт хозяев"
-                                    >
-                                      +
-                                    </button>
-                                  ) : null}
-                                </div>
+                              <div className="score-display">
+                                <span>{homeScoreDisplay}</span>
                                 <span className="score-separator">:</span>
-                                <div className={`score-control${isLive ? ' live' : ''}`}>
-                                  {isLive ? (
-                                    <button
-                                      type="button"
-                                      className="score-button"
-                                      onClick={() => adjustMatchScore(match, 'awayScore', -1)}
-                                      disabled={awayScoreValue <= 0}
-                                      aria-label="Уменьшить счёт гостей"
-                                    >
-                                      −
-                                    </button>
-                                  ) : null}
-                                  <input
-                                    type="number"
-                                    value={form.awayScore === '' ? '' : form.awayScore}
-                                    onChange={(event) =>
-                                      setMatchUpdateForms((forms) => {
-                                        const current = forms[match.id] ?? buildMatchUpdateForm(match)
-                                        return {
-                                          ...forms,
-                                          [match.id]: {
-                                            ...current,
-                                            awayScore: event.target.value === '' ? '' : Number(event.target.value)
-                                          }
-                                        }
-                                      })
-                                    }
-                                    className="score-input"
-                                    min={0}
-                                    aria-label="Счёт гостей"
-                                  />
-                                  {isLive ? (
-                                    <button
-                                      type="button"
-                                      className="score-button"
-                                      onClick={() => adjustMatchScore(match, 'awayScore', 1)}
-                                      aria-label="Увеличить счёт гостей"
-                                    >
-                                      +
-                                    </button>
-                                  ) : null}
-                                </div>
+                                <span>{awayScoreDisplay}</span>
                               </div>
                             </td>
                             <td className="table-actions">
                               <button type="button" onClick={() => handleMatchSelect(match)}>
                                 Детали
-                              </button>
-                              <button type="button" onClick={() => handleMatchUpdate(match, form)}>
-                                Сохранить
                               </button>
                               <button type="button" className="danger" onClick={() => handleMatchDelete(match)}>
                                 Удал.
@@ -1852,7 +1818,7 @@ export const MatchesTab = () => {
                 <label>
                   Статус
                   <select
-                    value={selectedMatchForm?.status ?? selectedMatch.status}
+                    value={selectedMatchStatus}
                     onChange={(event) => {
                       if (selectedMatch) {
                         setMatchStatus(selectedMatch, event.target.value as MatchSummary['status'])
@@ -1866,8 +1832,100 @@ export const MatchesTab = () => {
                     ))}
                   </select>
                 </label>
+
+                <label className="stacked">
+                  Счёт
+                  <div className="score-editor">
+                    <div className={`score-control${isSelectedMatchLive ? ' live' : ''}`}>
+                      {isSelectedMatchLive && selectedMatch ? (
+                        <button
+                          type="button"
+                          className="score-button"
+                          onClick={() => adjustMatchScore(selectedMatch, 'homeScore', -1)}
+                          disabled={homeScoreForControls <= 0}
+                          aria-label="Уменьшить счёт хозяев"
+                        >
+                          −
+                        </button>
+                      ) : null}
+                      <input
+                        type="number"
+                        value={homeScoreInputValue}
+                        onChange={(event) => {
+                          if (!selectedMatch) return
+                          const raw = event.target.value
+                          if (raw === '') {
+                            setMatchScore(selectedMatch, 'homeScore', '')
+                          } else {
+                            const numeric = Number(raw)
+                            if (!Number.isNaN(numeric)) {
+                              setMatchScore(selectedMatch, 'homeScore', numeric)
+                            }
+                          }
+                        }}
+                        className="score-input"
+                        min={0}
+                        aria-label="Счёт хозяев"
+                      />
+                      {isSelectedMatchLive && selectedMatch ? (
+                        <button
+                          type="button"
+                          className="score-button"
+                          onClick={() => adjustMatchScore(selectedMatch, 'homeScore', 1)}
+                          aria-label="Увеличить счёт хозяев"
+                        >
+                          +
+                        </button>
+                      ) : null}
+                    </div>
+                    <span className="score-separator">:</span>
+                    <div className={`score-control${isSelectedMatchLive ? ' live' : ''}`}>
+                      {isSelectedMatchLive && selectedMatch ? (
+                        <button
+                          type="button"
+                          className="score-button"
+                          onClick={() => adjustMatchScore(selectedMatch, 'awayScore', -1)}
+                          disabled={awayScoreForControls <= 0}
+                          aria-label="Уменьшить счёт гостей"
+                        >
+                          −
+                        </button>
+                      ) : null}
+                      <input
+                        type="number"
+                        value={awayScoreInputValue}
+                        onChange={(event) => {
+                          if (!selectedMatch) return
+                          const raw = event.target.value
+                          if (raw === '') {
+                            setMatchScore(selectedMatch, 'awayScore', '')
+                          } else {
+                            const numeric = Number(raw)
+                            if (!Number.isNaN(numeric)) {
+                              setMatchScore(selectedMatch, 'awayScore', numeric)
+                            }
+                          }
+                        }}
+                        className="score-input"
+                        min={0}
+                        aria-label="Счёт гостей"
+                      />
+                      {isSelectedMatchLive && selectedMatch ? (
+                        <button
+                          type="button"
+                          className="score-button"
+                          onClick={() => adjustMatchScore(selectedMatch, 'awayScore', 1)}
+                          aria-label="Увеличить счёт гостей"
+                        >
+                          +
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </label>
+
                 <button className="button-secondary" type="submit">
-                  Сохранить статус
+                  Сохранить изменения
                 </button>
               </form>
 

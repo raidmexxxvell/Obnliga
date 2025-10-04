@@ -406,6 +406,7 @@
   color: var(--neon-cyan);
   background: rgba(0, 240, 255, 0.06);
   border-bottom-color: rgba(0, 240, 255, 0.14);
+  text-align: center;
 }
 
 .empty-row {
@@ -809,6 +810,25 @@
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.score-display {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 74px;
+  font-weight: 600;
+  font-size: 18px;
+  color: var(--text-primary);
+  letter-spacing: 0.4px;
+}
+
+.score-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
 }
 
 .score-control {

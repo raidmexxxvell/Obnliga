@@ -154,6 +154,18 @@ const registerLineupRouteGroup = (
   basePath: string,
   credentialsGetter: CredentialsGetter
 ) => {
+  server.get(basePath, async (_request, reply) => {
+    return reply.send({
+      ok: true,
+      service: 'lineup-portal',
+      endpoints: {
+        login: `${basePath}/login`,
+        matches: `${basePath}/matches`,
+        roster: `${basePath}/matches/:matchId/roster`
+      }
+    })
+  })
+
   server.post(`${basePath}/login`, async (request, reply) => {
     const body = request.body as LineupLoginBody | undefined
     const { login, password } = credentialsGetter()
