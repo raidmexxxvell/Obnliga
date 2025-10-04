@@ -95,7 +95,19 @@ type SeasonAutomationFormState = {
 const matchStatuses: MatchSummary['status'][] = ['SCHEDULED', 'LIVE', 'FINISHED', 'POSTPONED']
 const seriesStatuses: MatchSeries['seriesStatus'][] = ['IN_PROGRESS', 'FINISHED']
 const lineupRoles: Array<LineupFormState['role']> = ['STARTER', 'SUBSTITUTE']
+const lineupRoleLabels: Record<LineupFormState['role'], string> = {
+  STARTER: 'В основе',
+  SUBSTITUTE: 'Запасной'
+}
+
 const eventTypes: Array<EventFormState['eventType']> = ['GOAL', 'YELLOW_CARD', 'RED_CARD', 'SUB_IN', 'SUB_OUT']
+const eventTypeLabels: Record<EventFormState['eventType'], string> = {
+  GOAL: 'Гол',
+  YELLOW_CARD: 'Жёлтая карточка',
+  RED_CARD: 'Красная карточка',
+  SUB_IN: 'Замена (вышел)',
+  SUB_OUT: 'Замена (ушёл)'
+}
 
 const playoffBestOfOptions = [3, 5, 7]
 
@@ -145,6 +157,14 @@ const defaultEventForm: EventFormState = {
   minute: '',
   eventType: 'GOAL',
   relatedPlayerId: ''
+}
+
+type EventPlayerOption = {
+  personId: number
+  clubId: number
+  person: Person
+  club: Club
+  source: 'lineup' | 'roster'
 }
 
 const defaultAutomationForm: SeasonAutomationFormState = {
@@ -239,6 +259,7 @@ export const MatchesTab = () => {
 
   const [matchForm, setMatchForm] = useState<MatchFormState>(defaultMatchForm)
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null)
+  const [isMatchModalOpen, setMatchModalOpen] = useState(false)
   const [matchUpdateForms, setMatchUpdateForms] = useState<Record<string, MatchUpdateFormState>>({})
 
   const [lineupForm, setLineupForm] = useState<LineupFormState>(defaultLineupForm)
@@ -605,11 +626,19 @@ export const MatchesTab = () => {
 
   const handleMatchSelect = (match: MatchSummary) => {
     setSelectedMatchId(match.id)
+    setMatchModalOpen(true)
     setMatchUpdateForms((forms) => ({
       ...forms,
       [match.id]: buildMatchUpdateForm(match)
     }))
     void loadMatchDetails(match.id)
+  }
+
+  const closeMatchModal = () => {
+    setMatchModalOpen(false)
+    setSelectedMatchId(null)
+    setMatchLineup([])
+    setMatchEvents([])
   }
 
   const handleMatchUpdate = async (match: MatchSummary, form: MatchUpdateFormState) => {
@@ -650,6 +679,12 @@ export const MatchesTab = () => {
     setEventForm(defaultEventForm)
   }, [selectedMatchId])
 
+  useEffect(() => {
+    if (!selectedMatchId) {
+      setMatchModalOpen(false)
+    }
+  }, [selectedMatchId])
+
   const handleMatchDelete = async (match: MatchSummary) => {
     const seasonId = ensureSeasonSelected()
     if (!seasonId) return
@@ -658,6 +693,7 @@ export const MatchesTab = () => {
       await fetchMatches(seasonId)
     }, 'Матч удалён')
     if (selectedMatchId === match.id) {
+      setMatchModalOpen(false)
       setSelectedMatchId(null)
       setMatchLineup([])
       setMatchEvents([])
@@ -733,16 +769,6 @@ export const MatchesTab = () => {
     return map
   }, [seasonRosterEntries])
 
-  const lineupPlayersPool = useMemo(() => {
-    const unique = new Map<number, MatchLineupEntry>()
-    for (const entry of matchLineup) {
-      if (!unique.has(entry.personId)) {
-        unique.set(entry.personId, entry)
-      }
-    }
-    return Array.from(unique.values())
-  }, [matchLineup])
-
   const selectedMatch = useMemo(() => {
     if (!selectedMatchId) return null
     return seasonMatches.find((match) => match.id === selectedMatchId) ?? null
@@ -755,10 +781,38 @@ export const MatchesTab = () => {
     return [home, away].filter(Boolean) as Club[]
   }, [availableClubs, selectedMatch])
 
+  const matchPlayersPool = useMemo<EventPlayerOption[]>(() => {
+    if (!selectedMatch) return []
+    const pool = new Map<number, EventPlayerOption>()
+
+    const pushOption = (personId: number, clubId: number, person: Person, club: Club, source: EventPlayerOption['source']) => {
+      if (!pool.has(personId)) {
+        pool.set(personId, { personId, clubId, person, club, source })
+      }
+    }
+
+    for (const entry of matchLineup) {
+      pushOption(entry.personId, entry.clubId, entry.person, entry.club, 'lineup')
+    }
+
+    selectedMatchTeams.forEach((club) => {
+      const roster = rosterByClub.get(club.id) ?? []
+      roster.forEach((entry) => {
+        pushOption(entry.personId, entry.clubId, entry.person, entry.club, 'roster')
+      })
+    })
+
+    return Array.from(pool.values()).sort((a, b) => {
+      const last = a.person.lastName.localeCompare(b.person.lastName, 'ru')
+      if (last !== 0) return last
+      return a.person.firstName.localeCompare(b.person.firstName, 'ru')
+    })
+  }, [matchLineup, rosterByClub, selectedMatch, selectedMatchTeams])
+
   const eventPlayerOptions = useMemo(() => {
-    if (!eventForm.teamId) return lineupPlayersPool
-    return lineupPlayersPool.filter((entry) => entry.clubId === eventForm.teamId)
-  }, [eventForm.teamId, lineupPlayersPool])
+    if (!eventForm.teamId) return matchPlayersPool
+    return matchPlayersPool.filter((entry) => entry.clubId === eventForm.teamId)
+  }, [eventForm.teamId, matchPlayersPool])
   const currentClubRoster = useMemo(() => {
     if (!lineupForm.clubId) return []
     return rosterByClub.get(lineupForm.clubId) ?? []
@@ -791,7 +845,7 @@ export const MatchesTab = () => {
 
   useEffect(() => {
     setEventForm((form) => {
-      const available = new Set(lineupPlayersPool.map((entry) => entry.personId))
+      const available = new Set(matchPlayersPool.map((entry) => entry.personId))
       const updates: Partial<EventFormState> = {}
       if (form.playerId && !available.has(form.playerId)) {
         updates.playerId = ''
@@ -802,7 +856,7 @@ export const MatchesTab = () => {
       if (!Object.keys(updates).length) return form
       return { ...form, ...updates }
     })
-  }, [lineupPlayersPool])
+  }, [matchPlayersPool])
 
   const hasUnfinishedMatches = seasonMatches.some((match) => match.status !== 'FINISHED')
   const playoffFormatEnabled = selectedSeason?.competition.seriesFormat === 'BEST_OF_N'
@@ -825,8 +879,21 @@ export const MatchesTab = () => {
     selectedSeasonId
   ])
 
+  const formattedMatchDate = selectedMatch
+    ? new Date(selectedMatch.matchDateTime).toLocaleString('ru-RU', {
+        day: '2-digit',
+        month: 'long',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    : ''
+  const matchTeamsLabel = selectedMatchTeams.length
+    ? selectedMatchTeams.map((team) => team.shortName).join(' vs ')
+    : ''
+
   return (
-    <div className="tab-sections">
+    <>
+      <div className="tab-sections">
       <header className="tab-header">
         <div>
           <h3>Сезоны и расписание</h3>
@@ -1697,9 +1764,25 @@ export const MatchesTab = () => {
               </tbody>
             </table>
           </div>
-          {selectedMatchId ? (
-            <div className="match-details">
-              <h5>Детали матча</h5>
+        </article>
+      </section>
+      </div>
+      {isMatchModalOpen && selectedMatchId && selectedMatch ? (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal-card match-modal">
+            <header className="modal-header">
+              <div>
+                <h5>Детали матча</h5>
+                <p>
+                  {formattedMatchDate}
+                  {matchTeamsLabel ? ` · ${matchTeamsLabel}` : ''}
+                </p>
+              </div>
+              <button type="button" className="button-ghost" onClick={closeMatchModal}>
+                Закрыть
+              </button>
+            </header>
+            <div className="modal-body">
               <form className="stacked" onSubmit={handleLineupSubmit}>
                 <h6>Заявка на матч</h6>
                 <div className="grid-two">
@@ -1743,7 +1826,7 @@ export const MatchesTab = () => {
                     <select value={lineupForm.role} onChange={(event) => setLineupForm((form) => ({ ...form, role: event.target.value as LineupFormState['role'] }))}>
                       {lineupRoles.map((role) => (
                         <option key={role} value={role}>
-                          {role}
+                          {lineupRoleLabels[role]}
                         </option>
                       ))}
                     </select>
@@ -1765,7 +1848,7 @@ export const MatchesTab = () => {
                     {matchLineup.map((entry) => (
                       <li key={`${entry.matchId}-${entry.personId}`}>
                         <span>
-                          {entry.role === 'STARTER' ? '⏱️' : '↩️'} {entry.person.lastName} {entry.person.firstName} ({entry.club.shortName})
+                          {entry.role === 'STARTER' ? '⏱️' : '↩️'} {entry.person.lastName} {entry.person.firstName} ({entry.club.shortName}) — {lineupRoleLabels[entry.role]}
                         </span>
                         <span className="list-actions">
                           <button type="button" className="danger" onClick={() => handleLineupRemove(entry)}>
@@ -1814,6 +1897,7 @@ export const MatchesTab = () => {
                         {eventPlayerOptions.map((entry) => (
                           <option key={entry.personId} value={entry.personId}>
                             {entry.person.lastName} {entry.person.firstName} ({entry.club.shortName})
+                            {entry.source === 'roster' ? ' · сезонная заявка' : ''}
                           </option>
                         ))}
                       </select>
@@ -1837,7 +1921,7 @@ export const MatchesTab = () => {
                         >
                           {eventTypes.map((type) => (
                             <option key={type} value={type}>
-                              {type}
+                              {eventTypeLabels[type]}
                             </option>
                           ))}
                         </select>
@@ -1848,12 +1932,13 @@ export const MatchesTab = () => {
                       <select
                         value={eventForm.relatedPlayerId}
                         onChange={(event) => setEventForm((form) => ({ ...form, relatedPlayerId: event.target.value ? Number(event.target.value) : '' }))}
-                        disabled={!selectedMatch || lineupPlayersPool.length === 0}
+                        disabled={!selectedMatch || matchPlayersPool.length === 0}
                       >
                         <option value="">{selectedMatch ? '—' : 'Выберите матч'}</option>
-                        {lineupPlayersPool.map((entry) => (
+                        {matchPlayersPool.map((entry) => (
                           <option key={entry.personId} value={entry.personId}>
                             {entry.person.lastName} {entry.person.firstName} ({entry.club.shortName})
+                            {entry.source === 'roster' ? ' · сезонная заявка' : ''}
                           </option>
                         ))}
                       </select>
@@ -1866,7 +1951,8 @@ export const MatchesTab = () => {
                     {matchEvents.map((entry) => (
                       <li key={entry.id}>
                         <span>
-                          {entry.minute}' {entry.eventType} — {entry.player.lastName} ({entry.team.shortName})
+                          {entry.minute}' {eventTypeLabels[entry.eventType]} — {entry.player.lastName} {entry.player.firstName} ({entry.team.shortName})
+                          {entry.relatedPerson ? ` · ассист: ${entry.relatedPerson.lastName} ${entry.relatedPerson.firstName}` : ''}
                         </span>
                         <span className="list-actions">
                           <button type="button" className="danger" onClick={() => handleEventDelete(entry)}>
@@ -1879,9 +1965,9 @@ export const MatchesTab = () => {
                 </div>
               </div>
             </div>
-          ) : null}
-        </article>
-      </section>
-    </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   )
 }

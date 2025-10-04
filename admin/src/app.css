@@ -398,6 +398,78 @@
   gap: 6px;
 }
 
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 10, 20, 0.78);
+  backdrop-filter: blur(18px);
+  padding: 24px;
+  z-index: 1000;
+}
+
+.modal-card {
+  width: min(960px, 100%);
+  border-radius: 20px;
+  background: rgba(10, 16, 28, 0.92);
+  border: 1px solid rgba(0, 240, 255, 0.24);
+  box-shadow: 0 28px 70px rgba(2, 6, 18, 0.68);
+  display: flex;
+  flex-direction: column;
+  max-height: min(92vh, 820px);
+}
+
+.match-modal .modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 24px 28px 12px 28px;
+}
+
+.match-modal .modal-header h5 {
+  margin: 0 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.match-modal .modal-header p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.match-modal .modal-body {
+  padding: 0 28px 28px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+}
+
+.match-modal .split-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+.match-modal .list {
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.match-modal .list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.match-modal .list::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.24);
+  border-radius: 999px;
+}
+
 .table-actions button {
   border: none;
   border-radius: 8px;
