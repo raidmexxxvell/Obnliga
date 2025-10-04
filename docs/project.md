@@ -18,6 +18,8 @@
 
 - Добавлена модель `User` и базовый flow аутентификации через Telegram WebApp (server-side `initData` verification, JWT issuance). Файлы: `backend/src/routes/authRoutes.ts`, `backend/src/routes/userRoutes.ts`, `frontend/src/Profile.tsx`.
 - Добавлена prototype реализация realtime: Fastify WebSocket endpoint + Redis pub/sub glue (`backend/src/realtime/index.ts`) и минимальный клиент `frontend/src/wsClient.ts`. Для локальной отладки необходим Redis (см. `docs/prisma.md` и `docs/dev-setup.md`).
+- Админ-панель матчей получила live-управление счётом (кнопки `+/-`, авто-обнуление при переходе в статус `LIVE`) и ограничение выбора игроков заявкой сезона.
+- Во фронтенде добавлен временный портал `/lineup` для капитанов команд, позволяющий отметить состав перед матчем (temporary stub до получения контекста MCP).
 
 Проверка правил — ОК
 1) Прочитаны `docs/roadmap.md`, `audit/mcp-context7-summary.md` и `docs/dev-setup.md`.
@@ -35,6 +37,8 @@
 - Frontend
   - `src/api/etag.ts` — fetch wrapper (план)
   - `src/store/*` — store façade (matchesStore, userStore, shopStore, realtimeStore)
+  - `admin/src/components/tabs/MatchesTab.tsx` — live-контролы счёта и фильтрация игроков
+  - `frontend/src/LineupPortal.tsx`, `frontend/src/main.tsx` — портал подтверждения составов (temporary stub)
 
 Влияние изменений на сеть / кэш / WS
 - ETag middleware работает: клиент отправляет If-None-Match, сервер возвращает 304 при совпадении, экономит трафик ✅

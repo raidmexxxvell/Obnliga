@@ -17,17 +17,22 @@ const sortStandings = (rows: ClubSeasonStats[]) => {
 const sortScorers = (rows: PlayerSeasonStats[]) => {
   return [...rows].sort((left, right) => {
     if (right.goals !== left.goals) return right.goals - left.goals
-    return right.assists - left.assists
+    if (right.assists !== left.assists) return right.assists - left.assists
+    return right.matchesPlayed - left.matchesPlayed
   })
 }
 
 const sortDiscipline = (rows: PlayerSeasonStats[]) => {
-  return [...rows].sort((left, right) => right.yellowCards - left.yellowCards)
+  return [...rows].sort((left, right) => {
+    if (right.yellowCards !== left.yellowCards) return right.yellowCards - left.yellowCards
+    return right.redCards - left.redCards
+  })
 }
 
 const sortCareer = (rows: PlayerCareerStats[]) => {
   return [...rows].sort((left, right) => {
     if (right.totalGoals !== left.totalGoals) return right.totalGoals - left.totalGoals
+    if (right.totalAssists !== left.totalAssists) return right.totalAssists - left.totalAssists
     return right.totalMatches - left.totalMatches
   })
 }
@@ -36,8 +41,10 @@ export const StatsTab = () => {
   const {
     token,
     data,
+    selectedCompetitionId,
     selectedSeasonId,
     setSelectedSeason,
+    setSelectedCompetition,
     fetchSeasons,
     fetchStats,
     loading,
@@ -45,8 +52,10 @@ export const StatsTab = () => {
   } = useAdminStore((state) => ({
     token: state.token,
     data: state.data,
+    selectedCompetitionId: state.selectedCompetitionId,
     selectedSeasonId: state.selectedSeasonId,
     setSelectedSeason: state.setSelectedSeason,
+    setSelectedCompetition: state.setSelectedCompetition,
     fetchSeasons: state.fetchSeasons,
     fetchStats: state.fetchStats,
     loading: state.loading,
@@ -73,6 +82,31 @@ export const StatsTab = () => {
     () => data.seasons.find((season) => season.id === selectedSeasonId),
     [data.seasons, selectedSeasonId]
   )
+
+  const competitionOptions = useMemo(() => {
+    const map = new Map<number, { id: number; name: string }>()
+    for (const season of data.seasons) {
+      if (!map.has(season.competition.id)) {
+        map.set(season.competition.id, {
+          id: season.competition.id,
+          name: season.competition.name
+        })
+      }
+    }
+    return Array.from(map.values()).sort((left, right) => left.name.localeCompare(right.name, 'ru'))
+  }, [data.seasons])
+
+  useEffect(() => {
+    if (!competitionOptions.length || !token) return
+    if (!selectedCompetitionId) {
+      setSelectedCompetition(competitionOptions[0]?.id)
+    }
+  }, [competitionOptions, selectedCompetitionId, setSelectedCompetition, token])
+
+  const seasonsForCompetition = useMemo(() => {
+    if (!selectedCompetitionId) return data.seasons
+    return data.seasons.filter((season) => season.competitionId === selectedCompetitionId)
+  }, [data.seasons, selectedCompetitionId])
 
   const standings = useMemo(() => sortStandings(data.clubStats), [data.clubStats])
   const scorers = useMemo(() => sortScorers(data.playerStats), [data.playerStats])
@@ -105,13 +139,28 @@ export const StatsTab = () => {
             <p>Показываются только доступные статистические показатели.</p>
           </header>
           <label className="stacked">
+            Турнир
+            <div className="chip-row">
+              {competitionOptions.map((competition) => (
+                <button
+                  key={competition.id}
+                  type="button"
+                  className={selectedCompetitionId === competition.id ? 'chip active' : 'chip'}
+                  onClick={() => setSelectedCompetition(competition.id)}
+                >
+                  {competition.name}
+                </button>
+              ))}
+            </div>
+          </label>
+          <label className="stacked">
             Сезон
             <select
               value={selectedSeasonId ?? ''}
               onChange={(event) => setSelectedSeason(event.target.value ? Number(event.target.value) : undefined)}
             >
               <option value="">—</option>
-              {data.seasons.map((season) => (
+              {seasonsForCompetition.map((season) => (
                 <option key={season.id} value={season.id}>
                   {season.name} ({season.competition.name})
                 </option>
@@ -199,6 +248,9 @@ export const StatsTab = () => {
                 <th>Клуб</th>
                 <th>Голы</th>
                 <th>Пасы</th>
+                <th>Матчи</th>
+                <th>ЖК</th>
+                <th>КК</th>
               </tr>
             </thead>
             <tbody>
@@ -209,6 +261,9 @@ export const StatsTab = () => {
                   <td>{row.club.shortName}</td>
                   <td>{row.goals}</td>
                   <td>{row.assists}</td>
+                  <td>{row.matchesPlayed}</td>
+                  <td>{row.yellowCards}</td>
+                  <td>{row.redCards}</td>
                 </tr>
               ))}
             </tbody>
@@ -230,6 +285,7 @@ export const StatsTab = () => {
                 <th>Игрок</th>
                 <th>Клуб</th>
                 <th>Жёлтые карточки</th>
+                <th>Красные карточки</th>
               </tr>
             </thead>
             <tbody>
@@ -239,6 +295,7 @@ export const StatsTab = () => {
                   <td>{row.person.lastName} {row.person.firstName}</td>
                   <td>{row.club.shortName}</td>
                   <td>{row.yellowCards}</td>
+                  <td>{row.redCards}</td>
                 </tr>
               ))}
             </tbody>
@@ -260,7 +317,10 @@ export const StatsTab = () => {
                 <th>Игрок</th>
                 <th>Клуб</th>
                 <th>Голы</th>
+                <th>Пасы</th>
                 <th>Матчи</th>
+                <th>ЖК</th>
+                <th>КК</th>
               </tr>
             </thead>
             <tbody>
@@ -270,7 +330,10 @@ export const StatsTab = () => {
                   <td>{row.person.lastName} {row.person.firstName}</td>
                   <td>{row.club.shortName}</td>
                   <td>{row.totalGoals}</td>
+                  <td>{row.totalAssists}</td>
                   <td>{row.totalMatches}</td>
+                  <td>{row.yellowCards}</td>
+                  <td>{row.redCards}</td>
                 </tr>
               ))}
             </tbody>

@@ -58,6 +58,7 @@ interface AdminState {
   token?: string
   error?: string
   activeTab: AdminTab
+  selectedCompetitionId?: number
   selectedSeasonId?: number
   data: AdminData
   loading: Record<string, boolean>
@@ -65,12 +66,13 @@ interface AdminState {
   logout(): void
   setTab(tab: AdminTab): void
   clearError(): void
+  setSelectedCompetition(competitionId?: number): void
   setSelectedSeason(seasonId?: number): void
   fetchDictionaries(): Promise<void>
   fetchSeasons(): Promise<void>
   fetchSeries(seasonId?: number): Promise<void>
   fetchMatches(seasonId?: number): Promise<void>
-  fetchStats(seasonId?: number): Promise<void>
+  fetchStats(seasonId?: number, competitionId?: number): Promise<void>
   fetchUsers(): Promise<void>
   fetchPredictions(): Promise<void>
   fetchAchievements(): Promise<void>
@@ -132,6 +134,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     token: initialToken,
     error: undefined,
     activeTab: 'teams',
+  selectedCompetitionId: undefined,
     selectedSeasonId: undefined,
     data: createEmptyData(),
     loading: {},
@@ -187,14 +190,32 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         set({ error: undefined, status: get().token ? 'authenticated' : 'idle' })
       }
     },
+    setSelectedCompetition(competitionId?: number) {
+      set({ selectedCompetitionId: competitionId })
+      const seasons = get().data.seasons
+      if (competitionId) {
+        const firstSeason = seasons.find((season) => season.competitionId === competitionId)
+        if (firstSeason) {
+          get().setSelectedSeason(firstSeason.id)
+          return
+        }
+      }
+      const fallbackSeason = seasons[0]
+      get().setSelectedSeason(fallbackSeason?.id)
+    },
     setSelectedSeason(seasonId?: number) {
-      set({ selectedSeasonId: seasonId })
+      const seasons = get().data.seasons
+      const season = seasons.find((item) => item.id === seasonId)
+      set({
+        selectedSeasonId: seasonId,
+        selectedCompetitionId: season ? season.competitionId : get().selectedCompetitionId
+      })
       void (async () => {
         try {
           await Promise.all([
             get().fetchSeries(seasonId),
             get().fetchMatches(seasonId),
-            get().fetchStats(seasonId)
+            get().fetchStats(seasonId, season?.competitionId)
           ])
         } catch (err) {
           // Ошибка уже зафиксирована в стейте run()
@@ -226,10 +247,12 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         const token = ensureToken()
         const seasons = await adminGet<Season[]>(token, '/api/admin/seasons')
         set((state) => {
-          const nextSeasonId = state.selectedSeasonId ?? seasons[0]?.id
+          const nextSeason =
+            seasons.find((season) => season.id === state.selectedSeasonId) ?? seasons[0]
           return {
             data: { ...state.data, seasons },
-            selectedSeasonId: nextSeasonId
+            selectedSeasonId: nextSeason?.id,
+            selectedCompetitionId: nextSeason?.competitionId ?? state.selectedCompetitionId
           }
         })
       })
@@ -252,15 +275,23 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         set((state) => ({ data: { ...state.data, matches } }))
       })
     },
-    async fetchStats(seasonId?: number) {
+    async fetchStats(seasonId?: number, competitionId?: number) {
       await run('stats', async () => {
         const token = ensureToken()
         const activeSeason = seasonId ?? get().selectedSeasonId
-        const query = activeSeason ? `?seasonId=${activeSeason}` : ''
+        const activeCompetition = competitionId ?? get().selectedCompetitionId
+        const params = new URLSearchParams()
+        if (activeSeason) {
+          params.set('seasonId', String(activeSeason))
+        } else if (activeCompetition) {
+          params.set('competitionId', String(activeCompetition))
+        }
+        const seasonQuery = params.size ? `?${params.toString()}` : ''
+        const careerQuery = activeCompetition ? `?competitionId=${activeCompetition}` : ''
         const [clubStats, playerStats, careerStats] = await Promise.all([
-          adminGet<ClubSeasonStats[]>(token, `/api/admin/stats/club-season${query}`),
-          adminGet<PlayerSeasonStats[]>(token, `/api/admin/stats/player-season${query}`),
-          adminGet<PlayerCareerStats[]>(token, '/api/admin/stats/player-career')
+          adminGet<ClubSeasonStats[]>(token, `/api/admin/stats/club-season${seasonQuery}`),
+          adminGet<PlayerSeasonStats[]>(token, `/api/admin/stats/player-season${seasonQuery}`),
+          adminGet<PlayerCareerStats[]>(token, `/api/admin/stats/player-career${careerQuery}`)
         ])
         set((state) => ({
           data: { ...state.data, clubStats, playerStats, careerStats }
@@ -316,7 +347,8 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         case 'stats': {
           await get().fetchSeasons()
           const season = get().selectedSeasonId
-          await get().fetchStats(season)
+          const competitionId = get().selectedCompetitionId
+          await get().fetchStats(season, competitionId)
           break
         }
         case 'players': {

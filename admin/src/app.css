@@ -674,6 +674,60 @@
   text-align: center;
 }
 
+.score-pair {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.score-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(3, 8, 18, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 4px 6px;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.score-control.live {
+  border-color: rgba(0, 240, 255, 0.32);
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.18);
+}
+
+.score-button {
+  background: rgba(0, 240, 255, 0.12);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  color: var(--neon-cyan);
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 140ms ease, transform 120ms ease;
+}
+
+.score-button:hover:not(:disabled) {
+  background: rgba(0, 240, 255, 0.22);
+  transform: translateY(-1px);
+}
+
+.score-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.score-separator {
+  font-weight: 600;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
 .muted {
   color: var(--text-muted);
   font-size: 13px;

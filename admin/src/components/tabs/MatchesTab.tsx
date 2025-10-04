@@ -132,15 +132,6 @@ const defaultMatchForm: MatchFormState = {
   seriesMatchNumber: ''
 }
 
-const emptyMatchUpdateForm: MatchUpdateFormState = {
-  homeScore: '',
-  awayScore: '',
-  status: 'SCHEDULED',
-  stadiumId: '',
-  refereeId: '',
-  matchDateTime: ''
-}
-
 const defaultLineupForm: LineupFormState = {
   clubId: '',
   personId: '',
@@ -166,6 +157,15 @@ const defaultAutomationForm: SeasonAutomationFormState = {
   copyClubPlayersToRoster: true,
   seriesFormat: 'SINGLE_MATCH'
 }
+
+const buildMatchUpdateForm = (match: MatchSummary): MatchUpdateFormState => ({
+  homeScore: typeof match.homeScore === 'number' ? match.homeScore : '',
+  awayScore: typeof match.awayScore === 'number' ? match.awayScore : '',
+  status: match.status,
+  stadiumId: match.stadiumId ?? '',
+  refereeId: match.refereeId ?? '',
+  matchDateTime: match.matchDateTime.slice(0, 16)
+})
 
 const automationSeriesFormatOptions: SeasonAutomationFormState['seriesFormat'][] = ['SINGLE_MATCH', 'TWO_LEGGED', 'BEST_OF_N']
 
@@ -607,14 +607,7 @@ export const MatchesTab = () => {
     setSelectedMatchId(match.id)
     setMatchUpdateForms((forms) => ({
       ...forms,
-      [match.id]: {
-        homeScore: match.homeScore,
-        awayScore: match.awayScore,
-        status: match.status,
-        stadiumId: match.stadiumId ?? '',
-        refereeId: match.refereeId ?? '',
-        matchDateTime: match.matchDateTime.slice(0, 16)
-      }
+      [match.id]: buildMatchUpdateForm(match)
     }))
     void loadMatchDetails(match.id)
   }
@@ -635,6 +628,27 @@ export const MatchesTab = () => {
       await loadMatchDetails(match.id)
     }, 'Матч обновлён')
   }
+
+  const adjustMatchScore = (match: MatchSummary, key: 'homeScore' | 'awayScore', delta: -1 | 1) => {
+    setMatchUpdateForms((forms) => {
+      const current = forms[match.id] ?? buildMatchUpdateForm(match)
+      const fallback = key === 'homeScore' ? match.homeScore : match.awayScore
+      const currentValue = typeof current[key] === 'number' ? current[key] : fallback
+      const nextValue = Math.max(0, (currentValue ?? 0) + delta)
+      return {
+        ...forms,
+        [match.id]: {
+          ...current,
+          [key]: nextValue
+        }
+      }
+    })
+  }
+
+  useEffect(() => {
+    setLineupForm(defaultLineupForm)
+    setEventForm(defaultEventForm)
+  }, [selectedMatchId])
 
   const handleMatchDelete = async (match: MatchSummary) => {
     const seasonId = ensureSeasonSelected()
@@ -704,9 +718,92 @@ export const MatchesTab = () => {
   }
 
   const availableClubs = data.clubs
-  const players = data.persons.filter((person) => person.isPlayer)
+  const playerDirectory = useMemo(() => data.persons.filter((person) => person.isPlayer), [data.persons])
   const seasonSeries = data.series.filter((series) => series.seasonId === selectedSeasonId)
   const seasonMatches = data.matches.filter((match) => match.seasonId === selectedSeasonId)
+  const seasonRosterEntries = selectedSeason?.rosters ?? []
+
+  const rosterByClub = useMemo(() => {
+    const map = new Map<number, SeasonRosterEntry[]>()
+    for (const entry of seasonRosterEntries) {
+      const list = map.get(entry.clubId) ?? []
+      list.push(entry)
+      map.set(entry.clubId, list)
+    }
+    return map
+  }, [seasonRosterEntries])
+
+  const lineupPlayersPool = useMemo(() => {
+    const unique = new Map<number, MatchLineupEntry>()
+    for (const entry of matchLineup) {
+      if (!unique.has(entry.personId)) {
+        unique.set(entry.personId, entry)
+      }
+    }
+    return Array.from(unique.values())
+  }, [matchLineup])
+
+  const selectedMatch = useMemo(() => {
+    if (!selectedMatchId) return null
+    return seasonMatches.find((match) => match.id === selectedMatchId) ?? null
+  }, [selectedMatchId, seasonMatches])
+
+  const selectedMatchTeams = useMemo(() => {
+    if (!selectedMatch) return []
+    const home = availableClubs.find((club) => club.id === selectedMatch.homeTeamId)
+    const away = availableClubs.find((club) => club.id === selectedMatch.awayTeamId)
+    return [home, away].filter(Boolean) as Club[]
+  }, [availableClubs, selectedMatch])
+
+  const eventPlayerOptions = useMemo(() => {
+    if (!eventForm.teamId) return lineupPlayersPool
+    return lineupPlayersPool.filter((entry) => entry.clubId === eventForm.teamId)
+  }, [eventForm.teamId, lineupPlayersPool])
+  const currentClubRoster = useMemo(() => {
+    if (!lineupForm.clubId) return []
+    return rosterByClub.get(lineupForm.clubId) ?? []
+  }, [lineupForm.clubId, rosterByClub])
+
+  useEffect(() => {
+    setMatchUpdateForms((forms) => {
+      let changed = false
+      const next = { ...forms }
+      for (const match of seasonMatches) {
+        if (!next[match.id]) {
+          next[match.id] = buildMatchUpdateForm(match)
+          changed = true
+        }
+      }
+      return changed ? next : forms
+    })
+  }, [seasonMatches])
+
+  useEffect(() => {
+    setLineupForm((form) => {
+      if (!form.clubId) return form
+      const roster = rosterByClub.get(form.clubId) ?? []
+      if (form.personId && !roster.some((entry) => entry.personId === form.personId)) {
+        return { ...form, personId: '' }
+      }
+      return form
+    })
+  }, [rosterByClub])
+
+  useEffect(() => {
+    setEventForm((form) => {
+      const available = new Set(lineupPlayersPool.map((entry) => entry.personId))
+      const updates: Partial<EventFormState> = {}
+      if (form.playerId && !available.has(form.playerId)) {
+        updates.playerId = ''
+      }
+      if (form.relatedPlayerId && !available.has(form.relatedPlayerId)) {
+        updates.relatedPlayerId = ''
+      }
+      if (!Object.keys(updates).length) return form
+      return { ...form, ...updates }
+    })
+  }, [lineupPlayersPool])
+
   const hasUnfinishedMatches = seasonMatches.some((match) => match.status !== 'FINISHED')
   const playoffFormatEnabled = selectedSeason?.competition.seriesFormat === 'BEST_OF_N'
   const playoffsDisabledReason = useMemo(() => {
@@ -1101,7 +1198,7 @@ export const MatchesTab = () => {
                 required
               >
                 <option value="">—</option>
-                {players.map((player) => (
+                {playerDirectory.map((player) => (
                   <option key={player.id} value={player.id}>
                     {player.lastName} {player.firstName}
                   </option>
@@ -1458,7 +1555,10 @@ export const MatchesTab = () => {
                 {seasonMatches.map((match) => {
                   const home = availableClubs.find((club) => club.id === match.homeTeamId)
                   const away = availableClubs.find((club) => club.id === match.awayTeamId)
-                  const form = matchUpdateForms[match.id] ?? emptyMatchUpdateForm
+                  const form = matchUpdateForms[match.id] ?? buildMatchUpdateForm(match)
+                  const homeScoreValue = typeof form.homeScore === 'number' ? form.homeScore : match.homeScore
+                  const awayScoreValue = typeof form.awayScore === 'number' ? form.awayScore : match.awayScore
+                  const isLive = form.status === 'LIVE'
                   return (
                     <tr key={match.id} className={selectedMatchId === match.id ? 'active-row' : undefined}>
                       <td>{new Date(match.matchDateTime).toLocaleString()}</td>
@@ -1466,41 +1566,112 @@ export const MatchesTab = () => {
                         {home?.shortName ?? match.homeTeamId} vs {away?.shortName ?? match.awayTeamId}
                       </td>
                       <td>
-                        <input
-                          type="number"
-                          value={form.homeScore}
-                          onChange={(event) =>
-                            setMatchUpdateForms((forms) => ({
-                              ...forms,
-                              [match.id]: { ...forms[match.id], homeScore: event.target.value ? Number(event.target.value) : '' }
-                            }))
-                          }
-                          className="score-input"
-                          min={0}
-                        />
-                        :
-                        <input
-                          type="number"
-                          value={form.awayScore}
-                          onChange={(event) =>
-                            setMatchUpdateForms((forms) => ({
-                              ...forms,
-                              [match.id]: { ...forms[match.id], awayScore: event.target.value ? Number(event.target.value) : '' }
-                            }))
-                          }
-                          className="score-input"
-                          min={0}
-                        />
+                        <div className="score-pair">
+                          <div className={`score-control${isLive ? ' live' : ''}`}>
+                            {isLive ? (
+                              <button
+                                type="button"
+                                className="score-button"
+                                onClick={() => adjustMatchScore(match, 'homeScore', -1)}
+                                disabled={homeScoreValue <= 0}
+                                aria-label="Уменьшить счёт хозяев"
+                              >
+                                −
+                              </button>
+                            ) : null}
+                            <input
+                              type="number"
+                              value={form.homeScore === '' ? '' : form.homeScore}
+                              onChange={(event) =>
+                                setMatchUpdateForms((forms) => {
+                                  const current = forms[match.id] ?? buildMatchUpdateForm(match)
+                                  return {
+                                    ...forms,
+                                    [match.id]: {
+                                      ...current,
+                                      homeScore: event.target.value === '' ? '' : Number(event.target.value)
+                                    }
+                                  }
+                                })
+                              }
+                              className="score-input"
+                              min={0}
+                              aria-label="Счёт хозяев"
+                            />
+                            {isLive ? (
+                              <button
+                                type="button"
+                                className="score-button"
+                                onClick={() => adjustMatchScore(match, 'homeScore', 1)}
+                                aria-label="Увеличить счёт хозяев"
+                              >
+                                +
+                              </button>
+                            ) : null}
+                          </div>
+                          <span className="score-separator">:</span>
+                          <div className={`score-control${isLive ? ' live' : ''}`}>
+                            {isLive ? (
+                              <button
+                                type="button"
+                                className="score-button"
+                                onClick={() => adjustMatchScore(match, 'awayScore', -1)}
+                                disabled={awayScoreValue <= 0}
+                                aria-label="Уменьшить счёт гостей"
+                              >
+                                −
+                              </button>
+                            ) : null}
+                            <input
+                              type="number"
+                              value={form.awayScore === '' ? '' : form.awayScore}
+                              onChange={(event) =>
+                                setMatchUpdateForms((forms) => {
+                                  const current = forms[match.id] ?? buildMatchUpdateForm(match)
+                                  return {
+                                    ...forms,
+                                    [match.id]: {
+                                      ...current,
+                                      awayScore: event.target.value === '' ? '' : Number(event.target.value)
+                                    }
+                                  }
+                                })
+                              }
+                              className="score-input"
+                              min={0}
+                              aria-label="Счёт гостей"
+                            />
+                            {isLive ? (
+                              <button
+                                type="button"
+                                className="score-button"
+                                onClick={() => adjustMatchScore(match, 'awayScore', 1)}
+                                aria-label="Увеличить счёт гостей"
+                              >
+                                +
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
                       </td>
                       <td>
                         <select
                           value={form.status}
-                          onChange={(event) =>
-                            setMatchUpdateForms((forms) => ({
-                              ...forms,
-                              [match.id]: { ...forms[match.id], status: event.target.value as MatchSummary['status'] }
-                            }))
-                          }
+                          onChange={(event) => {
+                            const nextStatus = event.target.value as MatchSummary['status']
+                            setMatchUpdateForms((forms) => {
+                              const current = forms[match.id] ?? buildMatchUpdateForm(match)
+                              const nextForm: MatchUpdateFormState = { ...current, status: nextStatus }
+                              if (nextStatus === 'LIVE') {
+                                nextForm.homeScore = 0
+                                nextForm.awayScore = 0
+                              }
+                              return {
+                                ...forms,
+                                [match.id]: nextForm
+                              }
+                            })
+                          }}
                         >
                           {matchStatuses.map((status) => (
                             <option key={status} value={status}>
@@ -1551,13 +1722,16 @@ export const MatchesTab = () => {
                     Игрок
                     <select
                       value={lineupForm.personId}
-                      onChange={(event) => setLineupForm((form) => ({ ...form, personId: event.target.value ? Number(event.target.value) : '' }))}
+                      onChange={(event) =>
+                        setLineupForm((form) => ({ ...form, personId: event.target.value ? Number(event.target.value) : '' }))
+                      }
                       required
+                      disabled={!lineupForm.clubId || currentClubRoster.length === 0}
                     >
-                      <option value="">—</option>
-                      {players.map((player) => (
-                        <option key={player.id} value={player.id}>
-                          {player.lastName} {player.firstName}
+                      <option value="">{lineupForm.clubId ? '—' : 'Сначала выберите клуб'}</option>
+                      {currentClubRoster.map((entry) => (
+                        <option key={entry.personId} value={entry.personId}>
+                          {entry.person.lastName} {entry.person.firstName} · №{entry.shirtNumber}
                         </option>
                       ))}
                     </select>
@@ -1609,13 +1783,21 @@ export const MatchesTab = () => {
                       Команда
                       <select
                         value={eventForm.teamId}
-                        onChange={(event) => setEventForm((form) => ({ ...form, teamId: event.target.value ? Number(event.target.value) : '' }))}
+                        onChange={(event) =>
+                          setEventForm((form) => ({
+                            ...form,
+                            teamId: event.target.value ? Number(event.target.value) : '',
+                            playerId: '',
+                            relatedPlayerId: ''
+                          }))
+                        }
                         required
+                        disabled={!selectedMatch}
                       >
-                        <option value="">—</option>
-                        {seasonParticipants.map((participant) => (
-                          <option key={participant.clubId} value={participant.clubId}>
-                            {participant.club.shortName}
+                        <option value="">{selectedMatch ? '—' : 'Выберите матч'}</option>
+                        {selectedMatchTeams.map((team) => (
+                          <option key={team.id} value={team.id}>
+                            {team.shortName}
                           </option>
                         ))}
                       </select>
@@ -1626,11 +1808,12 @@ export const MatchesTab = () => {
                         value={eventForm.playerId}
                         onChange={(event) => setEventForm((form) => ({ ...form, playerId: event.target.value ? Number(event.target.value) : '' }))}
                         required
+                        disabled={!selectedMatch || eventPlayerOptions.length === 0}
                       >
-                        <option value="">—</option>
-                        {players.map((player) => (
-                          <option key={player.id} value={player.id}>
-                            {player.lastName} {player.firstName}
+                        <option value="">{selectedMatch ? '—' : 'Выберите матч'}</option>
+                        {eventPlayerOptions.map((entry) => (
+                          <option key={entry.personId} value={entry.personId}>
+                            {entry.person.lastName} {entry.person.firstName} ({entry.club.shortName})
                           </option>
                         ))}
                       </select>
@@ -1665,11 +1848,12 @@ export const MatchesTab = () => {
                       <select
                         value={eventForm.relatedPlayerId}
                         onChange={(event) => setEventForm((form) => ({ ...form, relatedPlayerId: event.target.value ? Number(event.target.value) : '' }))}
+                        disabled={!selectedMatch || lineupPlayersPool.length === 0}
                       >
-                        <option value="">—</option>
-                        {players.map((player) => (
-                          <option key={player.id} value={player.id}>
-                            {player.lastName} {player.firstName}
+                        <option value="">{selectedMatch ? '—' : 'Выберите матч'}</option>
+                        {lineupPlayersPool.map((entry) => (
+                          <option key={entry.personId} value={entry.personId}>
+                            {entry.person.lastName} {entry.person.firstName} ({entry.club.shortName})
                           </option>
                         ))}
                       </select>

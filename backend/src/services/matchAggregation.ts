@@ -8,6 +8,7 @@ import {
   MatchEventType,
   MatchSeries,
   MatchStatus,
+  PlayerClubCareerStats,
   PredictionResult,
   Prisma,
   SeriesFormat,
@@ -45,6 +46,7 @@ export async function handleMatchFinalization(matchId: bigint, logger: FastifyBa
   await prisma.$transaction(async (tx) => {
     await rebuildClubSeasonStats(seasonId, tx)
     await rebuildPlayerSeasonStats(seasonId, tx)
+    await rebuildPlayerCareerStats(seasonId, tx)
     await processDisqualifications(match, tx)
     await updatePredictions(match, tx)
     await updateSeriesState(match, tx)
@@ -54,6 +56,9 @@ export async function handleMatchFinalization(matchId: bigint, logger: FastifyBa
   const cacheKeys = [
     `season:${seasonId}:club-stats`,
     `season:${seasonId}:player-stats`,
+    `season:${seasonId}:player-career`,
+    `competition:${match.season.competitionId}:club-stats`,
+    `competition:${match.season.competitionId}:player-stats`,
     `match:${matchId.toString()}`
   ]
   await Promise.all(cacheKeys.map((key) => defaultCache.invalidate(key).catch(() => undefined)))
@@ -152,10 +157,15 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
     }
   })
 
-  const statsMap = new Map<number, { clubId: number; goals: number; assists: number; yellow: number }>()
+  const statsMap = new Map<
+    number,
+    { clubId: number; goals: number; assists: number; yellow: number; red: number; matches: number }
+  >()
 
   for (const ev of events) {
-    const primary = statsMap.get(ev.playerId) ?? { clubId: ev.teamId, goals: 0, assists: 0, yellow: 0 }
+    const primary =
+      statsMap.get(ev.playerId) ??
+      { clubId: ev.teamId, goals: 0, assists: 0, yellow: 0, red: 0, matches: 0 }
     primary.clubId = ev.teamId
     if (ev.eventType === MatchEventType.GOAL) {
       primary.goals += 1
@@ -163,14 +173,36 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
     if (ev.eventType === MatchEventType.YELLOW_CARD) {
       primary.yellow += 1
     }
+    if (ev.eventType === MatchEventType.RED_CARD) {
+      primary.red += 1
+    }
     statsMap.set(ev.playerId, primary)
 
     if (ev.eventType === MatchEventType.GOAL && ev.relatedPlayerId) {
-      const assist = statsMap.get(ev.relatedPlayerId) ?? { clubId: ev.teamId, goals: 0, assists: 0, yellow: 0 }
+      const assist =
+        statsMap.get(ev.relatedPlayerId) ??
+        { clubId: ev.teamId, goals: 0, assists: 0, yellow: 0, red: 0, matches: 0 }
       assist.clubId = ev.teamId
       assist.assists += 1
       statsMap.set(ev.relatedPlayerId, assist)
     }
+  }
+
+  const lineupAggregates = await tx.matchLineup.groupBy({
+    by: ['personId', 'clubId'],
+    where: {
+      match: { seasonId, status: MatchStatus.FINISHED }
+    },
+    _count: { matchId: true }
+  })
+
+  for (const lineup of lineupAggregates) {
+    const entry =
+      statsMap.get(lineup.personId) ??
+      { clubId: lineup.clubId, goals: 0, assists: 0, yellow: 0, red: 0, matches: 0 }
+    entry.clubId = lineup.clubId
+    entry.matches += lineup._count.matchId ?? 0
+    statsMap.set(lineup.personId, entry)
   }
 
   await tx.playerSeasonStats.deleteMany({ where: { seasonId } })
@@ -184,14 +216,109 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
         clubId: entry.clubId,
         goals: entry.goals,
         assists: entry.assists,
-        yellowCards: entry.yellow
+        yellowCards: entry.yellow,
+        redCards: entry.red,
+        matchesPlayed: entry.matches
       },
       update: {
         clubId: entry.clubId,
         goals: entry.goals,
         assists: entry.assists,
-        yellowCards: entry.yellow
+        yellowCards: entry.yellow,
+        redCards: entry.red,
+        matchesPlayed: entry.matches
       }
+    })
+  }
+}
+
+async function rebuildPlayerCareerStats(seasonId: number, tx: PrismaTx) {
+  const participants = await tx.seasonParticipant.findMany({
+    where: { seasonId },
+    select: { clubId: true }
+  })
+
+  const clubIds = Array.from(new Set(participants.map((item) => item.clubId)))
+  if (!clubIds.length) return
+
+  const aggregates = await tx.playerSeasonStats.groupBy({
+    by: ['clubId', 'personId'],
+    where: { clubId: { in: clubIds } },
+    _sum: {
+      goals: true,
+      assists: true,
+      yellowCards: true,
+      redCards: true,
+      matchesPlayed: true
+    }
+  })
+
+  await tx.playerClubCareerStats.deleteMany({ where: { clubId: { in: clubIds } } })
+
+  const createdKeys = new Set<string>()
+
+  for (const aggregate of aggregates) {
+    const sum = aggregate._sum ?? {}
+    const totalGoals = sum.goals ?? 0
+    const totalAssists = sum.assists ?? 0
+    const yellowCards = sum.yellowCards ?? 0
+    const redCards = sum.redCards ?? 0
+    const totalMatches = sum.matchesPlayed ?? 0
+
+    await tx.playerClubCareerStats.upsert({
+      where: {
+        personId_clubId: {
+          personId: aggregate.personId,
+          clubId: aggregate.clubId
+        }
+      },
+      create: {
+        personId: aggregate.personId,
+        clubId: aggregate.clubId,
+        totalGoals,
+        totalMatches,
+        totalAssists,
+        yellowCards,
+        redCards
+      },
+      update: {
+        totalGoals,
+        totalMatches,
+        totalAssists,
+        yellowCards,
+        redCards
+      }
+    })
+
+    createdKeys.add(`${aggregate.personId}:${aggregate.clubId}`)
+  }
+
+  const rosterLinks = await tx.clubPlayer.findMany({
+    where: { clubId: { in: clubIds } },
+    select: { clubId: true, personId: true }
+  })
+
+  for (const link of rosterLinks) {
+    const key = `${link.personId}:${link.clubId}`
+    if (createdKeys.has(key)) continue
+
+    await tx.playerClubCareerStats.upsert({
+      where: {
+        personId_clubId: {
+          personId: link.personId,
+          clubId: link.clubId
+        }
+      },
+      create: {
+        personId: link.personId,
+        clubId: link.clubId,
+        totalGoals: 0,
+        totalMatches: 0,
+        totalAssists: 0,
+        yellowCards: 0,
+        redCards: 0
+      },
+      update: {}
     })
   }
 }
