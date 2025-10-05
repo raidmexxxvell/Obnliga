@@ -290,6 +290,13 @@
   position: relative;
 }
 
+.portal-roster-grid .roster-card {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
 .portal-roster-grid label.selected {
   border-color: rgba(0, 240, 255, 0.36);
   box-shadow: 0 0 18px rgba(0, 240, 255, 0.18);
@@ -301,6 +308,32 @@
   right: 10px;
   width: 18px;
   height: 18px;
+}
+
+.portal-roster-grid .player-number {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  color: #9ecbe0;
+}
+
+.portal-roster-grid .player-number input {
+  width: 60px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(9, 16, 28, 0.8);
+  color: #e6f7ff;
+  padding: 4px 6px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.portal-roster-grid .player-number input:focus {
+  border-color: rgba(0, 240, 255, 0.4);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.18);
 }
 
 .player-name {

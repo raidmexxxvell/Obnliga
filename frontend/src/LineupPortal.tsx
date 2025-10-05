@@ -1,4 +1,5 @@
 import React, { FormEvent, useEffect, useMemo, useState } from 'react'
+import { formatPlayersCount } from '@shared/utils/wordForms'
 import './app.css'
 
 type LineupMatch = {
@@ -74,7 +75,11 @@ const LineupPortal: React.FC = () => {
   const [saving, setSaving] = useState(false)
 
   const selectedCount = useMemo(
-    () => roster.reduce((count, entry) => (selectedPlayers[entry.personId] ? count + 1 : count), 0),
+    () =>
+      roster.reduce<number>(
+        (count: number, entry: LineupRosterEntry) => (selectedPlayers[entry.personId] ? count + 1 : count),
+        0
+      ),
     [roster, selectedPlayers]
   )
 
@@ -104,7 +109,7 @@ const LineupPortal: React.FC = () => {
       headers.Authorization = `Bearer ${token}`
     }
 
-  const response = await fetch(buildApiUrl(path), {
+    const response = await fetch(buildApiUrl(path), {
       ...init,
       headers: {
         ...headers,
@@ -140,10 +145,14 @@ const LineupPortal: React.FC = () => {
     }
 
     try {
-  const payload = await apiRequest<{ ok: true; token: string }>('/api/lineup-portal/login', {
-        method: 'POST',
-        body: JSON.stringify({ login, password })
-      }, false)
+      const payload = await apiRequest<{ ok: true; token: string }>(
+        '/api/lineup-portal/login',
+        {
+          method: 'POST',
+          body: JSON.stringify({ login, password })
+        },
+        false
+      )
 
       if (payload && 'token' in payload) {
         localStorage.setItem('lineupToken', payload.token)
@@ -161,7 +170,7 @@ const LineupPortal: React.FC = () => {
     setMatchesLoading(true)
     setPortalError(null)
     try {
-  const data = await apiRequest<LineupMatch[]>('/api/lineup-portal/matches')
+    const data = await apiRequest<LineupMatch[]>('/api/lineup-portal/matches')
       setMatches(data)
       if (!data.length) {
         setPortalMessage('В ближайшие сутки матчей не найдено. Проверьте позже.')
@@ -237,39 +246,47 @@ const LineupPortal: React.FC = () => {
   }, [modalOpen, token, activeMatch, activeClubId])
 
   const togglePlayer = (personId: number) => {
-    setSelectedPlayers((prev) => ({ ...prev, [personId]: !prev[personId] }))
+    setSelectedPlayers((prev: Record<number, boolean>) => ({ ...prev, [personId]: !prev[personId] }))
   }
 
   const updateShirtNumber = (personId: number, value: string) => {
-    setShirtNumbers((prev) => ({ ...prev, [personId]: value }))
+    setShirtNumbers((prev: Record<number, string>) => ({ ...prev, [personId]: value }))
   }
 
   const handleSubmitRoster = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!activeMatch || !activeClubId) return
-    const payloadIds = Object.entries(selectedPlayers)
-      .filter(([, isSelected]) => isSelected)
-      .map(([id]) => Number(id))
+    const selectedEntries: LineupRosterEntry[] = roster.filter(
+      (entry: LineupRosterEntry) => selectedPlayers[entry.personId]
+    )
+    const payloadIds = selectedEntries.map((entry) => entry.personId)
 
-    const numberAssignments = roster.map((entry) => {
-      const rawValue = shirtNumbers[entry.personId]
-      const numeric = Number(rawValue)
-      return { personId: entry.personId, shirtNumber: numeric }
+    const missingNumber = selectedEntries.some((entry) => {
+      const raw = shirtNumbers[entry.personId]
+      return !raw || raw.trim() === ''
     })
 
-    const hasInvalidNumber = numberAssignments.some(
-      (assignment) =>
-        !Number.isFinite(assignment.shirtNumber) ||
-        !Number.isInteger(assignment.shirtNumber) ||
-        assignment.shirtNumber <= 0
-    )
-
-    if (hasInvalidNumber) {
-      setPortalError('Укажите положительный целый номер для каждого игрока.')
+    if (missingNumber) {
+      setPortalError('Укажите номер для каждого выбранного игрока.')
       return
     }
 
-    const uniqueNumbers = new Set(numberAssignments.map((assignment) => assignment.shirtNumber))
+    const numberAssignments: Array<{ personId: number; shirtNumber: number }> = selectedEntries.map((entry) => ({
+      personId: entry.personId,
+      shirtNumber: Number(shirtNumbers[entry.personId])
+    }))
+
+    const hasInvalidNumber = numberAssignments.some(
+      ({ shirtNumber }) =>
+        !Number.isFinite(shirtNumber) || !Number.isInteger(shirtNumber) || shirtNumber <= 0 || shirtNumber > 999
+    )
+
+    if (hasInvalidNumber) {
+      setPortalError('Укажите корректные номера от 1 до 999 для всех выбранных игроков.')
+      return
+    }
+
+    const uniqueNumbers = new Set(numberAssignments.map(({ shirtNumber }) => shirtNumber))
     if (uniqueNumbers.size !== numberAssignments.length) {
       setPortalError('Номера игроков внутри клуба должны быть уникальными.')
       return
@@ -282,7 +299,7 @@ const LineupPortal: React.FC = () => {
         method: 'PUT',
         body: JSON.stringify({ clubId: activeClubId, personIds: payloadIds, numbers: numberAssignments })
       })
-      setPortalMessage('Состав сохранён. Заявленные игроки получили +1 к числу игр.')
+    setPortalMessage(`Состав сохранён. В заявке: ${formatPlayersCount(payloadIds.length)}.`)
       closeModal()
       void fetchMatches()
     } catch (error) {
@@ -330,7 +347,7 @@ const LineupPortal: React.FC = () => {
         <p className="portal-sub">Отображаются игры в ближайшие 24 часа.</p>
         <ul className="portal-match-list">
           {matches.map((match) => {
-            const title = `${match.homeClub.shortName} vs ${match.awayClub.shortName}`
+            const title = `${match.homeClub.name} vs ${match.awayClub.name}`
             const roundLabel = match.round?.label ? match.round.label : 'Без стадии'
             return (
               <li key={match.id}>
@@ -376,7 +393,7 @@ const LineupPortal: React.FC = () => {
           <header className="portal-modal-header">
             <div>
               <h3>Подтверждение состава</h3>
-              <p>{formatKickoff(activeMatch.matchDateTime)} · {activeMatch.homeClub.shortName} vs {activeMatch.awayClub.shortName}</p>
+              <p>{formatKickoff(activeMatch.matchDateTime)} · {activeMatch.homeClub.name} vs {activeMatch.awayClub.name}</p>
             </div>
             <button type="button" className="portal-ghost" onClick={closeModal} aria-label="Закрыть окно">
               Закрыть
@@ -389,14 +406,14 @@ const LineupPortal: React.FC = () => {
               className={`club-chip${homeActive ? ' active' : ''}`}
               onClick={() => setActiveClubId(activeMatch.homeClub.id)}
             >
-              {activeMatch.homeClub.shortName}
+              {activeMatch.homeClub.name}
             </button>
             <button
               type="button"
               className={`club-chip${awayActive ? ' active' : ''}`}
               onClick={() => setActiveClubId(activeMatch.awayClub.id)}
             >
-              {activeMatch.awayClub.shortName}
+              {activeMatch.awayClub.name}
             </button>
           </div>
 
@@ -439,7 +456,7 @@ const LineupPortal: React.FC = () => {
             <footer className="portal-actions">
               <span>Отмечено: {selectedCount} из {roster.length}</span>
               <button type="submit" className="portal-primary" disabled={saving}>
-                {saving ? 'Сохраняем…' : 'Сохранить состав'}
+                {saving ? 'Сохраняем…' : `Сохранить состав (${selectedCount})`}
               </button>
             </footer>
           </form>

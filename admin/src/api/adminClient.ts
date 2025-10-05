@@ -226,7 +226,7 @@ export const lineupFetchRoster = async (token: string | undefined, matchId: stri
 export const lineupUpdateRoster = async (
   token: string | undefined,
   matchId: string,
-  payload: { clubId: number; personIds: number[] }
+  payload: { clubId: number; personIds: number[]; numbers?: Array<{ personId: number; shirtNumber: number }> }
 ) =>
   lineupRequest<unknown>(token, `/api/lineup-portal/matches/${matchId}/roster`, {
     method: 'PUT',

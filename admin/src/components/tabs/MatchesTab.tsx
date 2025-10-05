@@ -52,7 +52,7 @@ type EventFormState = {
   teamId: number | ''
   playerId: number | ''
   minute: number | ''
-  eventType: 'GOAL' | 'YELLOW_CARD' | 'RED_CARD' | 'SUB_IN' | 'SUB_OUT'
+  eventType: 'GOAL' | 'PENALTY_GOAL' | 'YELLOW_CARD' | 'RED_CARD' | 'SUB_IN' | 'SUB_OUT'
   relatedPlayerId: number | ''
 }
 
@@ -82,9 +82,10 @@ const lineupRoleLabels: Record<LineupRole, string> = {
   SUBSTITUTE: 'Запасной'
 }
 
-const eventTypes: Array<EventFormState['eventType']> = ['GOAL', 'YELLOW_CARD', 'RED_CARD', 'SUB_IN', 'SUB_OUT']
+const eventTypes: Array<EventFormState['eventType']> = ['GOAL', 'PENALTY_GOAL', 'YELLOW_CARD', 'RED_CARD', 'SUB_IN', 'SUB_OUT']
 const eventTypeLabels: Record<EventFormState['eventType'], string> = {
   GOAL: 'Гол',
+  PENALTY_GOAL: 'Гол (пенальти)',
   YELLOW_CARD: 'Жёлтая карточка',
   RED_CARD: 'Красная карточка',
   SUB_IN: 'Замена (вышел)',
@@ -551,6 +552,19 @@ export const MatchesTab = () => {
     })
   }
 
+  const setMatchDateTime = (match: MatchSummary, value: string) => {
+    setMatchUpdateForms((forms) => {
+      const current = forms[match.id] ?? buildMatchUpdateForm(match)
+      return {
+        ...forms,
+        [match.id]: {
+          ...current,
+          matchDateTime: value
+        }
+      }
+    })
+  }
+
   useEffect(() => {
     setEventForm(defaultEventForm)
     setLineupClubFilter('')
@@ -804,7 +818,7 @@ export const MatchesTab = () => {
       })
     : ''
   const matchTeamsLabel = selectedMatchTeams.length
-    ? selectedMatchTeams.map((team) => team.shortName).join(' vs ')
+    ? selectedMatchTeams.map((team) => team.name).join(' vs ')
     : ''
   const selectedMatchForm = selectedMatch ? matchUpdateForms[selectedMatch.id] ?? buildMatchUpdateForm(selectedMatch) : null
   const selectedMatchStatus: MatchSummary['status'] =
@@ -1110,7 +1124,7 @@ export const MatchesTab = () => {
                 <div className="inline-feedback success">
                   Серий: {playoffResult.seriesCreated}, матчей: {playoffResult.matchesCreated}
                   {playoffResult.byeClubId
-                    ? `, ${data.clubs.find((club) => club.id === playoffResult.byeClubId)?.shortName ?? `клуб #${playoffResult.byeClubId}`} проходит дальше`
+                    ? `, ${data.clubs.find((club) => club.id === playoffResult.byeClubId)?.name ?? `клуб #${playoffResult.byeClubId}`} проходит дальше`
                     : ''}
                 </div>
               ) : null}
@@ -1221,7 +1235,7 @@ export const MatchesTab = () => {
                     <td>{availableClubs.find((club) => club.id === series.awayClubId)?.name ?? series.awayClubId}</td>
                     <td>
                       {series.seriesStatus}
-                      {series.winnerClubId ? ` → ${availableClubs.find((club) => club.id === series.winnerClubId)?.shortName}` : ''}
+                      {series.winnerClubId ? ` → ${availableClubs.find((club) => club.id === series.winnerClubId)?.name}` : ''}
                     </td>
                     <td className="table-actions">
                       <button type="button" onClick={() => handleSeriesEdit(series)}>
@@ -1397,7 +1411,7 @@ export const MatchesTab = () => {
                             <td>
                               <div className="match-cell">
                                 <span>
-                                  {home?.shortName ?? match.homeTeamId} vs {away?.shortName ?? match.awayTeamId}
+                                  {home?.name ?? match.homeTeamId} vs {away?.name ?? match.awayTeamId}
                                 </span>
                                 <span className={`status-badge status-${form.status.toLowerCase()}`}>
                                   {matchStatusLabels[form.status]}
@@ -1478,6 +1492,18 @@ export const MatchesTab = () => {
                       </option>
                     ))}
                   </select>
+                </label>
+
+                <label>
+                  Дата и время
+                  <input
+                    type="datetime-local"
+                    value={selectedMatchForm?.matchDateTime ?? ''}
+                    onChange={(event) => {
+                      if (!selectedMatch) return
+                      setMatchDateTime(selectedMatch, event.target.value)
+                    }}
+                  />
                 </label>
 
                 <label className="stacked">
@@ -1591,7 +1617,7 @@ export const MatchesTab = () => {
                       </option>
                       {selectedMatchTeams.map((team) => (
                         <option key={team.id} value={team.id}>
-                          {team.shortName}
+                          {team.name}
                         </option>
                       ))}
                     </select>
@@ -1638,7 +1664,7 @@ export const MatchesTab = () => {
                         <option value="">{selectedMatch ? 'Выберите команду' : 'Выберите матч'}</option>
                         {selectedMatchTeams.map((team) => (
                           <option key={team.id} value={team.id}>
-                            {team.shortName}
+                            {team.name}
                           </option>
                         ))}
                       </select>
@@ -1668,7 +1694,7 @@ export const MatchesTab = () => {
                         </option>
                         {eventPlayerOptions.map((entry) => (
                           <option key={entry.personId} value={entry.personId}>
-                            {entry.person.lastName} {entry.person.firstName} ({entry.club.shortName})
+                            {entry.person.lastName} {entry.person.firstName} ({entry.club.name})
                           </option>
                         ))}
                       </select>
@@ -1716,7 +1742,7 @@ export const MatchesTab = () => {
                         </option>
                         {relatedEventPlayerOptions.map((entry) => (
                           <option key={entry.personId} value={entry.personId}>
-                            {entry.person.lastName} {entry.person.firstName} ({entry.club.shortName})
+                            {entry.person.lastName} {entry.person.firstName} ({entry.club.name})
                           </option>
                         ))}
                       </select>
@@ -1729,7 +1755,7 @@ export const MatchesTab = () => {
                     {matchEvents.map((entry) => (
                       <li key={entry.id}>
                         <span>
-                          {entry.minute}' {eventTypeLabels[entry.eventType]} — {entry.player.lastName} {entry.player.firstName} ({entry.team.shortName})
+                          {entry.minute}' {eventTypeLabels[entry.eventType]} — {entry.player.lastName} {entry.player.firstName} ({entry.team.name})
                           {entry.relatedPerson ? ` · ассист: ${entry.relatedPerson.lastName} ${entry.relatedPerson.firstName}` : ''}
                         </span>
                         <span className="list-actions">

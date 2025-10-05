@@ -291,6 +291,7 @@ model MatchEvent {
 
 enum MatchEventType {
   GOAL
+  PENALTY_GOAL
   YELLOW_CARD
   RED_CARD
   SUB_IN
@@ -302,6 +303,7 @@ model PlayerSeasonStats {
   personId Int @map("person_id")
   clubId   Int @map("club_id")
   goals    Int @default(0)
+  penaltyGoals Int @default(0) @map("penalty_goals")
   assists  Int @default(0)
   yellowCards Int @default(0) @map("yellow_cards")
   redCards    Int @default(0) @map("red_cards")
@@ -321,6 +323,7 @@ model PlayerClubCareerStats {
   personId Int    @map("person_id")
   clubId   Int    @map("club_id")
   totalGoals   Int @default(0) @map("total_goals")
+  penaltyGoals Int @default(0) @map("penalty_goals")
   totalMatches Int @default(0) @map("total_matches")
   totalAssists Int @default(0) @map("total_assists")
   yellowCards  Int @default(0) @map("yellow_cards")

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAdminStore } from '../../store/adminStore'
 import { ClubSeasonStats, MatchSummary, PlayerCareerStats, PlayerSeasonStats } from '../../types'
 
-type StatView = 'standings' | 'scorers' | 'discipline' | 'career'
+type StatView = 'standings' | 'scorers' | 'assists' | 'goalContribution' | 'discipline' | 'career'
 
 const sortStandings = (rows: ClubSeasonStats[], matches: MatchSummary[]) => {
   const dataset = [...rows]
@@ -81,6 +81,37 @@ const sortScorers = (rows: PlayerSeasonStats[]) => {
     const rightName = `${right.person.lastName} ${right.person.firstName}`
     return leftName.localeCompare(rightName, 'ru')
   })
+}
+
+const sortAssists = (rows: PlayerSeasonStats[]) => {
+  return [...rows]
+    .filter((row) => row.assists > 0)
+    .sort((left, right) => {
+      if (right.assists !== left.assists) return right.assists - left.assists
+      if (left.matchesPlayed !== right.matchesPlayed) return left.matchesPlayed - right.matchesPlayed
+      const leftName = `${left.person.lastName} ${left.person.firstName}`
+      const rightName = `${right.person.lastName} ${right.person.firstName}`
+      return leftName.localeCompare(rightName, 'ru')
+    })
+}
+
+const sortGoalContributions = (rows: PlayerSeasonStats[]) => {
+  return [...rows]
+    .filter((row) => row.goals + row.assists > 0)
+    .sort((left, right) => {
+      const leftTotal = left.goals + left.assists
+      const rightTotal = right.goals + right.assists
+      if (rightTotal !== leftTotal) return rightTotal - leftTotal
+      if (right.goals !== left.goals) return right.goals - left.goals
+      const leftCleanGoals = left.goals - (left.penaltyGoals ?? 0)
+      const rightCleanGoals = right.goals - (right.penaltyGoals ?? 0)
+      if (rightCleanGoals !== leftCleanGoals) return rightCleanGoals - leftCleanGoals
+      if (right.assists !== left.assists) return right.assists - left.assists
+      if (left.matchesPlayed !== right.matchesPlayed) return left.matchesPlayed - right.matchesPlayed
+      const leftName = `${left.person.lastName} ${left.person.firstName}`
+      const rightName = `${right.person.lastName} ${right.person.firstName}`
+      return leftName.localeCompare(rightName, 'ru')
+    })
 }
 
 const sortDiscipline = (rows: PlayerSeasonStats[]) => {
@@ -178,6 +209,8 @@ export const StatsTab = () => {
     [data.clubStats, data.matches]
   )
   const scorers = useMemo(() => sortScorers(data.playerStats), [data.playerStats])
+  const assistsTop = useMemo(() => sortAssists(data.playerStats).slice(0, 10), [data.playerStats])
+  const goalContributions = useMemo(() => sortGoalContributions(data.playerStats), [data.playerStats])
   const discipline = useMemo(() => sortDiscipline(data.playerStats), [data.playerStats])
   const careerSorted = useMemo(() => sortCareer(data.careerStats), [data.careerStats])
   const career = useMemo(
@@ -188,7 +221,7 @@ export const StatsTab = () => {
   const careerClubOptions = useMemo(() => {
     const map = new Map<number, string>()
     for (const row of data.careerStats) {
-      map.set(row.clubId, row.club.shortName)
+      map.set(row.clubId, row.club.name)
     }
     return Array.from(map.entries()).sort((left, right) => left[1].localeCompare(right[1], 'ru'))
   }, [data.careerStats])
@@ -212,6 +245,13 @@ export const StatsTab = () => {
   }, [careerClubId, careerClubOptions])
 
   const isLoading = Boolean(loading.stats || loading.seasons)
+
+  const formatGoals = (goals: number, penaltyGoals?: number) => {
+    if (penaltyGoals && penaltyGoals > 0) {
+      return `${goals}(${penaltyGoals})`
+    }
+    return String(goals)
+  }
 
   return (
     <div className="tab-sections">
@@ -285,6 +325,16 @@ export const StatsTab = () => {
             <button type="button" className={activeView === 'scorers' ? 'chip active' : 'chip'} onClick={() => setActiveView('scorers')}>
               Бомбардиры
             </button>
+            <button type="button" className={activeView === 'assists' ? 'chip active' : 'chip'} onClick={() => setActiveView('assists')}>
+              Передачи
+            </button>
+            <button
+              type="button"
+              className={activeView === 'goalContribution' ? 'chip active' : 'chip'}
+              onClick={() => setActiveView('goalContribution')}
+            >
+              Гол+Пасс
+            </button>
             <button type="button" className={activeView === 'discipline' ? 'chip active' : 'chip'} onClick={() => setActiveView('discipline')}>
               Дисциплина
             </button>
@@ -318,7 +368,7 @@ export const StatsTab = () => {
               {standings.map((row, index) => (
                 <tr key={`${row.seasonId}-${row.clubId}`}>
                   <td>{index + 1}</td>
-                  <td>{row.club.shortName}</td>
+                  <td>{row.club.name}</td>
                   <td>{row.wins}</td>
                   <td>
                     {(() => {
@@ -363,14 +413,85 @@ export const StatsTab = () => {
                 <tr key={`${row.seasonId}-${row.personId}`}>
                   <td>{index + 1}</td>
                   <td>{row.person.lastName} {row.person.firstName}</td>
-                  <td>{row.club.shortName}</td>
+                  <td>{row.club.name}</td>
                   <td>{row.matchesPlayed}</td>
-                  <td>{row.goals}</td>
+                  <td>{formatGoals(row.goals, row.penaltyGoals)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           {!scorers.length ? <p className="muted">Нет статистики по голам.</p> : null}
+        </section>
+      ) : null}
+
+      {activeView === 'assists' ? (
+        <section className="card">
+          <header>
+            <h4>Таблица ассистентов</h4>
+            <p>Топ-10 игроков по голевым передачам в выбранном сезоне.</p>
+          </header>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Игрок</th>
+                <th>Клуб</th>
+                <th>Матчи</th>
+                <th>Передачи</th>
+              </tr>
+            </thead>
+            <tbody>
+              {assistsTop.map((row, index) => (
+                <tr key={`${row.seasonId}-${row.personId}`}>
+                  <td>{index + 1}</td>
+                  <td>{row.person.lastName} {row.person.firstName}</td>
+                  <td>{row.club.name}</td>
+                  <td>{row.matchesPlayed}</td>
+                  <td>{row.assists}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!assistsTop.length ? <p className="muted">Передачи пока не зафиксированы.</p> : null}
+        </section>
+      ) : null}
+
+      {activeView === 'goalContribution' ? (
+        <section className="card">
+          <header>
+            <h4>Комбинированный рейтинг Гол+Пасс</h4>
+            <p>Сортировка: Гол+Пасс, голы, чистые голы, передачи, количество матчей.</p>
+          </header>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Игрок</th>
+                <th>Клуб</th>
+                <th>Матчи</th>
+                <th>Голы</th>
+                <th>Передачи</th>
+                <th>Гол+Пасс</th>
+              </tr>
+            </thead>
+            <tbody>
+              {goalContributions.map((row, index) => {
+                const total = row.goals + row.assists
+                return (
+                  <tr key={`${row.seasonId}-${row.personId}`}>
+                    <td>{index + 1}</td>
+                    <td>{row.person.lastName} {row.person.firstName}</td>
+                    <td>{row.club.name}</td>
+                    <td>{row.matchesPlayed}</td>
+                    <td>{formatGoals(row.goals, row.penaltyGoals)}</td>
+                    <td>{row.assists}</td>
+                    <td>{total}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          {!goalContributions.length ? <p className="muted">Нет результативных действий в выбранном сезоне.</p> : null}
         </section>
       ) : null}
 
@@ -395,7 +516,7 @@ export const StatsTab = () => {
                 <tr key={`${row.seasonId}-${row.personId}`}>
                   <td>{index + 1}</td>
                   <td>{row.person.lastName} {row.person.firstName}</td>
-                  <td>{row.club.shortName}</td>
+                  <td>{row.club.name}</td>
                   <td>{row.yellowCards}</td>
                   <td>{row.redCards}</td>
                 </tr>
@@ -444,12 +565,12 @@ export const StatsTab = () => {
                 <tr key={`${row.personId}-${row.clubId}`}>
                   <td>{index + 1}</td>
                   <td>{row.person.lastName} {row.person.firstName}</td>
-                  <td>{row.club.shortName}</td>
+                  <td>{row.club.name}</td>
                   <td>{row.totalMatches}</td>
                   <td>{row.yellowCards}</td>
                   <td>{row.redCards}</td>
                   <td>{row.totalAssists}</td>
-                  <td>{row.totalGoals}</td>
+                  <td>{formatGoals(row.totalGoals, row.penaltyGoals)}</td>
                 </tr>
               ))}
             </tbody>

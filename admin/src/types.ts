@@ -118,7 +118,7 @@ export interface MatchEventEntry {
   matchId: string
   teamId: number
   minute: number
-  eventType: 'GOAL' | 'YELLOW_CARD' | 'RED_CARD' | 'SUB_IN' | 'SUB_OUT'
+  eventType: 'GOAL' | 'PENALTY_GOAL' | 'YELLOW_CARD' | 'RED_CARD' | 'SUB_IN' | 'SUB_OUT'
   playerId: number
   relatedPlayerId?: number | null
   player: Person
@@ -143,6 +143,7 @@ export interface PlayerSeasonStats {
   personId: number
   clubId: number
   goals: number
+  penaltyGoals: number
   assists: number
   yellowCards: number
   redCards: number
@@ -155,6 +156,7 @@ export interface PlayerCareerStats {
   personId: number
   clubId: number
   totalGoals: number
+  penaltyGoals: number
   totalMatches: number
   totalAssists: number
   yellowCards: number

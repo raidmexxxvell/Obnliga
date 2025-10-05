@@ -171,17 +171,28 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
 
   const statsMap = new Map<
     number,
-    { clubId: number; goals: number; assists: number; yellow: number; red: number; matches: number }
+    {
+      clubId: number
+      goals: number
+      penaltyGoals: number
+      assists: number
+      yellow: number
+      red: number
+      matches: number
+    }
   >()
   const eventMatchesMap = new Map<number, Set<bigint>>()
 
   for (const ev of events) {
     const primary =
       statsMap.get(ev.playerId) ??
-      { clubId: ev.teamId, goals: 0, assists: 0, yellow: 0, red: 0, matches: 0 }
+      { clubId: ev.teamId, goals: 0, penaltyGoals: 0, assists: 0, yellow: 0, red: 0, matches: 0 }
     primary.clubId = ev.teamId
-    if (ev.eventType === MatchEventType.GOAL) {
+    if (ev.eventType === MatchEventType.GOAL || ev.eventType === MatchEventType.PENALTY_GOAL) {
       primary.goals += 1
+      if (ev.eventType === MatchEventType.PENALTY_GOAL) {
+        primary.penaltyGoals += 1
+      }
     }
     if (ev.eventType === MatchEventType.YELLOW_CARD) {
       primary.yellow += 1
@@ -195,10 +206,13 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
     playerMatches.add(ev.matchId)
     eventMatchesMap.set(ev.playerId, playerMatches)
 
-    if (ev.eventType === MatchEventType.GOAL && ev.relatedPlayerId) {
+    if (
+      (ev.eventType === MatchEventType.GOAL || ev.eventType === MatchEventType.PENALTY_GOAL) &&
+      ev.relatedPlayerId
+    ) {
       const assist =
         statsMap.get(ev.relatedPlayerId) ??
-        { clubId: ev.teamId, goals: 0, assists: 0, yellow: 0, red: 0, matches: 0 }
+        { clubId: ev.teamId, goals: 0, penaltyGoals: 0, assists: 0, yellow: 0, red: 0, matches: 0 }
       assist.clubId = ev.teamId
       assist.assists += 1
       statsMap.set(ev.relatedPlayerId, assist)
@@ -220,7 +234,7 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
   for (const lineup of lineupAggregates) {
     const entry =
       statsMap.get(lineup.personId) ??
-      { clubId: lineup.clubId, goals: 0, assists: 0, yellow: 0, red: 0, matches: 0 }
+      { clubId: lineup.clubId, goals: 0, penaltyGoals: 0, assists: 0, yellow: 0, red: 0, matches: 0 }
     entry.clubId = lineup.clubId
     entry.matches += lineup._count.matchId ?? 0
     statsMap.set(lineup.personId, entry)
@@ -243,6 +257,7 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
         personId,
         clubId: entry.clubId,
         goals: entry.goals,
+        penaltyGoals: entry.penaltyGoals,
         assists: entry.assists,
         yellowCards: entry.yellow,
         redCards: entry.red,
@@ -251,6 +266,7 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
       update: {
         clubId: entry.clubId,
         goals: entry.goals,
+        penaltyGoals: entry.penaltyGoals,
         assists: entry.assists,
         yellowCards: entry.yellow,
         redCards: entry.red,
@@ -274,6 +290,7 @@ async function rebuildPlayerCareerStats(seasonId: number, tx: PrismaTx) {
     where: { clubId: { in: clubIds } },
     _sum: {
       goals: true,
+      penaltyGoals: true,
       assists: true,
       yellowCards: true,
       redCards: true,
@@ -288,6 +305,7 @@ async function rebuildPlayerCareerStats(seasonId: number, tx: PrismaTx) {
   for (const aggregate of aggregates) {
     const sum = aggregate._sum ?? {}
     const totalGoals = sum.goals ?? 0
+  const totalPenaltyGoals = sum.penaltyGoals ?? 0
     const totalAssists = sum.assists ?? 0
     const yellowCards = sum.yellowCards ?? 0
     const redCards = sum.redCards ?? 0
@@ -304,6 +322,7 @@ async function rebuildPlayerCareerStats(seasonId: number, tx: PrismaTx) {
         personId: aggregate.personId,
         clubId: aggregate.clubId,
         totalGoals,
+  penaltyGoals: totalPenaltyGoals,
         totalMatches,
         totalAssists,
         yellowCards,
@@ -311,6 +330,7 @@ async function rebuildPlayerCareerStats(seasonId: number, tx: PrismaTx) {
       },
       update: {
         totalGoals,
+  penaltyGoals: totalPenaltyGoals,
         totalMatches,
         totalAssists,
         yellowCards,
@@ -341,6 +361,7 @@ async function rebuildPlayerCareerStats(seasonId: number, tx: PrismaTx) {
         personId: link.personId,
         clubId: link.clubId,
         totalGoals: 0,
+  penaltyGoals: 0,
         totalMatches: 0,
         totalAssists: 0,
         yellowCards: 0,

@@ -12,12 +12,5 @@ export default defineConfig({
     alias: {
       '@shared': path.resolve(__dirname, '../shared')
     }
-  },
-  server: {
-    port: 5183,
-    host: '0.0.0.0'
-  },
-  preview: {
-    port: 4183
   }
 })
