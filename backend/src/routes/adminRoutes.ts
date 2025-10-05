@@ -970,6 +970,46 @@ export default async function (server: FastifyInstance) {
       return sendSerialized(reply, match)
     })
 
+    admin.post('/friendly-matches', async (request, reply) => {
+      const body = request.body as {
+        matchDateTime?: string
+        homeTeamName?: string
+        awayTeamName?: string
+        stadiumId?: number
+        refereeId?: number
+        eventName?: string
+      }
+
+      const matchDate = body?.matchDateTime ? new Date(body.matchDateTime) : null
+      const homeName = body?.homeTeamName?.trim()
+      const awayName = body?.awayTeamName?.trim()
+
+      if (!homeName || !awayName || !matchDate || Number.isNaN(matchDate.getTime())) {
+        return reply.status(400).send({ ok: false, error: 'friendly_match_fields_required' })
+      }
+
+      if (homeName.toLowerCase() === awayName.toLowerCase()) {
+        return reply.status(400).send({ ok: false, error: 'friendly_match_same_teams' })
+      }
+
+      const stadiumId = body?.stadiumId ? parseNumericId(body.stadiumId, 'stadiumId') : null
+      const refereeId = body?.refereeId ? parseNumericId(body.refereeId, 'refereeId') : null
+      const eventName = body?.eventName?.trim()
+
+      const friendlyMatch = await prisma.friendlyMatch.create({
+        data: {
+          matchDateTime: matchDate,
+          homeTeamName: homeName,
+          awayTeamName: awayName,
+          stadiumId,
+          refereeId,
+          eventName: eventName && eventName.length ? eventName : null
+        }
+      })
+
+      return sendSerialized(reply, friendlyMatch)
+    })
+
     admin.put('/matches/:matchId', async (request, reply) => {
       const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
       const body = request.body as Partial<{

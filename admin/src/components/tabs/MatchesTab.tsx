@@ -31,12 +31,11 @@ type SeriesFormState = {
 
 type MatchFormState = {
   matchDateTime: string
-  homeTeamId: number | ''
-  awayTeamId: number | ''
+  homeTeamName: string
+  awayTeamName: string
   stadiumId: number | ''
   refereeId: number | ''
-  seriesId: string | ''
-  seriesMatchNumber: number | ''
+  eventName: string
 }
 
 type MatchUpdateFormState = {
@@ -102,12 +101,11 @@ const defaultSeriesForm: SeriesFormState = {
 
 const defaultMatchForm: MatchFormState = {
   matchDateTime: '',
-  homeTeamId: '',
-  awayTeamId: '',
+  homeTeamName: '',
+  awayTeamName: '',
   stadiumId: '',
   refereeId: '',
-  seriesId: '',
-  seriesMatchNumber: ''
+  eventName: ''
 }
 
 const defaultEventForm: EventFormState = {
@@ -452,24 +450,28 @@ export const MatchesTab = () => {
 
   const handleMatchSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const seasonId = ensureSeasonSelected()
-    if (!seasonId || !matchForm.matchDateTime || !matchForm.homeTeamId || !matchForm.awayTeamId) {
-      handleFeedback('Дата и команды обязательны', 'error')
+    const matchDate = matchForm.matchDateTime
+    const homeName = matchForm.homeTeamName.trim()
+    const awayName = matchForm.awayTeamName.trim()
+
+    if (!matchDate || !homeName || !awayName) {
+      handleFeedback('Укажите дату и названия команд', 'error')
+      return
+    }
+    if (homeName.toLowerCase() === awayName.toLowerCase()) {
+      handleFeedback('Названия команд должны отличаться', 'error')
       return
     }
     await runWithMessages(async () => {
-      await adminPost(token, '/api/admin/matches', {
-        seasonId,
-        matchDateTime: new Date(matchForm.matchDateTime).toISOString(),
-        homeTeamId: matchForm.homeTeamId,
-        awayTeamId: matchForm.awayTeamId,
+      await adminPost(token, '/api/admin/friendly-matches', {
+        matchDateTime: new Date(matchDate).toISOString(),
+        homeTeamName: homeName,
+        awayTeamName: awayName,
         stadiumId: matchForm.stadiumId || undefined,
         refereeId: matchForm.refereeId || undefined,
-        seriesId: matchForm.seriesId || undefined,
-        seriesMatchNumber: matchForm.seriesMatchNumber || undefined
+        eventName: matchForm.eventName.trim() || undefined
       })
-      await fetchMatches(seasonId)
-    }, 'Матч создан')
+    }, 'Товарищеский матч создан')
     setMatchForm(defaultMatchForm)
   }
 
@@ -1257,7 +1259,7 @@ export const MatchesTab = () => {
         <article className="card">
           <header>
             <h4>Создать матч</h4>
-            <p>Планируйте календарь и назначайте площадку.</p>
+            <p>Добавьте товарищескую игру — она не попадёт в статистику сезона и карьеры.</p>
           </header>
           <form className="stacked" onSubmit={handleMatchSubmit}>
             <label>
@@ -1271,33 +1273,23 @@ export const MatchesTab = () => {
             </label>
             <label>
               Хозяева
-              <select
-                value={matchForm.homeTeamId}
-                onChange={(event) => setMatchForm((form) => ({ ...form, homeTeamId: event.target.value ? Number(event.target.value) : '' }))}
+              <input
+                type="text"
+                value={matchForm.homeTeamName}
+                onChange={(event) => setMatchForm((form) => ({ ...form, homeTeamName: event.target.value }))}
+                placeholder="Например: ФК Обнинск"
                 required
-              >
-                <option value="">—</option>
-                {seasonParticipants.map((participant) => (
-                  <option key={participant.clubId} value={participant.clubId}>
-                    {participant.club.name}
-                  </option>
-                ))}
-              </select>
+              />
             </label>
             <label>
               Гости
-              <select
-                value={matchForm.awayTeamId}
-                onChange={(event) => setMatchForm((form) => ({ ...form, awayTeamId: event.target.value ? Number(event.target.value) : '' }))}
+              <input
+                type="text"
+                value={matchForm.awayTeamName}
+                onChange={(event) => setMatchForm((form) => ({ ...form, awayTeamName: event.target.value }))}
+                placeholder="Например: ФК Звезда"
                 required
-              >
-                <option value="">—</option>
-                {seasonParticipants.map((participant) => (
-                  <option key={participant.clubId} value={participant.clubId}>
-                    {participant.club.name}
-                  </option>
-                ))}
-              </select>
+              />
             </label>
             <label>
               Стадион
@@ -1330,34 +1322,15 @@ export const MatchesTab = () => {
               </select>
             </label>
             <label>
-              Серия (опционально)
-              <select
-                value={matchForm.seriesId}
-                onChange={(event) => setMatchForm((form) => ({ ...form, seriesId: event.target.value }))}
-              >
-                <option value="">—</option>
-                {seasonSeries.map((series) => (
-                  <option key={series.id} value={series.id}>
-                    {series.stageName}
-                  </option>
-                ))}
-              </select>
+                Наименование события
+                <input
+                  type="text"
+                  value={matchForm.eventName}
+                  onChange={(event) => setMatchForm((form) => ({ ...form, eventName: event.target.value }))}
+                  placeholder="Например: Кубок открытия сезона"
+                />
             </label>
-            <label>
-              Номер игры в серии
-              <input
-                type="number"
-                value={matchForm.seriesMatchNumber}
-                onChange={(event) =>
-                  setMatchForm((form) => ({
-                    ...form,
-                    seriesMatchNumber: event.target.value ? Number(event.target.value) : ''
-                  }))
-                }
-                min={1}
-              />
-            </label>
-            <button className="button-primary" type="submit" disabled={!selectedSeasonId}>
+              <button className="button-primary" type="submit">
               Создать матч
             </button>
           </form>
