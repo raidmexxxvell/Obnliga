@@ -59,7 +59,7 @@ type PlayoffSeriesPlan = {
   matchDateTimes: Date[]
 }
 
-const stageNameForTeams = (teamCount: number): string => {
+export const stageNameForTeams = (teamCount: number): string => {
   if (teamCount <= 2) return 'Финал'
   if (teamCount <= 4) return 'Полуфинал'
   if (teamCount <= 8) return 'Четвертьфинал'
@@ -78,7 +78,7 @@ type InitialPlayoffPlanResult = {
   byeClubId?: number
 }
 
-const createInitialPlayoffPlans = (
+export const createInitialPlayoffPlans = (
   seeds: number[],
   startDate: Date,
   matchTime: string | null | undefined,
@@ -90,7 +90,12 @@ const createInitialPlayoffPlans = (
 
   const sortedSeeds = [...seeds]
   const hasBye = sortedSeeds.length % 2 === 1
-  const stageTeamsCount = hasBye ? sortedSeeds.length - 1 : sortedSeeds.length
+  const eliminatedClubId = hasBye ? sortedSeeds.pop() : undefined
+  const stageTeamsCount = sortedSeeds.length
+  if (stageTeamsCount < 2) {
+    return { plans: [], byeClubId: eliminatedClubId }
+  }
+
   const stageName = stageNameForTeams(stageTeamsCount)
   const plans: PlayoffSeriesPlan[] = []
 
@@ -120,8 +125,8 @@ const createInitialPlayoffPlans = (
   }
 
   const result: InitialPlayoffPlanResult = { plans }
-  if (hasBye && left === right) {
-    result.byeClubId = sortedSeeds[left]
+  if (hasBye && eliminatedClubId !== undefined) {
+    result.byeClubId = eliminatedClubId
   }
 
   return result
@@ -201,7 +206,7 @@ const alignDateToWeekday = (date: Date, weekday: number): Date => {
   return clone
 }
 
-const applyTimeToDate = (date: Date, time?: string | null): Date => {
+export const applyTimeToDate = (date: Date, time?: string | null): Date => {
   if (!time) return date
   const match = /^([0-2]\d):([0-5]\d)$/.exec(time.trim())
   if (!match) return date
@@ -212,7 +217,7 @@ const applyTimeToDate = (date: Date, time?: string | null): Date => {
   return withTime
 }
 
-const addDays = (date: Date, days: number): Date => {
+export const addDays = (date: Date, days: number): Date => {
   const next = new Date(date)
   next.setUTCDate(next.getUTCDate() + days)
   return next
