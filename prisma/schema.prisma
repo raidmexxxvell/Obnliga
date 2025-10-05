@@ -83,6 +83,7 @@ enum SeriesFormat {
   SINGLE_MATCH
   TWO_LEGGED
   BEST_OF_N
+  PLAYOFF_BRACKET
 }
 
 model Season {

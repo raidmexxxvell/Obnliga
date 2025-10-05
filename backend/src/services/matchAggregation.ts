@@ -17,7 +17,7 @@ import {
 } from '@prisma/client'
 import prisma from '../db'
 import { defaultCache } from '../cache'
-import { addDays, createInitialPlayoffPlans, stageNameForTeams } from './seasonAutomation'
+import { addDays, createInitialPlayoffPlans, createRandomPlayoffPlans, stageNameForTeams } from './seasonAutomation'
 
 const YELLOW_CARD_LIMIT = 4
 const RED_CARD_BAN_MATCHES = 1
@@ -46,12 +46,13 @@ export async function handleMatchFinalization(matchId: bigint, logger: FastifyBa
 
   const seasonId = match.seasonId
   await prisma.$transaction(async (tx) => {
-    await rebuildClubSeasonStats(seasonId, tx)
+    const includePlayoffRounds = match.season.competition.seriesFormat === ('PLAYOFF_BRACKET' as SeriesFormat)
+    await rebuildClubSeasonStats(seasonId, tx, { includePlayoffRounds })
     await rebuildPlayerSeasonStats(seasonId, tx)
     await rebuildPlayerCareerStats(seasonId, tx)
     await processDisqualifications(match, tx)
     await updatePredictions(match, tx)
-  await updateSeriesState(match, tx, logger)
+    await updateSeriesState(match, tx, logger)
   })
 
   // invalidate caches related to season/club summaries
@@ -68,12 +69,22 @@ export async function handleMatchFinalization(matchId: bigint, logger: FastifyBa
 
 type PrismaTx = Prisma.TransactionClient
 
-async function rebuildClubSeasonStats(seasonId: number, tx: PrismaTx) {
+async function rebuildClubSeasonStats(
+  seasonId: number,
+  tx: PrismaTx,
+  options?: { includePlayoffRounds?: boolean }
+) {
+  const includePlayoffRounds = options?.includePlayoffRounds ?? false
+
   const finishedMatches = await tx.match.findMany({
     where: {
       seasonId,
       status: MatchStatus.FINISHED,
-      OR: [{ roundId: null }, { round: { roundType: RoundType.REGULAR } }]
+      ...(includePlayoffRounds
+        ? {}
+        : {
+            OR: [{ roundId: null }, { round: { roundType: RoundType.REGULAR } }]
+          })
     },
     select: {
       homeTeamId: true,
@@ -546,34 +557,77 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
 
   if (!series) return
   if (series.seriesStatus === SeriesStatus.FINISHED) return
-  // Only playoff series (BEST_OF_N) are supported for automatic winner resolution.
-  // For regular league formats (SINGLE_MATCH / TWO_LEGGED) we don't manage series at all.
-  if (series.season.competition.seriesFormat !== SeriesFormat.BEST_OF_N) return
 
-  const scheduledMatches = series.matches
-  const finishedMatches = scheduledMatches.filter((m) => m.status === MatchStatus.FINISHED)
-  if (finishedMatches.length === 0) return
-  const totalPlannedMatches = scheduledMatches.length
+  const format = series.season.competition.seriesFormat
 
-  let winnerClubId: number | null = null
-  {
-    let homeWins = 0
-    let awayWins = 0
-    for (const m of finishedMatches) {
-      if (m.homeScore > m.awayScore) {
-        if (m.homeTeamId === series.homeClubId) homeWins += 1
-        else awayWins += 1
-      } else if (m.homeScore < m.awayScore) {
-        if (m.awayTeamId === series.homeClubId) homeWins += 1
-        else awayWins += 1
+  if (format === SeriesFormat.BEST_OF_N) {
+    const scheduledMatches = series.matches
+    const finishedMatches = scheduledMatches.filter((m) => m.status === MatchStatus.FINISHED)
+    if (finishedMatches.length === 0) return
+    const totalPlannedMatches = scheduledMatches.length
+
+    let winnerClubId: number | null = null
+    {
+      let homeWins = 0
+      let awayWins = 0
+      for (const m of finishedMatches) {
+        if (m.homeScore > m.awayScore) {
+          if (m.homeTeamId === series.homeClubId) homeWins += 1
+          else awayWins += 1
+        } else if (m.homeScore < m.awayScore) {
+          if (m.awayTeamId === series.homeClubId) homeWins += 1
+          else awayWins += 1
+        }
       }
+      const requiredWins = Math.floor(totalPlannedMatches / 2) + 1
+      if (homeWins >= requiredWins) winnerClubId = series.homeClubId
+      if (awayWins >= requiredWins) winnerClubId = series.awayClubId
     }
-    const requiredWins = Math.floor(totalPlannedMatches / 2) + 1
-    if (homeWins >= requiredWins) winnerClubId = series.homeClubId
-    if (awayWins >= requiredWins) winnerClubId = series.awayClubId
+
+    if (winnerClubId != null) {
+      await tx.matchSeries.update({
+        where: { id: series.id },
+        data: {
+          seriesStatus: SeriesStatus.FINISHED,
+          winnerClubId
+        }
+      })
+
+      await tx.match.deleteMany({
+        where: {
+          seriesId: series.id,
+          status: {
+            in: [MatchStatus.SCHEDULED, MatchStatus.LIVE, MatchStatus.POSTPONED]
+          }
+        }
+      })
+
+      await maybeCreateNextPlayoffStage(tx, {
+        seasonId: series.seasonId,
+        currentStageName: series.stageName,
+        bestOfLength: totalPlannedMatches,
+        format,
+        logger
+      })
+    }
+    return
   }
 
-  if (winnerClubId != null) {
+  if (format === ('PLAYOFF_BRACKET' as SeriesFormat)) {
+    if (match.homeScore === match.awayScore) {
+      logger.warn(
+        {
+          matchId: match.id.toString(),
+          seriesId: series.id,
+          stage: series.stageName
+        },
+        'playoff bracket match finished in draw, unable to determine winner automatically'
+      )
+      return
+    }
+
+    const winnerClubId = match.homeScore > match.awayScore ? match.homeTeamId : match.awayTeamId
+
     await tx.matchSeries.update({
       where: { id: series.id },
       data: {
@@ -594,7 +648,8 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
     await maybeCreateNextPlayoffStage(tx, {
       seasonId: series.seasonId,
       currentStageName: series.stageName,
-      bestOfLength: totalPlannedMatches,
+      bestOfLength: 1,
+      format,
       logger
     })
   }
@@ -604,6 +659,7 @@ type PlayoffProgressionContext = {
   seasonId: number
   currentStageName: string
   bestOfLength: number
+  format: SeriesFormat
   logger: FastifyBaseLogger
 }
 
@@ -616,133 +672,248 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
   if (!stageSeries.length) return
   if (stageSeries.some((item) => item.seriesStatus !== SeriesStatus.FINISHED)) return
 
-  const winners = stageSeries
+  const orderedWinners = stageSeries
     .map((item) => item.winnerClubId)
     .filter((clubId): clubId is number => typeof clubId === 'number')
 
-  if (winners.length < 2) return
-
-  const nextStageName = stageNameForTeams(winners.length)
-  const existingNextStage = await tx.matchSeries.count({
-    where: { seasonId: context.seasonId, stageName: nextStageName }
-  })
-
-  if (existingNextStage > 0) return
-
-  const stats = await tx.clubSeasonStats.findMany({ where: { seasonId: context.seasonId } })
-  const statsMap = new Map<number, (typeof stats)[number]>()
-  for (const stat of stats) {
-    statsMap.set(stat.clubId, stat)
+  const uniqueWinners: number[] = []
+  for (const clubId of orderedWinners) {
+    if (!uniqueWinners.includes(clubId)) {
+      uniqueWinners.push(clubId)
+    }
   }
 
-  const compareClubs = (left: number, right: number): number => {
-    const l = statsMap.get(left) ?? {
-      points: 0,
-      wins: 0,
-      losses: 0,
-      goalsFor: 0,
-      goalsAgainst: 0
+  if (uniqueWinners.length < 2) return
+
+  if (context.format === SeriesFormat.BEST_OF_N) {
+    const stats = await tx.clubSeasonStats.findMany({ where: { seasonId: context.seasonId } })
+    const statsMap = new Map<number, (typeof stats)[number]>()
+    for (const stat of stats) {
+      statsMap.set(stat.clubId, stat)
     }
-    const r = statsMap.get(right) ?? {
-      points: 0,
-      wins: 0,
-      losses: 0,
-      goalsFor: 0,
-      goalsAgainst: 0
+
+    const compareClubs = (left: number, right: number): number => {
+      const l = statsMap.get(left) ?? {
+        points: 0,
+        wins: 0,
+        losses: 0,
+        goalsFor: 0,
+        goalsAgainst: 0
+      }
+      const r = statsMap.get(right) ?? {
+        points: 0,
+        wins: 0,
+        losses: 0,
+        goalsFor: 0,
+        goalsAgainst: 0
+      }
+      if (l.points !== r.points) return r.points - l.points
+      if (l.wins !== r.wins) return r.wins - l.wins
+      const lDiff = l.goalsFor - l.goalsAgainst
+      const rDiff = r.goalsFor - r.goalsAgainst
+      if (lDiff !== rDiff) return rDiff - lDiff
+      if (l.goalsFor !== r.goalsFor) return r.goalsFor - l.goalsFor
+      return l.goalsAgainst - r.goalsAgainst
     }
-    if (l.points !== r.points) return r.points - l.points
-    if (l.wins !== r.wins) return r.wins - l.wins
-    const lDiff = l.goalsFor - l.goalsAgainst
-    const rDiff = r.goalsFor - r.goalsAgainst
-    if (lDiff !== rDiff) return rDiff - lDiff
-    if (l.goalsFor !== r.goalsFor) return r.goalsFor - l.goalsFor
-    return l.goalsAgainst - r.goalsAgainst
-  }
 
-  const seededWinners = [...new Set(winners)].sort(compareClubs)
-  if (seededWinners.length < 2) return
+    const seededWinners = [...uniqueWinners].sort(compareClubs)
+    if (seededWinners.length < 2) return
 
-  const latestMatch = await tx.match.findFirst({
-    where: { seasonId: context.seasonId },
-    orderBy: { matchDateTime: 'desc' }
-  })
-
-  const matchTime = latestMatch ? latestMatch.matchDateTime.toISOString().slice(11, 16) : null
-  const startDate = latestMatch ? addDays(latestMatch.matchDateTime, 7) : new Date()
-
-  const { plans, byeClubId } = createInitialPlayoffPlans(
-    seededWinners,
-    startDate,
-    matchTime,
-    context.bestOfLength
-  )
-
-  if (plans.length === 0 && !byeClubId) return
-
-  let latestDate: Date | null = latestMatch?.matchDateTime ?? null
-  let createdSeries = 0
-  let createdMatches = 0
-
-  for (const plan of plans) {
-    let playoffRound = await tx.seasonRound.findFirst({
-      where: { seasonId: context.seasonId, label: plan.stageName }
+    const nextStageName = stageNameForTeams(seededWinners.length)
+    const existingNextStage = await tx.matchSeries.count({
+      where: { seasonId: context.seasonId, stageName: nextStageName }
     })
-    if (!playoffRound) {
-      playoffRound = await tx.seasonRound.create({
+
+    if (existingNextStage > 0) return
+
+    const latestMatch = await tx.match.findFirst({
+      where: { seasonId: context.seasonId },
+      orderBy: { matchDateTime: 'desc' }
+    })
+
+    const matchTime = latestMatch ? latestMatch.matchDateTime.toISOString().slice(11, 16) : null
+    const startDate = latestMatch ? addDays(latestMatch.matchDateTime, 7) : new Date()
+
+    const { plans, byeClubId } = createInitialPlayoffPlans(
+      seededWinners,
+      startDate,
+      matchTime,
+      context.bestOfLength
+    )
+
+    if (plans.length === 0 && !byeClubId) return
+
+    let latestDate: Date | null = latestMatch?.matchDateTime ?? null
+    let createdSeries = 0
+    let createdMatches = 0
+
+    for (const plan of plans) {
+      let playoffRound = await tx.seasonRound.findFirst({
+        where: { seasonId: context.seasonId, label: plan.stageName }
+      })
+      if (!playoffRound) {
+        playoffRound = await tx.seasonRound.create({
+          data: {
+            seasonId: context.seasonId,
+            roundType: RoundType.PLAYOFF,
+            roundNumber: null,
+            label: plan.stageName
+          }
+        })
+      }
+
+      const series = await tx.matchSeries.create({
         data: {
           seasonId: context.seasonId,
-          roundType: RoundType.PLAYOFF,
-          roundNumber: null,
-          label: plan.stageName
+          stageName: plan.stageName,
+          homeClubId: plan.homeClubId,
+          awayClubId: plan.awayClubId,
+          seriesStatus: SeriesStatus.IN_PROGRESS
+        }
+      })
+      createdSeries += 1
+
+      const matches = plan.matchDateTimes.map((date, index) => {
+        if (!latestDate || date > latestDate) {
+          latestDate = date
+        }
+        return {
+          seasonId: context.seasonId,
+          matchDateTime: date,
+          homeTeamId: index % 2 === 0 ? plan.homeClubId : plan.awayClubId,
+          awayTeamId: index % 2 === 0 ? plan.awayClubId : plan.homeClubId,
+          status: MatchStatus.SCHEDULED,
+          seriesId: series.id,
+          seriesMatchNumber: index + 1,
+          roundId: playoffRound?.id ?? null
+        }
+      })
+
+      if (matches.length) {
+        const created = await tx.match.createMany({ data: matches })
+        createdMatches += created.count
+      }
+    }
+
+    if (latestDate) {
+      await tx.season.update({ where: { id: context.seasonId }, data: { endDate: latestDate } })
+    }
+
+    context.logger.info(
+      {
+        seasonId: context.seasonId,
+        stageName: nextStageName,
+        seriesCreated: createdSeries,
+        matchesCreated: createdMatches,
+        byeClubId
+      },
+      'playoff stage progressed'
+    )
+
+    return
+  }
+
+  if (context.format === ('PLAYOFF_BRACKET' as SeriesFormat)) {
+    const nextStageName = stageNameForTeams(uniqueWinners.length)
+    const existingNextStage = await tx.matchSeries.count({
+      where: { seasonId: context.seasonId, stageName: nextStageName }
+    })
+
+    if (existingNextStage > 0) return
+
+    const latestMatch = await tx.match.findFirst({
+      where: { seasonId: context.seasonId },
+      orderBy: { matchDateTime: 'desc' }
+    })
+
+    const matchTime = latestMatch ? latestMatch.matchDateTime.toISOString().slice(11, 16) : null
+    const startDate = latestMatch ? addDays(latestMatch.matchDateTime, 7) : new Date()
+
+  const bestOfLength = Math.max(1, context.bestOfLength ?? 1)
+    const { plans, byeClubId } = createRandomPlayoffPlans(uniqueWinners, startDate, matchTime, bestOfLength, {
+      shuffle: false
+    })
+
+    if (plans.length === 0 && !byeClubId) return
+
+    let latestDate: Date | null = latestMatch?.matchDateTime ?? null
+    let createdSeries = 0
+    let createdMatches = 0
+
+    for (const plan of plans) {
+      let playoffRound = await tx.seasonRound.findFirst({
+        where: { seasonId: context.seasonId, label: nextStageName }
+      })
+      if (!playoffRound) {
+        playoffRound = await tx.seasonRound.create({
+          data: {
+            seasonId: context.seasonId,
+            roundType: RoundType.PLAYOFF,
+            roundNumber: null,
+            label: nextStageName
+          }
+        })
+      }
+
+      const series = await tx.matchSeries.create({
+        data: {
+          seasonId: context.seasonId,
+          stageName: nextStageName,
+          homeClubId: plan.homeClubId,
+          awayClubId: plan.awayClubId,
+          seriesStatus: SeriesStatus.IN_PROGRESS
+        }
+      })
+      createdSeries += 1
+
+      const matches = plan.matchDateTimes.map((date, index) => {
+        if (!latestDate || date > latestDate) {
+          latestDate = date
+        }
+        return {
+          seasonId: context.seasonId,
+          matchDateTime: date,
+          homeTeamId: plan.homeClubId,
+          awayTeamId: plan.awayClubId,
+          status: MatchStatus.SCHEDULED,
+          seriesId: series.id,
+          seriesMatchNumber: index + 1,
+          roundId: playoffRound?.id ?? null
+        }
+      })
+
+      if (matches.length) {
+        const created = await tx.match.createMany({ data: matches })
+        createdMatches += created.count
+      }
+    }
+
+    if (byeClubId) {
+      await tx.matchSeries.create({
+        data: {
+          seasonId: context.seasonId,
+          stageName: nextStageName,
+          homeClubId: byeClubId,
+          awayClubId: byeClubId,
+          seriesStatus: SeriesStatus.FINISHED,
+          winnerClubId: byeClubId
         }
       })
     }
 
-    const series = await tx.matchSeries.create({
-      data: {
-        seasonId: context.seasonId,
-        stageName: plan.stageName,
-        homeClubId: plan.homeClubId,
-        awayClubId: plan.awayClubId,
-        seriesStatus: SeriesStatus.IN_PROGRESS
-      }
-    })
-    createdSeries += 1
-
-    const matches = plan.matchDateTimes.map((date, index) => {
-      if (!latestDate || date > latestDate) {
-        latestDate = date
-      }
-      return {
-        seasonId: context.seasonId,
-        matchDateTime: date,
-        homeTeamId: index % 2 === 0 ? plan.homeClubId : plan.awayClubId,
-        awayTeamId: index % 2 === 0 ? plan.awayClubId : plan.homeClubId,
-        status: MatchStatus.SCHEDULED,
-        seriesId: series.id,
-        seriesMatchNumber: index + 1,
-        roundId: playoffRound?.id ?? null
-      }
-    })
-
-    if (matches.length) {
-      const created = await tx.match.createMany({ data: matches })
-      createdMatches += created.count
+    if (latestDate) {
+      await tx.season.update({ where: { id: context.seasonId }, data: { endDate: latestDate } })
     }
-  }
 
-  if (latestDate) {
-    await tx.season.update({ where: { id: context.seasonId }, data: { endDate: latestDate } })
+    context.logger.info(
+      {
+        seasonId: context.seasonId,
+        stageName: nextStageName,
+        seriesCreated: createdSeries + (byeClubId ? 1 : 0),
+        matchesCreated: createdMatches,
+        byeClubId
+      },
+      'playoff stage progressed'
+    )
   }
-
-  context.logger.info(
-    {
-      seasonId: context.seasonId,
-      stageName: nextStageName,
-      seriesCreated: createdSeries,
-      matchesCreated: createdMatches,
-      byeClubId
-    },
-    'playoff stage progressed'
-  )
 }

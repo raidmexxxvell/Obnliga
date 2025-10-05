@@ -42,6 +42,9 @@ const ensureUniqueClubs = (clubIds: ClubId[]): ClubId[] => {
 }
 
 const getGroupStageRounds = (format: SeriesFormat): number => {
+  if (format === ('PLAYOFF_BRACKET' as SeriesFormat)) {
+    return 0
+  }
   switch (format) {
     case SeriesFormat.TWO_LEGGED:
       return 2
@@ -127,6 +130,61 @@ export const createInitialPlayoffPlans = (
   const result: InitialPlayoffPlanResult = { plans }
   if (hasBye && eliminatedClubId !== undefined) {
     result.byeClubId = eliminatedClubId
+  }
+
+  return result
+}
+
+const shuffleNumbers = (values: number[]): number[] => {
+  const arr = [...values]
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const tmp = arr[i]
+    arr[i] = arr[j]
+    arr[j] = tmp
+  }
+  return arr
+}
+
+export const createRandomPlayoffPlans = (
+  clubIds: number[],
+  startDate: Date,
+  matchTime: string | null | undefined,
+  bestOfLength = 1,
+  options?: { shuffle?: boolean }
+): InitialPlayoffPlanResult => {
+  if (clubIds.length < 2) {
+    return { plans: [], byeClubId: clubIds[0] }
+  }
+
+  const shouldShuffle = options?.shuffle !== false
+  const ordered = shouldShuffle ? shuffleNumbers(clubIds) : [...clubIds]
+  const hasBye = ordered.length % 2 === 1
+  const stageTeamsCount = hasBye ? ordered.length - 1 : ordered.length
+
+  if (stageTeamsCount < 2) {
+    const byeClubId = hasBye ? ordered[ordered.length - 1] : undefined
+    return { plans: [], byeClubId }
+  }
+
+  const stageName = stageNameForTeams(stageTeamsCount)
+  const plans: PlayoffSeriesPlan[] = []
+
+  for (let index = 0; index < stageTeamsCount; index += 2) {
+    const homeClubId = ordered[index]
+    const awayClubId = ordered[index + 1]
+    const seriesBaseDate = addDays(startDate, Math.floor(index / 2) * 2)
+    const matchDates: Date[] = []
+    for (let game = 0; game < bestOfLength; game += 1) {
+      const scheduled = addDays(seriesBaseDate, game * 3)
+      matchDates.push(applyTimeToDate(scheduled, matchTime))
+    }
+    plans.push({ stageName, homeClubId, awayClubId, matchDateTimes: matchDates })
+  }
+
+  const result: InitialPlayoffPlanResult = { plans }
+  if (hasBye) {
+    result.byeClubId = ordered[ordered.length - 1]
   }
 
   return result
@@ -318,8 +376,9 @@ export const runSeasonAutomation = async (
       }
     }
 
+    const isRandomPlayoff = input.seriesFormat === ('PLAYOFF_BRACKET' as SeriesFormat)
     const roundIndexToId = new Map<number, number>()
-    if (totalRounds > 0) {
+    if (!isRandomPlayoff && totalRounds > 0) {
       for (let roundIndex = 0; roundIndex < totalRounds; roundIndex += 1) {
         const label = `${roundIndex + 1} тур`
         const existing = await tx.seasonRound.findFirst({
@@ -339,33 +398,113 @@ export const runSeasonAutomation = async (
       }
     }
 
-    const matchPayload = pairs.map((pair) => {
-      const matchDate = addDays(kickoffDate, pair.roundIndex * 7)
-      return {
-        seasonId: createdSeason.id,
-        matchDateTime: matchDate,
-        homeTeamId: pair.homeClubId,
-        awayTeamId: pair.awayClubId,
-        status: MatchStatus.SCHEDULED,
-        roundId: roundIndexToId.get(pair.roundIndex) ?? null
-      }
-    })
-
     let matchesCreated = 0
-    if (matchPayload.length) {
-      const result = await tx.match.createMany({ data: matchPayload })
-      matchesCreated += result.count
+    let seriesCreated = 0
+    let bracketByeClubId: number | undefined
+
+    if (isRandomPlayoff) {
+      const { plans, byeClubId } = createRandomPlayoffPlans(uniqueClubIds, kickoffDate, input.matchTime, 1)
+      bracketByeClubId = byeClubId
+      let latestMatchDate: Date | null = null
+
+      for (const plan of plans) {
+        let playoffRound = await tx.seasonRound.findFirst({
+          where: { seasonId: createdSeason.id, label: plan.stageName }
+        })
+        if (!playoffRound) {
+          playoffRound = await tx.seasonRound.create({
+            data: {
+              seasonId: createdSeason.id,
+              roundType: RoundType.PLAYOFF,
+              roundNumber: null,
+              label: plan.stageName
+            }
+          })
+        }
+
+        const series = await tx.matchSeries.create({
+          data: {
+            seasonId: createdSeason.id,
+            stageName: plan.stageName,
+            homeClubId: plan.homeClubId,
+            awayClubId: plan.awayClubId,
+            seriesStatus: SeriesStatus.IN_PROGRESS
+          }
+        })
+        seriesCreated += 1
+
+        const seriesMatches = plan.matchDateTimes.map((date, index) => {
+          if (!latestMatchDate || date > latestMatchDate) {
+            latestMatchDate = date
+          }
+          return {
+            seasonId: createdSeason.id,
+            matchDateTime: date,
+            homeTeamId: plan.homeClubId,
+            awayTeamId: plan.awayClubId,
+            status: MatchStatus.SCHEDULED,
+            seriesId: series.id,
+            seriesMatchNumber: index + 1,
+            roundId: playoffRound?.id ?? null
+          }
+        })
+
+        if (seriesMatches.length) {
+          const result = await tx.match.createMany({ data: seriesMatches })
+          matchesCreated += result.count
+        }
+      }
+
+      if (byeClubId) {
+        const fallbackStage = plans[0]?.stageName ?? stageNameForTeams(Math.max(2, uniqueClubIds.length - 1))
+        await tx.matchSeries.create({
+          data: {
+            seasonId: createdSeason.id,
+            stageName: fallbackStage,
+            homeClubId: byeClubId,
+            awayClubId: byeClubId,
+            seriesStatus: SeriesStatus.FINISHED,
+            winnerClubId: byeClubId
+          }
+        })
+        seriesCreated += 1
+      }
+
+      if (latestMatchDate) {
+        await tx.season.update({ where: { id: createdSeason.id }, data: { endDate: latestMatchDate } })
+        createdSeason.endDate = latestMatchDate
+      }
+    } else {
+      const matchPayload = pairs.map((pair) => {
+        const matchDate = addDays(kickoffDate, pair.roundIndex * 7)
+        return {
+          seasonId: createdSeason.id,
+          matchDateTime: matchDate,
+          homeTeamId: pair.homeClubId,
+          awayTeamId: pair.awayClubId,
+          status: MatchStatus.SCHEDULED,
+          roundId: roundIndexToId.get(pair.roundIndex) ?? null
+        }
+      })
+
+      if (matchPayload.length) {
+        const result = await tx.match.createMany({ data: matchPayload })
+        matchesCreated += result.count
+      }
     }
 
-  let seriesCreated = 0
-
-    logger.info({
-      seasonId: createdSeason.id,
-      participantsCreated,
-      matchesCreated,
-      rosterEntriesCreated,
-      seriesCreated
-    }, 'season automation completed')
+    logger.info(
+      {
+        seasonId: createdSeason.id,
+        participantsCreated,
+        matchesCreated,
+        rosterEntriesCreated,
+        seriesCreated,
+        format: input.seriesFormat,
+        byeClubId: bracketByeClubId ?? null
+      },
+      'season automation completed'
+    )
 
     return {
       season: createdSeason,
