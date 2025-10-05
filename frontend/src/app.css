@@ -219,6 +219,11 @@
   border-color: rgba(255, 77, 130, 0.42);
   color: #ffc3d4;
 }
+
+.portal-feedback.in-modal {
+  margin-top: -4px;
+  font-size: 13px;
+}
 .portal-card-header{
   display:flex;
   align-items:center;
@@ -394,61 +399,91 @@
 .portal-roster-grid{
   display:grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap:10px;
-}
-
-.portal-roster-grid .roster-card{
-  border:1px solid rgba(255,255,255,0.12);
-  border-radius:14px;
-  padding:12px;
-  background:rgba(3,8,18,0.6);
-  cursor:pointer;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-  display:grid;
-  grid-template-columns:auto auto 1fr;
-  align-items:center;
   gap:12px;
 }
 
-.portal-roster-grid .roster-card.selected{
+.portal-roster-grid label {
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:14px;
+  padding:14px;
+  background:rgba(3,8,18,0.6);
+  cursor:pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.portal-roster-grid label.selected {
   border-color:rgba(0,240,255,0.36);
   box-shadow:0 0 18px rgba(0,240,255,0.18);
 }
 
-.portal-roster-grid .roster-card input[type="checkbox"]{
-  width:18px;
-  height:18px;
-  justify-self:flex-start;
+.roster-card {
+  display:grid;
+  grid-template-columns: 1fr auto;
+  align-items:center;
+  gap:12px;
+  min-height:64px;
 }
 
-.portal-roster-grid .player-number{
+.player-info {
   display:flex;
   align-items:center;
-  gap:6px;
-  font-weight:600;
-  font-size:14px;
-  color:#9ecbe0;
+  gap:12px;
+  min-width:0;
 }
 
-.portal-roster-grid .player-number input{
-  width:60px;
+.player-number-input {
+  width:64px;
   border:1px solid rgba(255,255,255,0.16);
-  border-radius:8px;
+  border-radius:10px;
   background:rgba(9,16,28,0.8);
   color:#e6f7ff;
-  padding:4px 6px;
-  text-align:center;
+  padding:6px 8px;
   font-weight:600;
+  text-align:center;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
-.portal-roster-grid .player-number input:focus{
+.player-number-input::placeholder {
+  color: rgba(158, 203, 224, 0.6);
+}
+
+.player-number-input:focus {
   border-color:rgba(0,240,255,0.4);
   outline:none;
   box-shadow:0 0 0 2px rgba(0,240,255,0.18);
 }
 
-.player-name{ font-weight:600; font-size:14px }
-.player-pos{ font-size:12px; opacity:0.7 }
+.player-name {
+  font-weight:600;
+  font-size:14px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.player-checkbox {
+  display:grid;
+  place-items:center;
+}
+
+.player-checkbox input[type="checkbox"],
+.portal-roster input[type="checkbox"] {
+  appearance:none;
+  border-radius:6px;
+  border:1px solid rgba(255,255,255,0.26);
+  background:rgba(3,8,18,0.72);
+  width:18px;
+  height:18px;
+  display:grid;
+  place-items:center;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.roster-card.selected .player-checkbox input[type="checkbox"],
+.portal-roster label.selected input[type="checkbox"] {
+  border-color:rgba(0,240,255,0.5);
+  background:rgba(0,240,255,0.28);
+}
 
 .portal-actions{
   display:flex;
@@ -473,6 +508,7 @@
 
 .portal-modal{
   width:min(540px, 100%);
+  max-height:90vh;
   background: rgba(10,18,32,0.92);
   border-radius:20px;
   border:1px solid rgba(0,240,255,0.24);
@@ -481,6 +517,30 @@
   display:flex;
   flex-direction:column;
   gap:16px;
+  overflow:hidden;
+}
+
+.portal-roster {
+  overflow-y:auto;
+  max-height:60vh;
+}
+
+.portal-roster::-webkit-scrollbar {
+  width:6px;
+}
+
+.portal-roster::-webkit-scrollbar-track {
+  background:rgba(255,255,255,0.04);
+  border-radius:3px;
+}
+
+.portal-roster::-webkit-scrollbar-thumb {
+  background:rgba(0,240,255,0.3);
+  border-radius:3px;
+}
+
+.portal-roster::-webkit-scrollbar-thumb:hover {
+  background:rgba(0,240,255,0.5);
 }
 
 .portal-modal-header{
@@ -529,4 +589,72 @@
 
 @media (max-width:780px){
   .portal-grid{ grid-template-columns:1fr }
+}
+
+@media (max-width:600px) {
+  .portal-shell {
+    padding:22px 18px;
+  }
+
+  .portal-modal {
+    padding:18px;
+  }
+
+  .portal-modal-header {
+    flex-direction:column;
+    gap:10px;
+  }
+
+  .club-switcher {
+    flex-direction:column;
+  }
+
+  .portal-roster-grid {
+    grid-template-columns:1fr;
+  }
+
+  .roster-card {
+    grid-template-columns:1fr;
+    gap:16px;
+  }
+
+  .player-info {
+    gap:10px;
+  }
+
+  .player-checkbox {
+    justify-content:flex-start;
+    display:flex;
+  }
+
+  .portal-actions {
+    flex-direction:column;
+    align-items:stretch;
+    gap:10px;
+  }
+
+  .portal-actions button {
+    width:100%;
+  }
+}
+
+@media (max-width:480px) {
+  .portal-shell {
+    padding:18px 16px;
+  }
+
+  .portal-header {
+    flex-direction:column;
+    align-items:flex-start;
+    gap:12px;
+  }
+
+  .portal-feedback {
+    font-size:13px;
+  }
+
+  .player-number-input {
+    width:56px;
+    padding:6px 6px;
+  }
 }

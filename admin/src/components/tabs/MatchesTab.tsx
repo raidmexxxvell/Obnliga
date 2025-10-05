@@ -124,6 +124,7 @@ type EventPlayerOption = {
   person: Person
   club: Club
   source: 'lineup' | 'roster'
+  shirtNumber?: number | null
 }
 
 const defaultAutomationForm: SeasonAutomationFormState = {
@@ -729,7 +730,8 @@ export const MatchesTab = () => {
           clubId: entry.clubId,
           person: entry.person,
           club: entry.club,
-          source: 'lineup'
+          source: 'lineup',
+          shirtNumber: entry.shirtNumber
         })
       })
     })
@@ -1631,7 +1633,7 @@ export const MatchesTab = () => {
                       {filteredMatchLineup.map((entry) => (
                         <li key={`${entry.matchId}-${entry.personId}`}>
                           <span>
-                            {entry.role === 'STARTER' ? '⏱️' : '↩️'} {entry.person.lastName} {entry.person.firstName} — {lineupRoleLabels[entry.role]}
+                            №{entry.shirtNumber || '?'} {entry.person.lastName} {entry.person.firstName}
                           </span>
                           <span className="list-actions">
                             <button type="button" className="danger" onClick={() => handleLineupRemove(entry)}>
@@ -1694,7 +1696,7 @@ export const MatchesTab = () => {
                         </option>
                         {eventPlayerOptions.map((entry) => (
                           <option key={entry.personId} value={entry.personId}>
-                            {entry.person.lastName} {entry.person.firstName} ({entry.club.name})
+                            №{entry.shirtNumber || '?'} {entry.person.lastName} {entry.person.firstName}
                           </option>
                         ))}
                       </select>
@@ -1742,7 +1744,7 @@ export const MatchesTab = () => {
                         </option>
                         {relatedEventPlayerOptions.map((entry) => (
                           <option key={entry.personId} value={entry.personId}>
-                            {entry.person.lastName} {entry.person.firstName} ({entry.club.name})
+                            №{entry.shirtNumber || '?'} {entry.person.lastName} {entry.person.firstName}
                           </option>
                         ))}
                       </select>
@@ -1755,8 +1757,8 @@ export const MatchesTab = () => {
                     {matchEvents.map((entry) => (
                       <li key={entry.id}>
                         <span>
-                          {entry.minute}' {eventTypeLabels[entry.eventType]} — {entry.player.lastName} {entry.player.firstName} ({entry.team.name})
-                          {entry.relatedPerson ? ` · ассист: ${entry.relatedPerson.lastName} ${entry.relatedPerson.firstName}` : ''}
+                          {entry.minute}' {eventTypeLabels[entry.eventType]} — №{entry.player.shirtNumber || '?'} {entry.player.lastName} {entry.player.firstName}
+                          {entry.relatedPerson ? ` · ассист: №${entry.relatedPerson.shirtNumber || '?'} ${entry.relatedPerson.lastName} ${entry.relatedPerson.firstName}` : ''}
                         </span>
                         <span className="list-actions">
                           <button type="button" className="danger" onClick={() => handleEventDelete(entry)}>

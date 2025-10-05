@@ -17,6 +17,7 @@ export interface Person {
   firstName: string
   lastName: string
   isPlayer: boolean
+  shirtNumber?: number | null
 }
 
 export interface Stadium {
@@ -109,6 +110,7 @@ export interface MatchLineupEntry {
   clubId: number
   role: 'STARTER' | 'SUBSTITUTE'
   position?: string | null
+  shirtNumber?: number | null
   person: Person
   club: Club
 }

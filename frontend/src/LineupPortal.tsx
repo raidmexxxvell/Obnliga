@@ -73,6 +73,7 @@ const LineupPortal: React.FC = () => {
   const [selectedPlayers, setSelectedPlayers] = useState<Record<number, boolean>>({})
   const [shirtNumbers, setShirtNumbers] = useState<Record<number, string>>({})
   const [saving, setSaving] = useState(false)
+  const [modalError, setModalError] = useState<string | null>(null)
 
   const selectedCount = useMemo(
     () =>
@@ -90,6 +91,7 @@ const LineupPortal: React.FC = () => {
     setRoster([])
     setSelectedPlayers({})
     setShirtNumbers({})
+    setModalError(null)
   }
 
   const logout = () => {
@@ -200,6 +202,7 @@ const LineupPortal: React.FC = () => {
     setModalOpen(true)
     setRoster([])
     setSelectedPlayers({})
+    setModalError(null)
   }
 
   const closeModal = () => {
@@ -208,6 +211,7 @@ const LineupPortal: React.FC = () => {
     setRoster([])
     setSelectedPlayers({})
     setShirtNumbers({})
+    setModalError(null)
   }
 
   useEffect(() => {
@@ -215,6 +219,7 @@ const LineupPortal: React.FC = () => {
       if (!modalOpen || !token || !activeMatch || !activeClubId) return
       setRosterLoading(true)
       setPortalError(null)
+      setModalError(null)
       try {
         const data = await apiRequest<LineupRosterEntry[]>(
           `/api/lineup-portal/matches/${activeMatch.id}/roster?clubId=${activeClubId}`
@@ -235,7 +240,7 @@ const LineupPortal: React.FC = () => {
           setPortalError('Сессия истекла. Войдите заново, чтобы продолжить.')
           setModalOpen(false)
         } else {
-          setPortalError(mapError(code))
+          setModalError(mapError(code))
         }
       } finally {
         setRosterLoading(false)
@@ -267,7 +272,7 @@ const LineupPortal: React.FC = () => {
     })
 
     if (missingNumber) {
-      setPortalError('Укажите номер для каждого выбранного игрока.')
+      setModalError('Укажите номер для каждого выбранного игрока.')
       return
     }
 
@@ -282,18 +287,19 @@ const LineupPortal: React.FC = () => {
     )
 
     if (hasInvalidNumber) {
-      setPortalError('Укажите корректные номера от 1 до 999 для всех выбранных игроков.')
+      setModalError('Укажите корректные номера от 1 до 999 для всех выбранных игроков.')
       return
     }
 
     const uniqueNumbers = new Set(numberAssignments.map(({ shirtNumber }) => shirtNumber))
     if (uniqueNumbers.size !== numberAssignments.length) {
-      setPortalError('Номера игроков внутри клуба должны быть уникальными.')
+      setModalError('Номера игроков внутри клуба должны быть уникальными.')
       return
     }
 
     setSaving(true)
     setPortalError(null)
+    setModalError(null)
     try {
   await apiRequest<{ ok: true }>(`/api/lineup-portal/matches/${activeMatch.id}/roster`, {
         method: 'PUT',
@@ -308,7 +314,7 @@ const LineupPortal: React.FC = () => {
         logout()
         setPortalError('Сессия истекла. Авторизуйтесь повторно.')
       } else {
-        setPortalError(mapError(code))
+        setModalError(mapError(code))
       }
     } finally {
       setSaving(false)
@@ -418,6 +424,7 @@ const LineupPortal: React.FC = () => {
           </div>
 
           <form className="portal-roster" onSubmit={handleSubmitRoster}>
+            {modalError ? <div className="portal-feedback error in-modal">{modalError}</div> : null}
             {rosterLoading ? <p className="portal-hint">Загружаем заявку клуба…</p> : null}
             <div className="portal-roster-grid">
               {roster.map((entry) => {
@@ -425,17 +432,10 @@ const LineupPortal: React.FC = () => {
                 const surname = `${entry.person.lastName} ${entry.person.firstName}`.trim()
                 return (
                   <label key={entry.personId} className={`roster-card${checked ? ' selected' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => togglePlayer(entry.personId)}
-                      aria-label={`Игрок ${surname}`}
-                      disabled={saving}
-                    />
-                    <span className="player-number">
-                      №
+                    <span className="player-info">
                       <input
                         type="number"
+                        className="player-number-input"
                         value={shirtNumbers[entry.personId] ?? ''}
                         onChange={(event) => updateShirtNumber(entry.personId, event.target.value)}
                         onClick={(event) => event.stopPropagation()}
@@ -446,9 +446,19 @@ const LineupPortal: React.FC = () => {
                         pattern="[0-9]*"
                         disabled={saving}
                         aria-label={`Номер для ${surname}`}
+                        placeholder="№"
+                      />
+                      <span className="player-name">{surname}</span>
+                    </span>
+                    <span className="player-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => togglePlayer(entry.personId)}
+                        aria-label={`Игрок ${surname}`}
+                        disabled={saving}
                       />
                     </span>
-                    <span className="player-name">{surname}</span>
                   </label>
                 )
               })}
