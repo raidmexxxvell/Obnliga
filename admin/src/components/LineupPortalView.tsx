@@ -60,6 +60,7 @@ export const LineupPortalView = () => {
   const [selectedPlayers, setSelectedPlayers] = useState<Record<number, boolean>>({})
   const [shirtNumbers, setShirtNumbers] = useState<Record<number, string>>({})
   const [saving, setSaving] = useState(false)
+  const [modalError, setModalError] = useState<string | null>(null)
 
   const selectedCount = useMemo(
     () =>
@@ -77,6 +78,7 @@ export const LineupPortalView = () => {
     setRoster([])
     setSelectedPlayers({})
     setShirtNumbers({})
+    setModalError(null)
     setModalOpen(false)
   }
 
@@ -121,6 +123,7 @@ export const LineupPortalView = () => {
     setRoster([])
     setSelectedPlayers({})
     setShirtNumbers({})
+    setModalError(null)
   }
 
   const closeModal = () => {
@@ -132,6 +135,7 @@ export const LineupPortalView = () => {
       if (!modalOpen || !lineupToken || !activeMatch || !activeClubId) return
       setRosterLoading(true)
       setPortalError(null)
+      setModalError(null)
       try {
         const data = await lineupFetchRoster(lineupToken, activeMatch.id, activeClubId)
         setRoster(data)
@@ -148,7 +152,7 @@ export const LineupPortalView = () => {
         if (code === 'unauthorized') {
           handleUnauthorized()
         } else {
-          setPortalError(mapError(code))
+          setModalError(mapError(code))
         }
         resetModalState()
       } finally {
@@ -181,7 +185,7 @@ export const LineupPortalView = () => {
     })
 
     if (missingNumber) {
-      setPortalError('Для каждого выбранного игрока укажите номер.')
+      setModalError('Для каждого выбранного игрока укажите номер.')
       return
     }
 
@@ -196,18 +200,19 @@ export const LineupPortalView = () => {
     )
 
     if (hasInvalidNumber) {
-      setPortalError('Укажите корректные номера от 1 до 999 для всех выбранных игроков.')
+      setModalError('Укажите корректные номера от 1 до 999 для всех выбранных игроков.')
       return
     }
 
     const uniqueNumbers = new Set(numberAssignments.map(({ shirtNumber }) => shirtNumber))
     if (uniqueNumbers.size !== numberAssignments.length) {
-      setPortalError('Номера игроков внутри клуба должны быть уникальными.')
+      setModalError('Номера игроков внутри клуба должны быть уникальными.')
       return
     }
 
     setSaving(true)
     setPortalError(null)
+    setModalError(null)
     setPortalMessage(null)
     try {
       await lineupUpdateRoster(lineupToken, activeMatch.id, {
@@ -223,7 +228,7 @@ export const LineupPortalView = () => {
       if (code === 'unauthorized') {
         handleUnauthorized()
       } else {
-        setPortalError(mapError(code))
+        setModalError(mapError(code))
       }
     } finally {
       setSaving(false)
@@ -329,6 +334,7 @@ export const LineupPortalView = () => {
           </div>
 
           <form className="portal-roster" onSubmit={handleSubmitRoster}>
+            {modalError ? <div className="portal-feedback error in-modal">{modalError}</div> : null}
             {rosterLoading ? <p className="portal-hint">Загружаем заявку клуба…</p> : null}
             <div className="portal-roster-grid">
               {roster.map((entry) => {
@@ -336,17 +342,10 @@ export const LineupPortalView = () => {
                 const surname = `${entry.person.lastName} ${entry.person.firstName}`.trim()
                 return (
                   <label key={entry.personId} className={`roster-card${checked ? ' selected' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => togglePlayer(entry.personId)}
-                      aria-label={`Игрок ${surname}`}
-                      disabled={saving}
-                    />
-                    <span className="player-number">
-                      №
+                    <span className="player-info">
                       <input
                         type="number"
+                        className="player-number-input"
                         value={shirtNumbers[entry.personId] ?? ''}
                         onChange={(event) => updateShirtNumber(entry.personId, event.target.value)}
                         onClick={(event) => event.stopPropagation()}
@@ -357,9 +356,19 @@ export const LineupPortalView = () => {
                         pattern="[0-9]*"
                         disabled={saving}
                         aria-label={`Номер для ${surname}`}
+                        placeholder="№"
+                      />
+                      <span className="player-name">{surname}</span>
+                    </span>
+                    <span className="player-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => togglePlayer(entry.personId)}
+                        aria-label={`Игрок ${surname}`}
+                        disabled={saving}
                       />
                     </span>
-                    <span className="player-name">{surname}</span>
                   </label>
                 )
               })}
