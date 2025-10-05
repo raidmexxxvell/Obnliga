@@ -1,8 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAdminStore } from '../../store/adminStore'
-import { ClubSeasonStats, MatchSummary, PlayerCareerStats, PlayerSeasonStats } from '../../types'
+import {
+  ClubCareerTotals,
+  ClubSeasonStats,
+  MatchSummary,
+  PlayerCareerStats,
+  PlayerSeasonStats
+} from '../../types'
 
-type StatView = 'standings' | 'scorers' | 'assists' | 'goalContribution' | 'discipline' | 'career'
+type StatView =
+  | 'standings'
+  | 'teams'
+  | 'scorers'
+  | 'assists'
+  | 'goalContribution'
+  | 'discipline'
+  | 'career'
 
 const sortStandings = (rows: ClubSeasonStats[], matches: MatchSummary[]) => {
   const dataset = [...rows]
@@ -29,6 +42,7 @@ const sortStandings = (rows: ClubSeasonStats[], matches: MatchSummary[]) => {
   for (const match of matches) {
     if (match.status !== 'FINISHED') continue
     if (!seasonIds.has(match.seasonId)) continue
+    if (match.round?.roundType === 'PLAYOFF') continue
     const home = ensureHeadToHead(match.homeTeamId, match.awayTeamId)
     const away = ensureHeadToHead(match.awayTeamId, match.homeTeamId)
 
@@ -132,6 +146,17 @@ const sortCareer = (rows: PlayerCareerStats[]) => {
   })
 }
 
+const sortTeams = (rows: ClubCareerTotals[]) => {
+  return [...rows].sort((left, right) => {
+    if (right.tournaments !== left.tournaments) return right.tournaments - left.tournaments
+    const leftDiff = left.goalsFor - left.goalsAgainst
+    const rightDiff = right.goalsFor - right.goalsAgainst
+    if (rightDiff !== leftDiff) return rightDiff - leftDiff
+    if (right.goalsFor !== left.goalsFor) return right.goalsFor - left.goalsFor
+    return left.club.name.localeCompare(right.club.name, 'ru')
+  })
+}
+
 export const StatsTab = () => {
   const {
     token,
@@ -208,6 +233,7 @@ export const StatsTab = () => {
     () => sortStandings(data.clubStats, data.matches),
     [data.clubStats, data.matches]
   )
+  const teams = useMemo(() => sortTeams(data.clubCareerTotals), [data.clubCareerTotals])
   const scorers = useMemo(() => sortScorers(data.playerStats), [data.playerStats])
   const assistsTop = useMemo(() => sortAssists(data.playerStats).slice(0, 10), [data.playerStats])
   const goalContributions = useMemo(() => sortGoalContributions(data.playerStats), [data.playerStats])
@@ -232,6 +258,7 @@ export const StatsTab = () => {
     for (const match of data.matches) {
       if (selectedSeasonId && match.seasonId !== selectedSeasonId) continue
       if (match.status !== 'FINISHED') continue
+      if (match.round?.roundType === 'PLAYOFF') continue
       const homeKey = makeKey(match.seasonId, match.homeTeamId)
       const awayKey = makeKey(match.seasonId, match.awayTeamId)
       map.set(homeKey, (map.get(homeKey) ?? 0) + 1)
@@ -325,6 +352,9 @@ export const StatsTab = () => {
             <button type="button" className={activeView === 'standings' ? 'chip active' : 'chip'} onClick={() => setActiveView('standings')}>
               Таблица
             </button>
+            <button type="button" className={activeView === 'teams' ? 'chip active' : 'chip'} onClick={() => setActiveView('teams')}>
+              Команды
+            </button>
             <button type="button" className={activeView === 'scorers' ? 'chip active' : 'chip'} onClick={() => setActiveView('scorers')}>
               Бомбардиры
             </button>
@@ -394,6 +424,44 @@ export const StatsTab = () => {
             </tbody>
           </table>
           {!standings.length ? <p className="muted">Нет данных для выбранного сезона.</p> : null}
+        </section>
+      ) : null}
+
+      {activeView === 'teams' ? (
+        <section className="card">
+          <header>
+            <h4>Команды — сводная статистика</h4>
+            <p>Данные накапливаются за все сыгранные турниры выбранного соревнования.</p>
+          </header>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Клуб</th>
+                <th>Турниров</th>
+                <th>ЖК</th>
+                <th>КК</th>
+                <th>Забито</th>
+                <th>Пропущено</th>
+                <th>На «0»</th>
+              </tr>
+            </thead>
+            <tbody>
+              {teams.map((row, index) => (
+                <tr key={row.clubId}>
+                  <td>{index + 1}</td>
+                  <td>{row.club.name}</td>
+                  <td>{row.tournaments}</td>
+                  <td>{row.yellowCards}</td>
+                  <td>{row.redCards}</td>
+                  <td>{row.goalsFor}</td>
+                  <td>{row.goalsAgainst}</td>
+                  <td>{row.cleanSheets}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!teams.length ? <p className="muted">Нет данных: сыгранные турниры не найдены.</p> : null}
         </section>
       ) : null}
 

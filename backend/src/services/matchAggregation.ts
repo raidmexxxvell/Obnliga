@@ -70,7 +70,11 @@ type PrismaTx = Prisma.TransactionClient
 
 async function rebuildClubSeasonStats(seasonId: number, tx: PrismaTx) {
   const finishedMatches = await tx.match.findMany({
-    where: { seasonId, status: MatchStatus.FINISHED },
+    where: {
+      seasonId,
+      status: MatchStatus.FINISHED,
+      OR: [{ roundId: null }, { round: { roundType: RoundType.REGULAR } }]
+    },
     select: {
       homeTeamId: true,
       awayTeamId: true,

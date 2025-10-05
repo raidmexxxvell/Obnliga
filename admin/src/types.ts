@@ -140,6 +140,17 @@ export interface ClubSeasonStats {
   season?: Season
 }
 
+export interface ClubCareerTotals {
+  clubId: number
+  club: Club
+  tournaments: number
+  goalsFor: number
+  goalsAgainst: number
+  yellowCards: number
+  redCards: number
+  cleanSheets: number
+}
+
 export interface PlayerSeasonStats {
   seasonId: number
   personId: number

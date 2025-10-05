@@ -94,6 +94,9 @@ export const PlayersTab = () => {
     })
   }, [data.persons, filter, showPlayersOnly])
 
+  const limitedPersons = useMemo(() => filteredPersons.slice(0, 5), [filteredPersons])
+  const hasMorePersons = filteredPersons.length > limitedPersons.length
+
   const handlePersonSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!personForm.firstName.trim() || !personForm.lastName.trim()) {
@@ -424,7 +427,7 @@ export const PlayersTab = () => {
             </tr>
           </thead>
           <tbody>
-            {filteredPersons.map((person) => (
+            {limitedPersons.map((person) => (
               <tr key={person.id}>
                 <td>{person.lastName}</td>
                 <td>{person.firstName}</td>
@@ -442,6 +445,7 @@ export const PlayersTab = () => {
           </tbody>
         </table>
         {!filteredPersons.length ? <p className="muted">Список пуст.</p> : null}
+        {hasMorePersons ? <p className="muted">Показаны первые 5 записей, уточните поиск.</p> : null}
       </section>
 
       <section className="card" style={{ gridColumn: '1 / -1' }}>

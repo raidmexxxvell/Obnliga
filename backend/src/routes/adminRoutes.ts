@@ -11,6 +11,7 @@ import {
   MatchStatus,
   PredictionResult,
   Prisma,
+  RoundType,
   SeriesFormat,
   SeriesStatus
 } from '@prisma/client'
@@ -1281,7 +1282,11 @@ export default async function (server: FastifyInstance) {
       })
 
       const finishedMatches = await prisma.match.findMany({
-        where: { seasonId: resolvedSeasonId, status: MatchStatus.FINISHED },
+        where: {
+          seasonId: resolvedSeasonId,
+          status: MatchStatus.FINISHED,
+          OR: [{ roundId: null }, { round: { roundType: RoundType.REGULAR } }]
+        },
         select: {
           homeTeamId: true,
           awayTeamId: true,
@@ -1295,6 +1300,47 @@ export default async function (server: FastifyInstance) {
         statsByClub.set(stat.clubId, stat)
       }
 
+      type ComputedClubStats = {
+        points: number
+        wins: number
+        losses: number
+        goalsFor: number
+        goalsAgainst: number
+      }
+
+      const computedStats = new Map<number, ComputedClubStats>()
+      const ensureComputed = (clubId: number): ComputedClubStats => {
+        let entry = computedStats.get(clubId)
+        if (!entry) {
+          entry = { points: 0, wins: 0, losses: 0, goalsFor: 0, goalsAgainst: 0 }
+          computedStats.set(clubId, entry)
+        }
+        return entry
+      }
+
+      for (const match of finishedMatches) {
+        const home = ensureComputed(match.homeTeamId)
+        const away = ensureComputed(match.awayTeamId)
+
+        home.goalsFor += match.homeScore
+        home.goalsAgainst += match.awayScore
+        away.goalsFor += match.awayScore
+        away.goalsAgainst += match.homeScore
+
+        if (match.homeScore > match.awayScore) {
+          home.points += 3
+          home.wins += 1
+          away.losses += 1
+        } else if (match.homeScore < match.awayScore) {
+          away.points += 3
+          away.wins += 1
+          home.losses += 1
+        } else {
+          home.points += 1
+          away.points += 1
+        }
+      }
+
       const seasonPayload = {
         id: season.id,
         competitionId: season.competitionId,
@@ -1305,15 +1351,16 @@ export default async function (server: FastifyInstance) {
       }
 
       const rows = season.participants.map((participant) => {
+        const computed = computedStats.get(participant.clubId)
         const stat = statsByClub.get(participant.clubId)
         return {
           seasonId: season.id,
           clubId: participant.clubId,
-          points: stat?.points ?? 0,
-          wins: stat?.wins ?? 0,
-          losses: stat?.losses ?? 0,
-          goalsFor: stat?.goalsFor ?? 0,
-          goalsAgainst: stat?.goalsAgainst ?? 0,
+          points: computed?.points ?? stat?.points ?? 0,
+          wins: computed?.wins ?? stat?.wins ?? 0,
+          losses: computed?.losses ?? stat?.losses ?? 0,
+          goalsFor: computed?.goalsFor ?? stat?.goalsFor ?? 0,
+          goalsAgainst: computed?.goalsAgainst ?? stat?.goalsAgainst ?? 0,
           club: participant.club,
           season: seasonPayload
         }
@@ -1321,14 +1368,15 @@ export default async function (server: FastifyInstance) {
 
       for (const stat of rawStats) {
         if (rows.some((row) => row.clubId === stat.clubId)) continue
+        const computed = computedStats.get(stat.clubId)
         rows.push({
           seasonId: season.id,
           clubId: stat.clubId,
-          points: stat.points,
-          wins: stat.wins,
-          losses: stat.losses,
-          goalsFor: stat.goalsFor,
-          goalsAgainst: stat.goalsAgainst,
+          points: computed?.points ?? stat.points,
+          wins: computed?.wins ?? stat.wins,
+          losses: computed?.losses ?? stat.losses,
+          goalsFor: computed?.goalsFor ?? stat.goalsFor,
+          goalsAgainst: computed?.goalsAgainst ?? stat.goalsAgainst,
           club: stat.club,
           season: seasonPayload
         })
@@ -1392,6 +1440,193 @@ export default async function (server: FastifyInstance) {
         if (rightVsLeft.goalsFor !== leftVsRight.goalsFor) return rightVsLeft.goalsFor - leftVsRight.goalsFor
 
         return right.goalsFor - left.goalsFor
+      })
+
+      return reply.send({ ok: true, data: serializePrisma(rows) })
+    })
+
+    admin.get('/stats/club-career', async (request, reply) => {
+      const { competitionId } = request.query as { competitionId?: string }
+
+      const seasons = await prisma.season.findMany({
+        where: competitionId ? { competitionId: Number(competitionId) } : undefined,
+        select: { id: true }
+      })
+
+      if (!seasons.length) {
+        return reply.send({ ok: true, data: [] })
+      }
+
+      const seasonIds = seasons.map((season) => season.id)
+
+      const participants = await prisma.seasonParticipant.findMany({
+        where: { seasonId: { in: seasonIds } },
+        select: { seasonId: true, clubId: true }
+      })
+
+      const clubIdSet = new Set<number>()
+      for (const participant of participants) {
+        clubIdSet.add(participant.clubId)
+      }
+
+      const matches = await prisma.match.findMany({
+        where: {
+          seasonId: { in: seasonIds },
+          status: MatchStatus.FINISHED
+        },
+        select: {
+          seasonId: true,
+          homeTeamId: true,
+          awayTeamId: true,
+          homeScore: true,
+          awayScore: true
+        }
+      })
+
+      for (const match of matches) {
+        clubIdSet.add(match.homeTeamId)
+        clubIdSet.add(match.awayTeamId)
+      }
+
+      const yellowCardGroups = await prisma.matchEvent.groupBy({
+        by: ['teamId'],
+        where: {
+          match: {
+            seasonId: { in: seasonIds },
+            status: MatchStatus.FINISHED
+          },
+          eventType: MatchEventType.YELLOW_CARD
+        },
+        _count: { _all: true }
+      })
+
+      const redCardGroups = await prisma.matchEvent.groupBy({
+        by: ['teamId'],
+        where: {
+          match: {
+            seasonId: { in: seasonIds },
+            status: MatchStatus.FINISHED
+          },
+          eventType: MatchEventType.RED_CARD
+        },
+        _count: { _all: true }
+      })
+
+      for (const entry of yellowCardGroups) {
+        if (entry.teamId != null) {
+          clubIdSet.add(entry.teamId)
+        }
+      }
+      for (const entry of redCardGroups) {
+        if (entry.teamId != null) {
+          clubIdSet.add(entry.teamId)
+        }
+      }
+
+      const clubIds = Array.from(clubIdSet)
+      if (!clubIds.length) {
+        return reply.send({ ok: true, data: [] })
+      }
+
+      const clubs = await prisma.club.findMany({
+        where: { id: { in: clubIds } },
+        select: { id: true, name: true, shortName: true, logoUrl: true }
+      })
+
+      type TotalsEntry = {
+        clubId: number
+        club?: (typeof clubs)[number]
+        seasonIds: Set<number>
+        goalsFor: number
+        goalsAgainst: number
+        yellowCards: number
+        redCards: number
+        cleanSheets: number
+      }
+
+      const clubInfo = new Map(clubs.map((club) => [club.id, club]))
+      const totals = new Map<number, TotalsEntry>()
+
+      const ensureClub = (clubId: number): TotalsEntry | undefined => {
+        const club = clubInfo.get(clubId)
+        if (!club) return undefined
+        let entry = totals.get(clubId)
+        if (!entry) {
+          entry = {
+            clubId,
+            club,
+            seasonIds: new Set<number>(),
+            goalsFor: 0,
+            goalsAgainst: 0,
+            yellowCards: 0,
+            redCards: 0,
+            cleanSheets: 0
+          }
+          totals.set(clubId, entry)
+        }
+        return entry
+      }
+
+      for (const participant of participants) {
+        const entry = ensureClub(participant.clubId)
+        entry?.seasonIds.add(participant.seasonId)
+      }
+
+      for (const match of matches) {
+        const home = ensureClub(match.homeTeamId)
+        const away = ensureClub(match.awayTeamId)
+
+        if (home) {
+          home.goalsFor += match.homeScore
+          home.goalsAgainst += match.awayScore
+          if (match.awayScore === 0) {
+            home.cleanSheets += 1
+          }
+        }
+
+        if (away) {
+          away.goalsFor += match.awayScore
+          away.goalsAgainst += match.homeScore
+          if (match.homeScore === 0) {
+            away.cleanSheets += 1
+          }
+        }
+      }
+
+      for (const entry of yellowCardGroups) {
+        if (entry.teamId == null) continue
+        const totalsEntry = ensureClub(entry.teamId)
+        if (totalsEntry) {
+          totalsEntry.yellowCards += entry._count._all
+        }
+      }
+
+      for (const entry of redCardGroups) {
+        if (entry.teamId == null) continue
+        const totalsEntry = ensureClub(entry.teamId)
+        if (totalsEntry) {
+          totalsEntry.redCards += entry._count._all
+        }
+      }
+
+      const rows = Array.from(totals.values()).map((entry) => ({
+        clubId: entry.clubId,
+        club: entry.club!,
+        tournaments: entry.seasonIds.size,
+        goalsFor: entry.goalsFor,
+        goalsAgainst: entry.goalsAgainst,
+        yellowCards: entry.yellowCards,
+        redCards: entry.redCards,
+        cleanSheets: entry.cleanSheets
+      }))
+
+      rows.sort((left, right) => {
+        if (right.tournaments !== left.tournaments) return right.tournaments - left.tournaments
+        const leftDiff = left.goalsFor - left.goalsAgainst
+        const rightDiff = right.goalsFor - right.goalsAgainst
+        if (rightDiff !== leftDiff) return rightDiff - leftDiff
+        if (right.goalsFor !== left.goalsFor) return right.goalsFor - left.goalsFor
+        return left.club.name.localeCompare(right.club.name, 'ru')
       })
 
       return reply.send({ ok: true, data: serializePrisma(rows) })

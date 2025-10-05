@@ -5,6 +5,7 @@ import {
   AppUser,
   Club,
   ClubSeasonStats,
+  ClubCareerTotals,
   Competition,
   Disqualification,
   MatchSeries,
@@ -69,6 +70,7 @@ interface AdminData {
   clubStats: ClubSeasonStats[]
   playerStats: PlayerSeasonStats[]
   careerStats: PlayerCareerStats[]
+  clubCareerTotals: ClubCareerTotals[]
   users: AppUser[]
   predictions: Prediction[]
   achievementTypes: AchievementType[]
@@ -119,6 +121,7 @@ const createEmptyData = (): AdminData => ({
   clubStats: [],
   playerStats: [],
   careerStats: [],
+  clubCareerTotals: [],
   users: [],
   predictions: [],
   achievementTypes: [],
@@ -379,13 +382,14 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         }
         const seasonQuery = params.size ? `?${params.toString()}` : ''
         const careerQuery = activeCompetition ? `?competitionId=${activeCompetition}` : ''
-        const [clubStats, playerStats, careerStats] = await Promise.all([
+        const [clubStats, playerStats, careerStats, clubCareerTotals] = await Promise.all([
           adminGet<ClubSeasonStats[]>(token, `/api/admin/stats/club-season${seasonQuery}`),
           adminGet<PlayerSeasonStats[]>(token, `/api/admin/stats/player-season${seasonQuery}`),
-          adminGet<PlayerCareerStats[]>(token, `/api/admin/stats/player-career${careerQuery}`)
+          adminGet<PlayerCareerStats[]>(token, `/api/admin/stats/player-career${careerQuery}`),
+          adminGet<ClubCareerTotals[]>(token, `/api/admin/stats/club-career${careerQuery}`)
         ])
         set((state) => ({
-          data: { ...state.data, clubStats, playerStats, careerStats }
+          data: { ...state.data, clubStats, playerStats, careerStats, clubCareerTotals }
         }))
       })
     },
