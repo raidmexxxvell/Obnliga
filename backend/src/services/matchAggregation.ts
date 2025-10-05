@@ -56,13 +56,27 @@ export async function handleMatchFinalization(matchId: bigint, logger: FastifyBa
   })
 
   // invalidate caches related to season/club summaries
+  const impactedClubIds = new Set<number>()
+  if (match.homeTeamId) impactedClubIds.add(match.homeTeamId)
+  if (match.awayTeamId) impactedClubIds.add(match.awayTeamId)
+  for (const lineup of match.lineups) {
+    if (lineup.clubId) impactedClubIds.add(lineup.clubId)
+  }
+
+  const competitionId = match.season.competitionId
+
   const cacheKeys = [
     `season:${seasonId}:club-stats`,
     `season:${seasonId}:player-stats`,
     `season:${seasonId}:player-career`,
-    `competition:${match.season.competitionId}:club-stats`,
-    `competition:${match.season.competitionId}:player-stats`,
-    `match:${matchId.toString()}`
+    `competition:${competitionId}:club-stats`,
+    `competition:${competitionId}:player-stats`,
+    `competition:${competitionId}:club-career`,
+    `competition:${competitionId}:player-career`,
+    'league:club-career',
+    'league:player-career',
+    `match:${matchId.toString()}`,
+    ...Array.from(impactedClubIds).map((clubId) => `club:${clubId}:player-career`)
   ]
   await Promise.all(cacheKeys.map((key) => defaultCache.invalidate(key).catch(() => undefined)))
 }

@@ -113,6 +113,31 @@ interface AdminState {
 type Setter = (partial: Partial<AdminState> | ((state: AdminState) => Partial<AdminState>), replace?: boolean) => void
 type Getter = () => AdminState
 
+type FetchKey =
+  | 'dictionaries'
+  | 'seasons'
+  | 'series'
+  | 'matches'
+  | 'friendlyMatches'
+  | 'stats'
+  | 'users'
+  | 'predictions'
+  | 'achievements'
+  | 'disqualifications'
+
+const FETCH_TTL: Record<FetchKey, number> = {
+  dictionaries: 60_000,
+  seasons: 30_000,
+  series: 15_000,
+  matches: 10_000,
+  friendlyMatches: 45_000,
+  stats: 20_000,
+  users: 60_000,
+  predictions: 60_000,
+  achievements: 120_000,
+  disqualifications: 30_000
+}
+
 const createEmptyData = (): AdminData => ({
   clubs: [],
   persons: [],
@@ -134,6 +159,22 @@ const createEmptyData = (): AdminData => ({
 })
 
 const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
+  const fetchTimestamps: Record<string, number> = {}
+  const fetchPromises: Record<string, Promise<void> | undefined> = {}
+
+  const composeCacheKey = (scope: FetchKey, parts: Array<string | number | undefined>) => {
+    const extras = parts
+      .filter((part) => part !== undefined && part !== null && part !== '')
+      .map((part) => (typeof part === 'number' ? part.toString() : String(part)))
+    return [scope, ...extras].join('|')
+  }
+
+  const resetFetchCache = () => {
+    for (const key of Object.keys(fetchTimestamps)) {
+      delete fetchTimestamps[key]
+    }
+  }
+
   const mapAuthError = (code: string) => {
     switch (code) {
       case 'invalid_credentials':
@@ -170,6 +211,38 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     }
   }
 
+  const runCachedFetch = async (
+    scope: FetchKey,
+    parts: Array<string | number | undefined>,
+    fetcher: () => Promise<void>,
+    ttlOverride?: number
+  ) => {
+    const cacheKey = composeCacheKey(scope, parts)
+    const ttl = ttlOverride ?? FETCH_TTL[scope]
+    const last = fetchTimestamps[cacheKey]
+    if (ttl > 0 && last && Date.now() - last < ttl) {
+      return
+    }
+
+    const existing = fetchPromises[cacheKey]
+    if (existing) {
+      await existing
+      return
+    }
+
+    const task = (async () => {
+      try {
+        await run(scope, fetcher)
+        fetchTimestamps[cacheKey] = Date.now()
+      } finally {
+        fetchPromises[cacheKey] = undefined
+      }
+    })()
+
+    fetchPromises[cacheKey] = task
+    await task
+  }
+
   const ensureToken = (): string => {
     const token = get().token
     if (!token) {
@@ -199,6 +272,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
             window.localStorage.setItem(storageKey, adminResult.token)
             window.localStorage.removeItem(lineupStorageKey)
           }
+          resetFetchCache()
           set({
             status: 'authenticated',
             mode: 'admin',
@@ -228,6 +302,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           window.localStorage.removeItem(storageKey)
         }
 
+        resetFetchCache()
         set({
           status: 'authenticated',
           mode: 'lineup',
@@ -252,6 +327,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       }
     },
     logout() {
+      resetFetchCache()
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(storageKey)
         window.localStorage.removeItem(lineupStorageKey)
@@ -317,7 +393,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     },
     async fetchDictionaries() {
       if (get().mode !== 'admin') return
-      await run('dictionaries', async () => {
+      await runCachedFetch('dictionaries', [], async () => {
         const token = ensureToken()
         const [clubs, persons, stadiums, competitions] = await Promise.all([
           adminGet<Club[]>(token, '/api/admin/clubs'),
@@ -338,7 +414,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     },
     async fetchSeasons() {
       if (get().mode !== 'admin') return
-      await run('seasons', async () => {
+      await runCachedFetch('seasons', [], async () => {
         const token = ensureToken()
         const seasons = await adminGet<Season[]>(token, '/api/admin/seasons')
         set((state) => {
@@ -354,9 +430,9 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     },
     async fetchSeries(seasonId?: number) {
       if (get().mode !== 'admin') return
-      await run('series', async () => {
+      const activeSeason = seasonId ?? get().selectedSeasonId
+      await runCachedFetch('series', [activeSeason ? `season:${activeSeason}` : undefined], async () => {
         const token = ensureToken()
-        const activeSeason = seasonId ?? get().selectedSeasonId
         const query = activeSeason ? `?seasonId=${activeSeason}` : ''
         const series = await adminGet<MatchSeries[]>(token, `/api/admin/series${query}`)
         set((state) => ({ data: { ...state.data, series } }))
@@ -364,9 +440,9 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     },
     async fetchMatches(seasonId?: number) {
       if (get().mode !== 'admin') return
-      await run('matches', async () => {
+      const activeSeason = seasonId ?? get().selectedSeasonId
+      await runCachedFetch('matches', [activeSeason ? `season:${activeSeason}` : undefined], async () => {
         const token = ensureToken()
-        const activeSeason = seasonId ?? get().selectedSeasonId
         const query = activeSeason ? `?seasonId=${activeSeason}` : ''
         const matches = await adminGet<MatchSummary[]>(token, `/api/admin/matches${query}`)
         set((state) => ({ data: { ...state.data, matches } }))
@@ -374,7 +450,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     },
     async fetchFriendlyMatches() {
       if (get().mode !== 'admin') return
-      await run('friendlyMatches', async () => {
+      await runCachedFetch('friendlyMatches', [], async () => {
         const token = ensureToken()
         const friendlyMatches = await adminGet<FriendlyMatch[]>(token, '/api/admin/friendly-matches')
         set((state) => ({ data: { ...state.data, friendlyMatches } }))
@@ -382,32 +458,36 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     },
     async fetchStats(seasonId?: number, competitionId?: number) {
       if (get().mode !== 'admin') return
-      await run('stats', async () => {
-        const token = ensureToken()
-        const activeSeason = seasonId ?? get().selectedSeasonId
-        const activeCompetition = competitionId ?? get().selectedCompetitionId
-        const params = new URLSearchParams()
-        if (activeSeason) {
-          params.set('seasonId', String(activeSeason))
-        } else if (activeCompetition) {
-          params.set('competitionId', String(activeCompetition))
+      const activeSeason = seasonId ?? get().selectedSeasonId
+      const activeCompetition = competitionId ?? get().selectedCompetitionId
+      await runCachedFetch(
+        'stats',
+        [activeSeason ? `season:${activeSeason}` : undefined, activeCompetition ? `competition:${activeCompetition}` : undefined],
+        async () => {
+          const token = ensureToken()
+          const params = new URLSearchParams()
+          if (activeSeason) {
+            params.set('seasonId', String(activeSeason))
+          } else if (activeCompetition) {
+            params.set('competitionId', String(activeCompetition))
+          }
+          const seasonQuery = params.size ? `?${params.toString()}` : ''
+          const careerQuery = activeCompetition ? `?competitionId=${activeCompetition}` : ''
+          const [clubStats, playerStats, careerStats, clubCareerTotals] = await Promise.all([
+            adminGet<ClubSeasonStats[]>(token, `/api/admin/stats/club-season${seasonQuery}`),
+            adminGet<PlayerSeasonStats[]>(token, `/api/admin/stats/player-season${seasonQuery}`),
+            adminGet<PlayerCareerStats[]>(token, `/api/admin/stats/player-career${careerQuery}`),
+            adminGet<ClubCareerTotals[]>(token, '/api/admin/stats/club-career')
+          ])
+          set((state) => ({
+            data: { ...state.data, clubStats, playerStats, careerStats, clubCareerTotals }
+          }))
         }
-        const seasonQuery = params.size ? `?${params.toString()}` : ''
-        const careerQuery = activeCompetition ? `?competitionId=${activeCompetition}` : ''
-        const [clubStats, playerStats, careerStats, clubCareerTotals] = await Promise.all([
-          adminGet<ClubSeasonStats[]>(token, `/api/admin/stats/club-season${seasonQuery}`),
-          adminGet<PlayerSeasonStats[]>(token, `/api/admin/stats/player-season${seasonQuery}`),
-          adminGet<PlayerCareerStats[]>(token, `/api/admin/stats/player-career${careerQuery}`),
-          adminGet<ClubCareerTotals[]>(token, '/api/admin/stats/club-career')
-        ])
-        set((state) => ({
-          data: { ...state.data, clubStats, playerStats, careerStats, clubCareerTotals }
-        }))
-      })
+      )
     },
     async fetchUsers() {
       if (get().mode !== 'admin') return
-      await run('users', async () => {
+      await runCachedFetch('users', [], async () => {
         const token = ensureToken()
         const users = await adminGet<AppUser[]>(token, '/api/admin/users')
         set((state) => ({ data: { ...state.data, users } }))
@@ -415,7 +495,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     },
     async fetchPredictions() {
       if (get().mode !== 'admin') return
-      await run('predictions', async () => {
+      await runCachedFetch('predictions', [], async () => {
         const token = ensureToken()
         const predictions = await adminGet<Prediction[]>(token, '/api/admin/predictions')
         set((state) => ({ data: { ...state.data, predictions } }))
@@ -423,7 +503,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     },
     async fetchAchievements() {
       if (get().mode !== 'admin') return
-      await run('achievements', async () => {
+      await runCachedFetch('achievements', [], async () => {
         const token = ensureToken()
         const [achievementTypes, userAchievements] = await Promise.all([
           adminGet<AchievementType[]>(token, '/api/admin/achievements/types'),
@@ -436,7 +516,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     },
     async fetchDisqualifications() {
       if (get().mode !== 'admin') return
-      await run('disqualifications', async () => {
+      await runCachedFetch('disqualifications', [], async () => {
         const token = ensureToken()
         const disqualifications = await adminGet<Disqualification[]>(token, '/api/admin/disqualifications')
         set((state) => ({ data: { ...state.data, disqualifications } }))
