@@ -114,12 +114,12 @@ const matchStatisticMetrics: MatchStatisticMetric[] = ['totalShots', 'shotsOnTar
 
 type MatchWithRelations = Prisma.MatchGetPayload<{
   include: {
-    homeClub: { select: { id: true; name: string; shortName: string | null } }
-    awayClub: { select: { id: true; name: string; shortName: string | null } }
+    homeClub: { select: { id: true; name: true; shortName: true } }
+    awayClub: { select: { id: true; name: true; shortName: true } }
     statistics: {
       include: {
         club: {
-          select: { id: true; name: string; shortName: string | null }
+          select: { id: true; name: true; shortName: true }
         }
       }
     }
@@ -159,18 +159,26 @@ const fetchMatchStatisticPayload = async (matchId: bigint): Promise<MatchStatist
 
   let homeClub = match.homeClub
   if (!homeClub) {
-    homeClub = await prisma.club.findUnique({
+    const fallback = await prisma.club.findUnique({
       where: { id: match.homeTeamId },
       select: { id: true, name: true, shortName: true }
     })
+    if (!fallback) {
+      throw new RequestError(404, 'match_club_not_found')
+    }
+    homeClub = fallback
   }
 
   let awayClub = match.awayClub
   if (!awayClub) {
-    awayClub = await prisma.club.findUnique({
+    const fallback = await prisma.club.findUnique({
       where: { id: match.awayTeamId },
       select: { id: true, name: true, shortName: true }
     })
+    if (!fallback) {
+      throw new RequestError(404, 'match_club_not_found')
+    }
+    awayClub = fallback
   }
 
   if (!homeClub || !awayClub) {
