@@ -290,7 +290,11 @@ async function loadSeasonClubStats(seasonId: number) {
 }
 
 async function getSeasonClubStats(seasonId: number) {
-  return defaultCache.get(seasonStatsCacheKey(seasonId, 'club-stats'), () => loadSeasonClubStats(seasonId), SEASON_STATS_CACHE_TTL_SECONDS)
+  return defaultCache.getWithMeta(
+    seasonStatsCacheKey(seasonId, 'club-stats'),
+    () => loadSeasonClubStats(seasonId),
+    SEASON_STATS_CACHE_TTL_SECONDS
+  )
 }
 
 async function loadClubCareerTotals(competitionId?: number) {
@@ -488,7 +492,7 @@ async function getClubCareerTotals(competitionId?: number) {
   const cacheKey = competitionId
     ? competitionStatsCacheKey(competitionId, 'club-career')
     : 'league:club-career'
-  return defaultCache.get(cacheKey, () => loadClubCareerTotals(competitionId), CAREER_STATS_CACHE_TTL_SECONDS)
+  return defaultCache.getWithMeta(cacheKey, () => loadClubCareerTotals(competitionId), CAREER_STATS_CACHE_TTL_SECONDS)
 }
 
 async function loadSeasonPlayerStats(seasonId: number) {
@@ -501,7 +505,11 @@ async function loadSeasonPlayerStats(seasonId: number) {
 }
 
 async function getSeasonPlayerStats(seasonId: number) {
-  return defaultCache.get(seasonStatsCacheKey(seasonId, 'player-stats'), () => loadSeasonPlayerStats(seasonId), SEASON_STATS_CACHE_TTL_SECONDS)
+  return defaultCache.getWithMeta(
+    seasonStatsCacheKey(seasonId, 'player-stats'),
+    () => loadSeasonPlayerStats(seasonId),
+    SEASON_STATS_CACHE_TTL_SECONDS
+  )
 }
 
 async function loadPlayerCareerStats(params: { competitionId?: number; clubId?: number }) {
@@ -543,15 +551,13 @@ async function loadPlayerCareerStats(params: { competitionId?: number; clubId?: 
 }
 
 async function getPlayerCareerStats(params: { competitionId?: number; clubId?: number }) {
-  if (params.clubId) {
-    return loadPlayerCareerStats(params)
-  }
+  const cacheKey = params.clubId
+    ? `club:${params.clubId}:player-career`
+    : params.competitionId
+      ? competitionStatsCacheKey(params.competitionId, 'player-career')
+      : 'league:player-career'
 
-  const cacheKey = params.competitionId
-    ? competitionStatsCacheKey(params.competitionId, 'player-career')
-    : 'league:player-career'
-
-  return defaultCache.get(cacheKey, () => loadPlayerCareerStats(params), CAREER_STATS_CACHE_TTL_SECONDS)
+  return defaultCache.getWithMeta(cacheKey, () => loadPlayerCareerStats(params), CAREER_STATS_CACHE_TTL_SECONDS)
 }
 
 const adminAuthHook = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -1827,8 +1833,9 @@ export default async function (server: FastifyInstance) {
       }
 
       try {
-        const data = await getSeasonClubStats(resolvedSeasonId)
-        return reply.send({ ok: true, data })
+        const { value, version } = await getSeasonClubStats(resolvedSeasonId)
+        reply.header('X-Resource-Version', String(version))
+        return reply.send({ ok: true, data: value, meta: { version } })
       } catch (err) {
         if (err instanceof RequestError) {
           return reply.status(err.statusCode).send({ ok: false, error: err.message })
@@ -1849,8 +1856,9 @@ export default async function (server: FastifyInstance) {
         resolvedCompetitionId = numeric
       }
 
-      const data = await getClubCareerTotals(resolvedCompetitionId)
-      return reply.send({ ok: true, data })
+      const { value, version } = await getClubCareerTotals(resolvedCompetitionId)
+      reply.header('X-Resource-Version', String(version))
+      return reply.send({ ok: true, data: value, meta: { version } })
     })
 
     admin.get('/stats/player-season', async (request, reply) => {
@@ -1877,8 +1885,9 @@ export default async function (server: FastifyInstance) {
         return reply.status(400).send({ ok: false, error: 'season_or_competition_required' })
       }
 
-      const data = await getSeasonPlayerStats(resolvedSeasonId)
-      return reply.send({ ok: true, data })
+      const { value, version } = await getSeasonPlayerStats(resolvedSeasonId)
+      reply.header('X-Resource-Version', String(version))
+      return reply.send({ ok: true, data: value, meta: { version } })
     })
 
     admin.get('/stats/player-career', async (request, reply) => {
@@ -1902,8 +1911,9 @@ export default async function (server: FastifyInstance) {
         resolvedCompetitionId = numeric
       }
 
-      const data = await getPlayerCareerStats({ competitionId: resolvedCompetitionId, clubId: resolvedClubId })
-      return reply.send({ ok: true, data })
+      const { value, version } = await getPlayerCareerStats({ competitionId: resolvedCompetitionId, clubId: resolvedClubId })
+      reply.header('X-Resource-Version', String(version))
+      return reply.send({ ok: true, data: value, meta: { version } })
     })
 
     // Users & predictions

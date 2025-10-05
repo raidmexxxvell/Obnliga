@@ -44,6 +44,18 @@
 - `league:player-career` — 180 c (инвалидация при финализации матча)
 - `club:{clubId}:player-career` — 180 c (инвалидация при финализации матча)
 
+Каждый ответ админских статистических эндпоинтов возвращает `X-Resource-Version` и `meta.version`, чтобы клиенты могли сравнивать версии без повторной выборки при неизменном payload.
+
+### 9. Public Aggregates (HTTP + WS)
+- `public:league:table` — 15 c (SWR 45 c, WS topic `league:table`)
+- `public:league:top-scorers` — 30 c (SWR 60 c, WS topic `league:scorers`)
+- `public:league:form:{seasonId}` — 60 c (SWR 120 c, WS topic `league:form`)
+- `public:matches:live` — 5 c (SWR 15 c, WS topic `matches:live`)
+- `public:club:{clubId}:summary` — 120 c (SWR 300 c, WS topic `club:{clubId}:summary`)
+- `public:predictions:leaderboard` — 120 c (SWR 300 c, WS topic `predictions:leaderboard`)
+
+Версия ресурса передаётся через `X-Resource-Version` и `meta.version`, обновляется воркером `stats-aggregation` после пересчётов `handleMatchFinalization`.
+
 ###	8.Защита от кэш-бомб
 -	Ограничение размера кэша на пользователя:
 	MAX_CACHE_ENTRIES_PER_USER = 50
@@ -99,6 +111,7 @@
 ### Version-based (для WS патчей)
 - ETag-based: для HTTP-запросов
 - Version-based: для WS-патчей (version > current)
+- MultiLevel Cache: каждый cache key сопровождается `X-Resource-Version` (числовой инкремент), вычисляемый по SHA1-фингерпринту сериализованного payload. Значение пробрасывается через заголовок ответа и `meta.version` в теле.
 
 ## Мониторинг кэша
 
