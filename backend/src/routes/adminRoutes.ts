@@ -1869,7 +1869,13 @@ export default async function (server: FastifyInstance) {
         include: { person: true, club: true },
         orderBy: [{ isActive: 'desc' }, { createdAt: 'desc' }]
       })
-      return reply.send({ ok: true, data: disqualifications })
+
+      const enriched = disqualifications.map((entry) => ({
+        ...entry,
+        matchesRemaining: Math.max(0, entry.banDurationMatches - entry.matchesMissed)
+      }))
+
+      return sendSerialized(reply, enriched)
     })
 
     admin.post('/disqualifications', async (request, reply) => {

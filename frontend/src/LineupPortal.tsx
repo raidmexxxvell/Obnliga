@@ -12,11 +12,20 @@ type LineupMatch = {
   awayClub: { id: number; name: string; shortName: string; logoUrl?: string | null }
 }
 
+type DisqualificationInfo = {
+  reason: 'RED_CARD' | 'ACCUMULATED_CARDS' | 'OTHER'
+  sanctionDate: string
+  banDurationMatches: number
+  matchesMissed: number
+  matchesRemaining: number
+}
+
 type LineupRosterEntry = {
   personId: number
   person: { id: number; firstName: string; lastName: string }
   shirtNumber: number
   selected: boolean
+  disqualification: DisqualificationInfo | null
 }
 
 type ApiResponse<T> = { ok: true; data: T } | { ok: false; error: string }
@@ -36,6 +45,15 @@ const buildApiUrl = (path: string) => {
   return API_BASE_URL ? `${API_BASE_URL}${normalized}` : normalized
 }
 
+const formatMatchesRemaining = (count: number) => {
+  const absCount = Math.max(0, count)
+  const remainder10 = absCount % 10
+  const remainder100 = absCount % 100
+  if (remainder10 === 1 && remainder100 !== 11) return `${absCount} матч`
+  if (remainder10 >= 2 && remainder10 <= 4 && (remainder100 < 10 || remainder100 >= 20)) return `${absCount} матча`
+  return `${absCount} матчей`
+}
+
 const mapError = (code: string) => {
   switch (code) {
     case 'invalid_credentials':
@@ -52,6 +70,8 @@ const mapError = (code: string) => {
       return 'Укажите корректные номера для всех игроков.'
     case 'duplicate_shirt_numbers':
       return 'Номера игроков внутри клуба должны быть уникальными.'
+    case 'player_disqualified':
+      return 'Некоторые игроки находятся под дисквалификацией и не могут быть заявлены.'
     default:
       return 'Не удалось выполнить запрос. Повторите попытку.'
   }
@@ -79,7 +99,8 @@ const LineupPortal: React.FC = () => {
   const selectedCount = useMemo(
     () =>
       roster.reduce<number>(
-        (count: number, entry: LineupRosterEntry) => (selectedPlayers[entry.personId] ? count + 1 : count),
+        (count: number, entry: LineupRosterEntry) =>
+          entry.disqualification || !selectedPlayers[entry.personId] ? count : count + 1,
         0
       ),
     [roster, selectedPlayers]
@@ -231,7 +252,7 @@ const LineupPortal: React.FC = () => {
         const selectedMap: Record<number, boolean> = {}
         const numbersMap: Record<number, string> = {}
         data.forEach((entry) => {
-          selectedMap[entry.personId] = entry.selected
+          selectedMap[entry.personId] = entry.disqualification ? false : entry.selected
           numbersMap[entry.personId] = String(entry.shirtNumber ?? '')
         })
         setSelectedPlayers(selectedMap)
@@ -254,6 +275,8 @@ const LineupPortal: React.FC = () => {
   }, [modalOpen, token, activeMatch, activeClubId])
 
   const togglePlayer = (personId: number) => {
+    const entry = roster.find((item) => item.personId === personId)
+    if (!entry || entry.disqualification) return
     setSelectedPlayers((prev: Record<number, boolean>) => ({ ...prev, [personId]: !prev[personId] }))
   }
 
@@ -264,9 +287,10 @@ const LineupPortal: React.FC = () => {
   const handleSubmitRoster = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!activeMatch || !activeClubId) return
-    const selectedEntries: LineupRosterEntry[] = roster.filter(
-      (entry: LineupRosterEntry) => selectedPlayers[entry.personId]
-    )
+    const selectedEntries: LineupRosterEntry[] = roster.filter((entry: LineupRosterEntry) => {
+      if (entry.disqualification) return false
+      return selectedPlayers[entry.personId]
+    })
     const payloadIds = selectedEntries.map((entry) => entry.personId)
 
     const missingNumber = selectedEntries.some((entry) => {
@@ -442,8 +466,19 @@ const LineupPortal: React.FC = () => {
               {roster.map((entry) => {
                 const checked = Boolean(selectedPlayers[entry.personId])
                 const surname = `${entry.person.lastName} ${entry.person.firstName}`.trim()
+                const disqualified = Boolean(entry.disqualification)
+                const reasonLabel = entry.disqualification
+                  ? entry.disqualification.reason === 'RED_CARD'
+                    ? 'Красная карточка'
+                    : entry.disqualification.reason === 'ACCUMULATED_CARDS'
+                      ? 'Накопление карточек'
+                      : 'Санкция'
+                  : null
                 return (
-                  <label key={entry.personId} className={`roster-card${checked ? ' selected' : ''}`}>
+                  <label
+                    key={entry.personId}
+                    className={`roster-card${checked ? ' selected' : ''}${disqualified ? ' disqualified' : ''}`}
+                  >
                     <span className="player-info">
                       <input
                         type="number"
@@ -456,11 +491,16 @@ const LineupPortal: React.FC = () => {
                         max={999}
                         inputMode="numeric"
                         pattern="[0-9]*"
-                        disabled={saving}
+                        disabled={saving || disqualified}
                         aria-label={`Номер для ${surname}`}
                         placeholder="№"
                       />
                       <span className="player-name">{surname}</span>
+                      {disqualified && reasonLabel ? (
+                        <span className="player-badge">
+                          {reasonLabel} · осталось {formatMatchesRemaining(entry.disqualification!.matchesRemaining)}
+                        </span>
+                      ) : null}
                     </span>
                     <span className="player-checkbox">
                       <input
@@ -468,7 +508,7 @@ const LineupPortal: React.FC = () => {
                         checked={checked}
                         onChange={() => togglePlayer(entry.personId)}
                         aria-label={`Игрок ${surname}`}
-                        disabled={saving}
+                        disabled={saving || disqualified}
                       />
                     </span>
                   </label>

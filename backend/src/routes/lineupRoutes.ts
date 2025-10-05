@@ -297,6 +297,52 @@ const registerLineupRouteGroup = (
 
       const selectedIds = new Set(lineup.map((entry) => entry.personId))
 
+      const rosterPersonIds = roster.map((entry) => entry.personId)
+      const activeDisqualifications = rosterPersonIds.length
+        ? await prisma.disqualification.findMany({
+            where: {
+              isActive: true,
+              personId: { in: rosterPersonIds },
+              OR: [{ clubId }, { clubId: null }]
+            },
+            select: {
+              personId: true,
+              clubId: true,
+              reason: true,
+              sanctionDate: true,
+              banDurationMatches: true,
+              matchesMissed: true
+            }
+          })
+        : []
+
+      const disqualificationMap = new Map<
+        number,
+        {
+          reason: string
+          sanctionDate: Date
+          banDurationMatches: number
+          matchesMissed: number
+          matchesRemaining: number
+        }
+      >()
+
+      for (const dq of activeDisqualifications) {
+        const matchesRemaining = Math.max(0, dq.banDurationMatches - dq.matchesMissed)
+        const payload = {
+          reason: dq.reason,
+          sanctionDate: dq.sanctionDate,
+          banDurationMatches: dq.banDurationMatches,
+          matchesMissed: dq.matchesMissed,
+          matchesRemaining
+        }
+
+        const existing = disqualificationMap.get(dq.personId)
+        if (!existing || matchesRemaining > existing.matchesRemaining) {
+          disqualificationMap.set(dq.personId, payload)
+        }
+      }
+
       const response = roster.map((entry) => ({
         personId: entry.personId,
         person: {
@@ -305,7 +351,16 @@ const registerLineupRouteGroup = (
           lastName: entry.person.lastName
         },
         shirtNumber: entry.shirtNumber,
-        selected: selectedIds.has(entry.personId)
+        selected: disqualificationMap.has(entry.personId) ? false : selectedIds.has(entry.personId),
+        disqualification: disqualificationMap.has(entry.personId)
+          ? {
+              reason: disqualificationMap.get(entry.personId)!.reason,
+              sanctionDate: disqualificationMap.get(entry.personId)!.sanctionDate.toISOString(),
+              banDurationMatches: disqualificationMap.get(entry.personId)!.banDurationMatches,
+              matchesMissed: disqualificationMap.get(entry.personId)!.matchesMissed,
+              matchesRemaining: disqualificationMap.get(entry.personId)!.matchesRemaining
+            }
+          : null
       }))
 
       return sendSerialized(reply, response)
@@ -415,6 +470,34 @@ const registerLineupRouteGroup = (
 
       const toAdd = personIds.filter((id) => !existingIds.has(id))
       const toRemove = Array.from(existingIds).filter((id) => !personIds.includes(id))
+
+      if (personIds.length) {
+        const conflictingDisqualifications = await prisma.disqualification.findMany({
+          where: {
+            isActive: true,
+            personId: { in: personIds },
+            OR: [{ clubId }, { clubId: null }]
+          },
+          select: {
+            personId: true,
+            reason: true,
+            banDurationMatches: true,
+            matchesMissed: true
+          }
+        })
+
+        if (conflictingDisqualifications.length) {
+          return reply.status(409).send({
+            ok: false,
+            error: 'player_disqualified',
+            data: conflictingDisqualifications.map((dq) => ({
+              personId: dq.personId,
+              reason: dq.reason,
+              matchesRemaining: Math.max(0, dq.banDurationMatches - dq.matchesMissed)
+            }))
+          })
+        }
+      }
 
       await prisma.$transaction(async (tx) => {
         if (numbersToUpdate.length) {

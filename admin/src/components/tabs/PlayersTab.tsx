@@ -42,6 +42,17 @@ const defaultDisqualificationForm: DisqualificationFormState = {
   sanctionDate: new Date().toISOString().slice(0, 10)
 }
 
+const formatDisqualificationReason = (reason: Disqualification['reason']) => {
+  switch (reason) {
+    case 'RED_CARD':
+      return 'Красная карточка'
+    case 'ACCUMULATED_CARDS':
+      return 'Накопление карточек'
+    default:
+      return 'Другое'
+  }
+}
+
 export const PlayersTab = () => {
   const {
     token,
@@ -461,6 +472,7 @@ export const PlayersTab = () => {
               <th>Причина</th>
               <th>Срок</th>
               <th>Отбыто</th>
+              <th>Осталось</th>
               <th aria-label="Действия" />
             </tr>
           </thead>
@@ -471,9 +483,10 @@ export const PlayersTab = () => {
                   {entry.person.lastName} {entry.person.firstName}
                 </td>
                 <td>{entry.club?.shortName ?? '—'}</td>
-                <td>{entry.reason}</td>
+                <td>{formatDisqualificationReason(entry.reason)}</td>
                 <td>{entry.banDurationMatches}</td>
                 <td>{entry.matchesMissed}</td>
+                <td>{entry.matchesRemaining}</td>
                 <td className="table-actions">
                   <button
                     type="button"
@@ -483,6 +496,7 @@ export const PlayersTab = () => {
                         isActive: entry.matchesMissed + 1 < entry.banDurationMatches
                       })
                     }
+                    disabled={entry.matchesRemaining <= 0}
                   >
                     +1 матч
                   </button>
@@ -523,7 +537,7 @@ export const PlayersTab = () => {
                   {entry.person.lastName} {entry.person.firstName}
                 </td>
                 <td>{entry.club?.shortName ?? '—'}</td>
-                <td>{entry.reason}</td>
+                <td>{formatDisqualificationReason(entry.reason)}</td>
                 <td>{entry.banDurationMatches}</td>
                 <td>{entry.matchesMissed}</td>
                 <td className="table-actions">

@@ -247,6 +247,7 @@ export interface Disqualification {
   isActive: boolean
   person: Person
   club?: Club | null
+  matchesRemaining: number
 }
 
 export interface LineupPortalMatch {
@@ -264,4 +265,11 @@ export interface LineupPortalRosterEntry {
   person: { id: number; firstName: string; lastName: string }
   shirtNumber: number
   selected: boolean
+  disqualification: null | {
+    reason: 'RED_CARD' | 'ACCUMULATED_CARDS' | 'OTHER'
+    sanctionDate: string
+    banDurationMatches: number
+    matchesMissed: number
+    matchesRemaining: number
+  }
 }

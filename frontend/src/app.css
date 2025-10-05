@@ -450,6 +450,13 @@
   box-shadow:0 0 18px rgba(0,240,255,0.18);
 }
 
+.portal-roster-grid label.disqualified {
+  border-color:rgba(255,84,116,0.45);
+  background:rgba(34,7,16,0.56);
+  cursor:not-allowed;
+  box-shadow:none;
+}
+
 .roster-card {
   display:grid;
   grid-template-columns: 1fr auto;
@@ -495,6 +502,10 @@
   text-overflow:ellipsis;
 }
 
+.portal-roster-grid label.disqualified .player-name {
+  color:#ffb8c4;
+}
+
 .player-checkbox {
   display:grid;
   place-items:center;
@@ -517,6 +528,31 @@
 .portal-roster label.selected input[type="checkbox"] {
   border-color:rgba(0,240,255,0.5);
   background:rgba(0,240,255,0.28);
+}
+
+.portal-roster-grid label.disqualified .player-checkbox input[type="checkbox"],
+.portal-roster-grid label.disqualified input[type="number"] {
+  border-color:rgba(255,84,116,0.4);
+  background:rgba(34,7,16,0.64);
+  color:#ffb8c4;
+}
+
+.portal-roster-grid label.disqualified .player-checkbox input[type="checkbox"] {
+  background:rgba(34,7,16,0.6);
+}
+
+.player-badge {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 8px;
+  border-radius:999px;
+  background:rgba(255,84,116,0.2);
+  color:#ffb8c4;
+  font-size:11px;
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:0.04em;
 }
 
 .portal-actions{
