@@ -34,6 +34,7 @@
 | Store Façade (Zustand) | `frontend/src` (store частично создан) | **Reuse/Rewrite** — создать фасад по контракту `docs/state.md` | `frontend/src/store/facade.ts` | Нет | Нужно получить `store-patterns.md` |
 | Admin UI Theme | `admin/src/lineup.css`, `frontend/src/app.css` | **Implemented** — реализована мобильная адаптивность и неокубистская стилистика | Общие стили: `frontend/src/app.css` + `admin/src/theme.css` | Визуальные тесты не настроены | ✅ Реализована полная система с CSS Grid и медиа-запросами |
 | Lineup Management System | `admin/src/components/LineupPortalView.tsx`, `frontend/src/LineupPortal.tsx` | **Implemented** — полная реализация с валидацией и мобильностью | `admin/src/lineup.css`, обновленные TypeScript типы | Нет e2e → планировать | ✅ Завершена синхронизация UX между порталами |
+| Playoff Bracket Aggregation | `backend/src/routes/bracketRoutes.ts`, `admin/src/components/PlayoffBracket.tsx` | **Temporary stub** — until context7 bracket templates retrieved | Планируемый адаптер: `shared/playoff/bracketAdapter.ts` (создать после синхронизации) | Нет | Требуется сверка с исходным `bracket-flow.md`, текущее API без кэша/WS |
 | Player Career Aggregation | draft в `backend/src/services/matchAggregation.ts` | **Refactor** — перенести сумматоры из context7 для career stats | Новый модуль `backend/src/services/playerCareer.ts` (после синхронизации) | Нет | Временная реализация помечается как stub, требуется сверка с исходным контрактом |
 | Season Rounds/Stages | временно отсутствует | **Rewrite** — добавить справочник туров и стадий плей-офф | `backend/src/services/seasonAutomation.ts` + общий adapter | Нет | Ожидаем контекст `schedule-rounds.md`, текущее решение временное |
 
@@ -48,6 +49,7 @@
 | auth guard | `admin/auth` фасад | ❌ | Создать временный Basic Auth по env и отметить необходимость синхронизации |
 | player-career stats | `stats/player-career.ts` | ❌ | Подтвердить, что агрегирование строится на матчевых событиях + lineups; до получения — временная реализация на Prisma groupBy |
 | schedule rounds | `schedule/rounds.ts` | ❌ | Сверить шаблоны формирования туров, чтобы не расходиться с прошлой моделью |
+| playoff bracket templates | `admin/bracket/*.tsx`, `backend/bracket/*.ts` | ❌ | Запросить `bracket-flow.md` и примеры генерации сетки, уточнить кэш/WS контракты |
 | lineup portal | `frontend/lineup-portal.tsx`, `backend/lineup/auth.ts` | ✅ | Завершена полная реализация с мобильной адаптивностью, валидацией ошибок и UX синхронизацией между порталами |
 
 ---
@@ -62,6 +64,8 @@
 
 3. **Admin UI без подтверждённого дизайна.**  
   *Mitigation:* используем tokens из `frontend/src/app.css`, поддерживаем неокубистскую стилистику, делаем компоненты переиспользуемыми.
+4. **Playoff bracket API/UX без контекста прошлой версии.**  
+  *Mitigation:* помечаем текущую реализацию как temporary stub, запрашиваем `bracket-flow.md`, не выкатываем на production до сверки кэш/WS контрактов.
 
 ---
 
