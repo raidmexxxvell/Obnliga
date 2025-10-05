@@ -970,6 +970,17 @@ export default async function (server: FastifyInstance) {
       return sendSerialized(reply, match)
     })
 
+    admin.get('/friendly-matches', async (_request, reply) => {
+      const friendlyMatches = await prisma.friendlyMatch.findMany({
+        orderBy: [{ matchDateTime: 'desc' }],
+        include: {
+          stadium: true,
+          referee: true
+        }
+      })
+      return sendSerialized(reply, friendlyMatches)
+    })
+
     admin.post('/friendly-matches', async (request, reply) => {
       const body = request.body as {
         matchDateTime?: string
@@ -1008,6 +1019,16 @@ export default async function (server: FastifyInstance) {
       })
 
       return sendSerialized(reply, friendlyMatch)
+    })
+
+    admin.delete('/friendly-matches/:matchId', async (request, reply) => {
+      const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+      const existing = await prisma.friendlyMatch.findUnique({ where: { id: matchId } })
+      if (!existing) {
+        return reply.status(404).send({ ok: false, error: 'friendly_match_not_found' })
+      }
+      await prisma.friendlyMatch.delete({ where: { id: matchId } })
+      return reply.send({ ok: true })
     })
 
     admin.put('/matches/:matchId', async (request, reply) => {

@@ -20,6 +20,7 @@
 - Добавлена модель `User` и базовый flow аутентификации через Telegram WebApp (server-side `initData` verification, JWT issuance). Файлы: `backend/src/routes/authRoutes.ts`, `backend/src/routes/userRoutes.ts`, `frontend/src/Profile.tsx`.
 - Добавлена prototype реализация realtime: Fastify WebSocket endpoint + Redis pub/sub glue (`backend/src/realtime/index.ts`) и минимальный клиент `frontend/src/wsClient.ts`. Для локальной отладки необходим Redis (см. `docs/prisma.md` и `docs/dev-setup.md`).
 - Админ-панель матчей получила live-управление счётом (кнопки `+/-`, авто-обнуление при переходе в статус `LIVE`) и ограничение выбора игроков заявкой сезона.
+- На вкладке «Матчи» в админке добавлена отдельная форма и таблица для товарищеских игр: CRUD поверх `/api/admin/friendly-matches`, события не попадают в сезонную статистику и отображаются под календарём регулярного сезона.
 - Реализован полноценный портал `/lineup` для капитанов команд с подтверждением составов, валидацией ошибок, успешным сохранением и мобильной адаптивностью. Синхронизирован UX с админ-панелью.
 
 Проверка правил — ОК

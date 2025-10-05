@@ -10,6 +10,7 @@ import {
 import { useAdminStore } from '../../store/adminStore'
 import {
   Club,
+  FriendlyMatch,
   MatchEventEntry,
   MatchLineupEntry,
   MatchSeries,
@@ -21,7 +22,7 @@ import {
   SeasonParticipant
 } from '../../types'
 
-type FeedbackLevel = 'success' | 'error' | 'info'
+type FeedbackLevel = 'info' | 'success' | 'error'
 
 type SeriesFormState = {
   stageName: string
@@ -38,20 +39,11 @@ type MatchFormState = {
   eventName: string
 }
 
-type MatchUpdateFormState = {
-  homeScore: number | ''
-  awayScore: number | ''
-  status: MatchSummary['status']
-  stadiumId: number | ''
-  refereeId: number | ''
-  matchDateTime: string
-}
-
 type EventFormState = {
   teamId: number | ''
   playerId: number | ''
   minute: number | ''
-  eventType: 'GOAL' | 'PENALTY_GOAL' | 'YELLOW_CARD' | 'RED_CARD' | 'SUB_IN' | 'SUB_OUT'
+  eventType: MatchEventEntry['eventType']
   relatedPlayerId: number | ''
 }
 
@@ -66,29 +58,13 @@ type SeasonAutomationFormState = {
   seriesFormat: 'SINGLE_MATCH' | 'TWO_LEGGED' | 'BEST_OF_N'
 }
 
-const matchStatuses: MatchSummary['status'][] = ['SCHEDULED', 'LIVE', 'FINISHED', 'POSTPONED']
-const matchStatusLabels: Record<MatchSummary['status'], string> = {
-  SCHEDULED: 'Запланирован',
-  LIVE: 'В игре',
-  FINISHED: 'Завершён',
-  POSTPONED: 'Перенесён'
-}
-const seriesStatuses: MatchSeries['seriesStatus'][] = ['IN_PROGRESS', 'FINISHED']
-type LineupRole = MatchLineupEntry['role']
-
-const lineupRoleLabels: Record<LineupRole, string> = {
-  STARTER: 'В основе',
-  SUBSTITUTE: 'Запасной'
-}
-
-const eventTypes: Array<EventFormState['eventType']> = ['GOAL', 'PENALTY_GOAL', 'YELLOW_CARD', 'RED_CARD', 'SUB_IN', 'SUB_OUT']
-const eventTypeLabels: Record<EventFormState['eventType'], string> = {
-  GOAL: 'Гол',
-  PENALTY_GOAL: 'Гол (пенальти)',
-  YELLOW_CARD: 'Жёлтая карточка',
-  RED_CARD: 'Красная карточка',
-  SUB_IN: 'Замена (вышел)',
-  SUB_OUT: 'Замена (ушёл)'
+type MatchUpdateFormState = {
+  homeScore: number | ''
+  awayScore: number | ''
+  status: MatchSummary['status']
+  stadiumId: number | ''
+  refereeId: number | ''
+  matchDateTime: string
 }
 
 const playoffBestOfOptions = [3, 5, 7]
@@ -173,6 +149,33 @@ const weekdayOptions = [
   { value: '6', label: 'Суббота' }
 ]
 
+const seriesStatuses: MatchSeries['seriesStatus'][] = ['IN_PROGRESS', 'FINISHED']
+
+const seriesStatusLabels: Record<MatchSeries['seriesStatus'], string> = {
+  IN_PROGRESS: 'В процессе',
+  FINISHED: 'Завершена'
+}
+
+const matchStatuses: MatchSummary['status'][] = ['SCHEDULED', 'LIVE', 'FINISHED', 'POSTPONED']
+
+const matchStatusLabels: Record<MatchSummary['status'], string> = {
+  SCHEDULED: 'Запланирован',
+  LIVE: 'Идёт',
+  FINISHED: 'Завершён',
+  POSTPONED: 'Перенесён'
+}
+
+const eventTypes: MatchEventEntry['eventType'][] = ['GOAL', 'PENALTY_GOAL', 'YELLOW_CARD', 'RED_CARD', 'SUB_IN', 'SUB_OUT']
+
+const eventTypeLabels: Record<MatchEventEntry['eventType'], string> = {
+  GOAL: 'Гол',
+  PENALTY_GOAL: 'Гол с пенальти',
+  YELLOW_CARD: 'Жёлтая карточка',
+  RED_CARD: 'Красная карточка',
+  SUB_IN: 'Замена (вышел)',
+  SUB_OUT: 'Замена (ушёл)'
+}
+
 export const MatchesTab = () => {
   const {
     token,
@@ -182,6 +185,7 @@ export const MatchesTab = () => {
     fetchSeasons,
     fetchSeries,
     fetchMatches,
+    fetchFriendlyMatches,
     fetchDictionaries,
     loading,
     error
@@ -193,11 +197,16 @@ export const MatchesTab = () => {
     fetchSeasons: state.fetchSeasons,
     fetchSeries: state.fetchSeries,
     fetchMatches: state.fetchMatches,
+    fetchFriendlyMatches: state.fetchFriendlyMatches,
     fetchDictionaries: state.fetchDictionaries,
     loading: state.loading,
     error: state.error
   }))
 
+  const friendlyMatchesSorted = useMemo<FriendlyMatch[]>(() => {
+    if (!data.friendlyMatches?.length) return []
+    return [...data.friendlyMatches].sort((left, right) => (left.matchDateTime < right.matchDateTime ? 1 : -1))
+  }, [data.friendlyMatches])
   const [feedback, setFeedback] = useState<string | null>(null)
   const [feedbackLevel, setFeedbackLevel] = useState<FeedbackLevel>('info')
 
@@ -205,7 +214,6 @@ export const MatchesTab = () => {
   const [editingSeriesId, setEditingSeriesId] = useState<string | null>(null)
   const [seriesStatusUpdate, setSeriesStatusUpdate] = useState<MatchSeries['seriesStatus']>('IN_PROGRESS')
   const [seriesWinnerId, setSeriesWinnerId] = useState<number | ''>('')
-
   const [matchForm, setMatchForm] = useState<MatchFormState>(defaultMatchForm)
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null)
   const [isMatchModalOpen, setMatchModalOpen] = useState(false)
@@ -242,7 +250,8 @@ export const MatchesTab = () => {
     bootRef.current = true
     void fetchDictionaries().catch(() => undefined)
     void fetchSeasons().catch(() => undefined)
-  }, [token, fetchDictionaries, fetchSeasons])
+    void fetchFriendlyMatches().catch(() => undefined)
+  }, [token, fetchDictionaries, fetchSeasons, fetchFriendlyMatches])
 
   useEffect(() => {
     if (!selectedSeasonId || !token) return
@@ -471,8 +480,16 @@ export const MatchesTab = () => {
         refereeId: matchForm.refereeId || undefined,
         eventName: matchForm.eventName.trim() || undefined
       })
+      await fetchFriendlyMatches()
     }, 'Товарищеский матч создан')
     setMatchForm(defaultMatchForm)
+  }
+
+  const handleFriendlyMatchDelete = async (matchId: string) => {
+    await runWithMessages(async () => {
+      await adminDelete(token, `/api/admin/friendly-matches/${matchId}`)
+      await fetchFriendlyMatches()
+    }, 'Товарищеский матч удалён')
   }
 
   const handleMatchSelect = (match: MatchSummary) => {
@@ -1182,7 +1199,7 @@ export const MatchesTab = () => {
                   <select value={seriesStatusUpdate} onChange={(event) => setSeriesStatusUpdate(event.target.value as MatchSeries['seriesStatus'])}>
                     {seriesStatuses.map((status) => (
                       <option key={status} value={status}>
-                        {status}
+                        {seriesStatusLabels[status]}
                       </option>
                     ))}
                   </select>
@@ -1238,7 +1255,7 @@ export const MatchesTab = () => {
                     <td>{availableClubs.find((club) => club.id === series.homeClubId)?.name ?? series.homeClubId}</td>
                     <td>{availableClubs.find((club) => club.id === series.awayClubId)?.name ?? series.awayClubId}</td>
                     <td>
-                      {series.seriesStatus}
+                      {seriesStatusLabels[series.seriesStatus]}
                       {series.winnerClubId ? ` → ${availableClubs.find((club) => club.id === series.winnerClubId)?.name}` : ''}
                     </td>
                     <td className="table-actions">
@@ -1413,6 +1430,92 @@ export const MatchesTab = () => {
                       })}
                     </React.Fragment>
                   ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </article>
+        <article className="card" style={{ gridColumn: '1 / -1' }}>
+          <header
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}
+          >
+            <div>
+              <h4>Товарищеские матчи</h4>
+              <p>Игры вне сезона для гибких экспериментов и подготовки.</p>
+            </div>
+            <button
+              type="button"
+              className="button-ghost"
+              onClick={() => void fetchFriendlyMatches()}
+              disabled={Boolean(loading.friendlyMatches)}
+            >
+              {loading.friendlyMatches ? 'Обновляем…' : 'Обновить'}
+            </button>
+          </header>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Матч</th>
+                  <th>Детали</th>
+                  <th aria-label="Действия" />
+                </tr>
+              </thead>
+              <tbody>
+                {friendlyMatchesSorted.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="empty-row">
+                      Пока нет товарищеских встреч. Создайте первую игру выше.
+                    </td>
+                  </tr>
+                ) : (
+                  friendlyMatchesSorted.map((match) => {
+                    const matchDate = new Date(match.matchDateTime).toLocaleString('ru-RU', {
+                      day: '2-digit',
+                      month: 'long',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })
+                    const stadiumName =
+                      match.stadium?.name ??
+                      (match.stadiumId ? data.stadiums.find((stadium) => stadium.id === match.stadiumId)?.name : undefined)
+                    const refereePerson =
+                      match.referee ??
+                      (match.refereeId ? data.persons.find((person) => person.id === match.refereeId) : undefined)
+                    const refereeName = refereePerson
+                      ? `${refereePerson.lastName} ${refereePerson.firstName}`.trim()
+                      : undefined
+                    return (
+                      <tr key={match.id}>
+                        <td>{matchDate}</td>
+                        <td>
+                          <div className="match-cell">
+                            <span>
+                              {match.homeTeamName} vs {match.awayTeamName}
+                            </span>
+                            {match.eventName ? <span className="muted">{match.eventName}</span> : null}
+                          </div>
+                        </td>
+                        <td>
+                          {stadiumName || refereeName ? (
+                            <div className="muted">
+                              {stadiumName ? <div>Стадион: {stadiumName}</div> : null}
+                              {refereeName ? <div>Судья: {refereeName}</div> : null}
+                            </div>
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
+                        </td>
+                        <td className="table-actions">
+                          <button type="button" className="danger" onClick={() => handleFriendlyMatchDelete(match.id)}>
+                            Удал.
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>

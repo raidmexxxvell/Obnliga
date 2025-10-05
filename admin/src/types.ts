@@ -104,6 +104,18 @@ export interface MatchSummary {
   }
 }
 
+export interface FriendlyMatch {
+  id: string
+  matchDateTime: string
+  homeTeamName: string
+  awayTeamName: string
+  eventName?: string | null
+  stadiumId?: number | null
+  refereeId?: number | null
+  stadium?: Stadium | null
+  referee?: Person | null
+}
+
 export interface MatchLineupEntry {
   matchId: string
   personId: number

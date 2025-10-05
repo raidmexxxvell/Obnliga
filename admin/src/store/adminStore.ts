@@ -8,6 +8,7 @@ import {
   ClubCareerTotals,
   Competition,
   Disqualification,
+  FriendlyMatch,
   MatchSeries,
   MatchSummary,
   Person,
@@ -67,6 +68,7 @@ interface AdminData {
   seasons: Season[]
   series: MatchSeries[]
   matches: MatchSummary[]
+  friendlyMatches: FriendlyMatch[]
   clubStats: ClubSeasonStats[]
   playerStats: PlayerSeasonStats[]
   careerStats: PlayerCareerStats[]
@@ -99,6 +101,7 @@ interface AdminState {
   fetchSeasons(): Promise<void>
   fetchSeries(seasonId?: number): Promise<void>
   fetchMatches(seasonId?: number): Promise<void>
+  fetchFriendlyMatches(): Promise<void>
   fetchStats(seasonId?: number, competitionId?: number): Promise<void>
   fetchUsers(): Promise<void>
   fetchPredictions(): Promise<void>
@@ -118,6 +121,7 @@ const createEmptyData = (): AdminData => ({
   seasons: [],
   series: [],
   matches: [],
+  friendlyMatches: [],
   clubStats: [],
   playerStats: [],
   careerStats: [],
@@ -368,6 +372,14 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         set((state) => ({ data: { ...state.data, matches } }))
       })
     },
+    async fetchFriendlyMatches() {
+      if (get().mode !== 'admin') return
+      await run('friendlyMatches', async () => {
+        const token = ensureToken()
+        const friendlyMatches = await adminGet<FriendlyMatch[]>(token, '/api/admin/friendly-matches')
+        set((state) => ({ data: { ...state.data, friendlyMatches } }))
+      })
+    },
     async fetchStats(seasonId?: number, competitionId?: number) {
       if (get().mode !== 'admin') return
       await run('stats', async () => {
@@ -441,7 +453,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         case 'matches': {
           await get().fetchSeasons()
           const season = get().selectedSeasonId
-          await Promise.all([get().fetchSeries(season), get().fetchMatches(season)])
+          await Promise.all([get().fetchSeries(season), get().fetchMatches(season), get().fetchFriendlyMatches()])
           break
         }
         case 'stats': {
