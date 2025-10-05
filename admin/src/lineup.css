@@ -142,8 +142,7 @@
   gap: 14px;
 }
 
-.portal-form label,
-.portal-roster label {
+.portal-form label {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -286,6 +285,8 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  flex: 1;
+  min-height: 0;
 }
 
 .portal-roster-grid {
@@ -381,6 +382,7 @@
 
 .portal-modal {
   width: min(540px, 100%);
+  max-height: 90vh;
   background: rgba(10, 18, 32, 0.92);
   border-radius: 20px;
   border: 1px solid rgba(0, 240, 255, 0.24);
@@ -389,6 +391,30 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  overflow: hidden;
+}
+
+.portal-roster {
+  overflow-y: auto;
+  max-height: 60vh;
+}
+
+.portal-roster::-webkit-scrollbar {
+  width: 6px;
+}
+
+.portal-roster::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+}
+
+.portal-roster::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.3);
+  border-radius: 3px;
+}
+
+.portal-roster::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 240, 255, 0.5);
 }
 
 .portal-modal-header {
@@ -461,20 +487,24 @@
 
   .portal-roster-grid {
     grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   .roster-card {
-    grid-template-columns: 1fr;
-    gap: 16px;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    min-height: auto;
+    padding: 12px;
   }
 
   .player-info {
-    gap: 10px;
+    gap: 8px;
+    flex-wrap: nowrap;
   }
 
   .player-checkbox {
-    justify-content: flex-start;
-    display: flex;
+    align-self: center;
+    flex-shrink: 0;
   }
 
   .portal-actions {
@@ -504,7 +534,15 @@
   }
 
   .player-number-input {
-    width: 62px;
-    padding: 6px 8px;
+    width: 48px;
+    padding: 5px 6px;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .player-name {
+    font-size: 12px;
+    flex: 1;
+    min-width: 0;
   }
 }
