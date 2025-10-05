@@ -15,6 +15,8 @@
 - `md:{match_id}` — основные детали матча (10 мин)
 - `md:etag-temp:{match_id}` — временные ETag записи
 - `md:stats:{match_id}` — статистика матча (реалтайм, SWR=5 сек)
+    - Инвалидируется через `broadcastMatchStatistics`: любые ручные правки статистики или CRUD событий (жёлтые/красные карточки)
+        пересчитывают payload и публикуют patch на топик `match:{match_id}:stats`.
 
 ### 3. Predictions (Прогнозы) — TTL: 2-5 мин
 - `predictions:list` — список доступных прогнозов (5 мин)
@@ -73,6 +75,7 @@
 ### Event-driven (По событиям)
 - WS события `data_patch` → инвалидация соответствующих ключей
 - `match_results_update` → `league:table`, `league:stats`
+- `match_stats_update` (публикуется `broadcastMatchStatistics`) → `md:stats:{matchId}`
 - `schedule_update` → `league:schedule`
 - `bracket_update` → `league:bracket`
 - `odds_update` → `predictions:*`
