@@ -314,6 +314,11 @@ const LineupPortal: React.FC = () => {
       clubName
     })
       closeModal()
+      if (typeof window !== 'undefined') {
+        window.requestAnimationFrame(() => {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        })
+      }
       void fetchMatches()
     } catch (error) {
       const code = error instanceof Error ? error.message : ''

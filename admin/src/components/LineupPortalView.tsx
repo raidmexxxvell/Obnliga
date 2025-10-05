@@ -87,11 +87,13 @@ export const LineupPortalView = () => {
     logout()
   }
 
-  const fetchMatches = async () => {
+  const fetchMatches = async (options?: { preserveMessage?: boolean }) => {
     if (!lineupToken) return
     setMatchesLoading(true)
     setPortalError(null)
-    setPortalMessage(null)
+    if (!options?.preserveMessage) {
+      setPortalMessage(null)
+    }
     try {
       const data = await lineupFetchMatches(lineupToken)
       setMatches(data)
@@ -111,9 +113,9 @@ export const LineupPortalView = () => {
   }
 
   useEffect(() => {
-    if (lineupToken) {
-      void fetchMatches()
-    }
+      if (lineupToken) {
+        void fetchMatches()
+      }
   }, [lineupToken])
 
   const openMatchModal = (match: LineupPortalMatch) => {
@@ -220,9 +222,10 @@ export const LineupPortalView = () => {
         personIds: payloadIds,
         numbers: numberAssignments
       })
-  setPortalMessage(`Состав сохранён. В заявке: ${formatPlayersCount(payloadIds.length)}.`)
+      const clubName = activeMatch.homeClub.id === activeClubId ? activeMatch.homeClub.name : activeMatch.awayClub.name
+      setPortalMessage(`${clubName}: Состав сохранён. В заявке: ${formatPlayersCount(payloadIds.length)}.`)
       closeModal()
-      void fetchMatches()
+      void fetchMatches({ preserveMessage: true })
     } catch (error) {
       const code = error instanceof Error ? error.message : ''
       if (code === 'unauthorized') {

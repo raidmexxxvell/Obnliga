@@ -1032,6 +1032,11 @@ export default async function (server: FastifyInstance) {
     // Lineups
     admin.get('/matches/:matchId/lineup', async (request, reply) => {
       const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+      const match = await prisma.match.findUnique({ where: { id: matchId }, select: { seasonId: true } })
+      if (!match) {
+        return reply.status(404).send({ ok: false, error: 'match_not_found' })
+      }
+
       const lineup = await prisma.matchLineup.findMany({
         where: { matchId },
         orderBy: [{ role: 'asc' }, { personId: 'asc' }],
@@ -1040,7 +1045,37 @@ export default async function (server: FastifyInstance) {
           club: true
         }
       })
-      return sendSerialized(reply, lineup)
+
+      if (lineup.length === 0) {
+        return sendSerialized(reply, lineup)
+      }
+
+      const rosterNumbers = await prisma.seasonRoster.findMany({
+        where: {
+          seasonId: match.seasonId,
+          personId: { in: lineup.map((entry) => entry.personId) }
+        },
+        select: { personId: true, shirtNumber: true }
+      })
+
+      const shirtMap = new Map<number, number>()
+      rosterNumbers.forEach((entry) => {
+        shirtMap.set(entry.personId, entry.shirtNumber)
+      })
+
+      const enriched = lineup.map((entry) => {
+        const shirtNumber = shirtMap.get(entry.personId) ?? null
+        return {
+          ...entry,
+          shirtNumber,
+          person: {
+            ...entry.person,
+            shirtNumber
+          }
+        }
+      })
+
+      return sendSerialized(reply, enriched)
     })
 
     admin.put('/matches/:matchId/lineup', async (request, reply) => {
@@ -1077,6 +1112,11 @@ export default async function (server: FastifyInstance) {
     // Events
     admin.get('/matches/:matchId/events', async (request, reply) => {
       const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+      const match = await prisma.match.findUnique({ where: { id: matchId }, select: { seasonId: true } })
+      if (!match) {
+        return reply.status(404).send({ ok: false, error: 'match_not_found' })
+      }
+
       const events = await prisma.matchEvent.findMany({
         where: { matchId },
         orderBy: [{ minute: 'asc' }, { id: 'asc' }],
@@ -1086,7 +1126,51 @@ export default async function (server: FastifyInstance) {
           team: true
         }
       })
-      return sendSerialized(reply, events)
+
+      if (events.length === 0) {
+        return sendSerialized(reply, events)
+      }
+
+      const personIds = new Set<number>()
+      for (const event of events) {
+        personIds.add(event.playerId)
+        if (event.relatedPlayerId) {
+          personIds.add(event.relatedPlayerId)
+        }
+      }
+
+      const rosterNumbers = await prisma.seasonRoster.findMany({
+        where: {
+          seasonId: match.seasonId,
+          personId: { in: Array.from(personIds) }
+        },
+        select: { personId: true, shirtNumber: true }
+      })
+
+      const shirtMap = new Map<number, number>()
+      rosterNumbers.forEach((entry) => {
+        shirtMap.set(entry.personId, entry.shirtNumber)
+      })
+
+      const enriched = events.map((event) => {
+        const playerShirt = shirtMap.get(event.playerId) ?? null
+        const relatedShirt = event.relatedPlayerId ? shirtMap.get(event.relatedPlayerId) ?? null : null
+        return {
+          ...event,
+          player: {
+            ...event.player,
+            shirtNumber: playerShirt
+          },
+          relatedPerson: event.relatedPerson
+            ? {
+                ...event.relatedPerson,
+                shirtNumber: relatedShirt
+              }
+            : event.relatedPerson
+        }
+      })
+
+      return sendSerialized(reply, enriched)
     })
 
     admin.post('/matches/:matchId/events', async (request, reply) => {
