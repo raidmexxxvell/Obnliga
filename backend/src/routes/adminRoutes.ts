@@ -1603,6 +1603,7 @@ export default async function (server: FastifyInstance) {
         yellowCards: number
         redCards: number
         cleanSheets: number
+        matchesPlayed: number
       }
 
       const clubInfo = new Map(clubs.map((club) => [club.id, club]))
@@ -1621,7 +1622,8 @@ export default async function (server: FastifyInstance) {
             goalsAgainst: 0,
             yellowCards: 0,
             redCards: 0,
-            cleanSheets: 0
+            cleanSheets: 0,
+            matchesPlayed: 0
           }
           totals.set(clubId, entry)
         }
@@ -1638,6 +1640,7 @@ export default async function (server: FastifyInstance) {
         const away = ensureClub(match.awayTeamId)
 
         if (home) {
+          home.matchesPlayed += 1
           home.goalsFor += match.homeScore
           home.goalsAgainst += match.awayScore
           if (match.awayScore === 0) {
@@ -1646,6 +1649,7 @@ export default async function (server: FastifyInstance) {
         }
 
         if (away) {
+          away.matchesPlayed += 1
           away.goalsFor += match.awayScore
           away.goalsAgainst += match.homeScore
           if (match.homeScore === 0) {
@@ -1678,7 +1682,8 @@ export default async function (server: FastifyInstance) {
         goalsAgainst: entry.goalsAgainst,
         yellowCards: entry.yellowCards,
         redCards: entry.redCards,
-        cleanSheets: entry.cleanSheets
+        cleanSheets: entry.cleanSheets,
+        matchesPlayed: entry.matchesPlayed
       }))
 
       rows.sort((left, right) => {

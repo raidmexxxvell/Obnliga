@@ -161,6 +161,7 @@ export interface ClubCareerTotals {
   clubId: number
   club: Club
   tournaments: number
+  matchesPlayed: number
   goalsFor: number
   goalsAgainst: number
   yellowCards: number

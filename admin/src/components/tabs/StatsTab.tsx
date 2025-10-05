@@ -149,6 +149,7 @@ const sortCareer = (rows: PlayerCareerStats[]) => {
 const sortTeams = (rows: ClubCareerTotals[]) => {
   return [...rows].sort((left, right) => {
     if (right.tournaments !== left.tournaments) return right.tournaments - left.tournaments
+    if (right.matchesPlayed !== left.matchesPlayed) return right.matchesPlayed - left.matchesPlayed
     const leftDiff = left.goalsFor - left.goalsAgainst
     const rightDiff = right.goalsFor - right.goalsAgainst
     if (rightDiff !== leftDiff) return rightDiff - leftDiff
@@ -431,7 +432,7 @@ export const StatsTab = () => {
         <section className="card">
           <header>
             <h4>Команды — сводная статистика</h4>
-            <p>Данные накапливаются за все сыгранные турниры выбранного соревнования.</p>
+            <p>Данные накапливаются за все сыгранные турниры лиги.</p>
           </header>
           <table className="data-table">
             <thead>
@@ -439,6 +440,7 @@ export const StatsTab = () => {
                 <th>#</th>
                 <th>Клуб</th>
                 <th>Турниров</th>
+                <th>Игры</th>
                 <th>ЖК</th>
                 <th>КК</th>
                 <th>Забито</th>
@@ -452,6 +454,7 @@ export const StatsTab = () => {
                   <td>{index + 1}</td>
                   <td>{row.club.name}</td>
                   <td>{row.tournaments}</td>
+                  <td>{row.matchesPlayed}</td>
                   <td>{row.yellowCards}</td>
                   <td>{row.redCards}</td>
                   <td>{row.goalsFor}</td>

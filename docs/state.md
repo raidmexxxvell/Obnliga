@@ -126,6 +126,7 @@ Edge cases / Notes
   - `activeTab: 'teams' | 'matches' | 'stats' | 'players' | 'news'`
   - `error?: string`
   - `data`: сезоны, серии, матчи и отдельный список `friendlyMatches` (товарищеские встречи вне сезона), а также справочники (клубы, стадионы, люди).
+  - `data.clubCareerTotals`: агрегированные показатели клубов за все турниры лиги (`tournaments`, `matchesPlayed`, `goalsFor`, `goalsAgainst`, `yellowCards`, `redCards`, `cleanSheets`).
 - Плей-офф формат:
   - конкурсы (`Competition`) теперь содержат `seriesFormat`, поддерживающий `PLAYOFF_BRACKET`;
   - `fetchSeasons` и `fetchSeries` обязаны быть вызваны до визуализации сетки — компонент `PlayoffBracket` использует `data.series`, `data.matches` и `data.clubs`;

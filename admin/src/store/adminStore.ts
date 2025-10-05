@@ -398,7 +398,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           adminGet<ClubSeasonStats[]>(token, `/api/admin/stats/club-season${seasonQuery}`),
           adminGet<PlayerSeasonStats[]>(token, `/api/admin/stats/player-season${seasonQuery}`),
           adminGet<PlayerCareerStats[]>(token, `/api/admin/stats/player-career${careerQuery}`),
-          adminGet<ClubCareerTotals[]>(token, `/api/admin/stats/club-career${careerQuery}`)
+          adminGet<ClubCareerTotals[]>(token, '/api/admin/stats/club-career')
         ])
         set((state) => ({
           data: { ...state.data, clubStats, playerStats, careerStats, clubCareerTotals }
