@@ -74,6 +74,7 @@ const LineupPortal: React.FC = () => {
   const [shirtNumbers, setShirtNumbers] = useState<Record<number, string>>({})
   const [saving, setSaving] = useState(false)
   const [modalError, setModalError] = useState<string | null>(null)
+  const [saveSuccess, setSaveSuccess] = useState<{ message: string; clubName: string } | null>(null)
 
   const selectedCount = useMemo(
     () =>
@@ -203,6 +204,7 @@ const LineupPortal: React.FC = () => {
     setRoster([])
     setSelectedPlayers({})
     setModalError(null)
+    setSaveSuccess(null)
   }
 
   const closeModal = () => {
@@ -212,6 +214,7 @@ const LineupPortal: React.FC = () => {
     setSelectedPlayers({})
     setShirtNumbers({})
     setModalError(null)
+    // Не очищаем saveSuccess, чтобы показать сообщение
   }
 
   useEffect(() => {
@@ -305,7 +308,11 @@ const LineupPortal: React.FC = () => {
         method: 'PUT',
         body: JSON.stringify({ clubId: activeClubId, personIds: payloadIds, numbers: numberAssignments })
       })
-    setPortalMessage(`Состав сохранён. В заявке: ${formatPlayersCount(payloadIds.length)}.`)
+    const clubName = activeMatch.homeClub.id === activeClubId ? activeMatch.homeClub.name : activeMatch.awayClub.name
+    setSaveSuccess({ 
+      message: `Состав сохранён. В заявке: ${formatPlayersCount(payloadIds.length)}.`,
+      clubName
+    })
       closeModal()
       void fetchMatches()
     } catch (error) {
@@ -489,6 +496,19 @@ const LineupPortal: React.FC = () => {
 
         {portalMessage ? <div className="portal-feedback success">{portalMessage}</div> : null}
         {portalError ? <div className="portal-feedback error">{portalError}</div> : null}
+        {saveSuccess ? (
+          <div className="portal-feedback success">
+            <strong>{saveSuccess.clubName}:</strong> {saveSuccess.message}
+            <button 
+              type="button" 
+              className="feedback-close"
+              onClick={() => setSaveSuccess(null)}
+              aria-label="Закрыть сообщение"
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
 
         {!token ? renderLogin() : renderMatches()}
       </div>

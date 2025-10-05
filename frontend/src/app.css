@@ -224,6 +224,34 @@
   margin-top: -4px;
   font-size: 13px;
 }
+
+.portal-feedback {
+  position: relative;
+}
+
+.feedback-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  transition: opacity 160ms ease;
+}
+
+.feedback-close:hover {
+  opacity: 1;
+}
 .portal-card-header{
   display:flex;
   align-items:center;
@@ -611,20 +639,37 @@
 
   .portal-roster-grid {
     grid-template-columns:1fr;
+    gap:8px;
   }
 
   .roster-card {
-    grid-template-columns:1fr;
-    gap:16px;
+    grid-template-columns:1fr auto;
+    gap:10px;
+    min-height:auto;
+    padding:12px;
   }
 
   .player-info {
-    gap:10px;
+    gap:8px;
+    flex-wrap:nowrap;
+  }
+
+  .player-number-input {
+    width:50px;
+    padding:5px 6px;
+    font-size:13px;
+    flex-shrink:0;
+  }
+
+  .player-name {
+    font-size:13px;
+    flex:1;
+    min-width:0;
   }
 
   .player-checkbox {
-    justify-content:flex-start;
-    display:flex;
+    align-self:center;
+    flex-shrink:0;
   }
 
   .portal-actions {
@@ -651,10 +696,24 @@
 
   .portal-feedback {
     font-size:13px;
+    padding:10px 32px 10px 12px;
   }
 
   .player-number-input {
-    width:56px;
-    padding:6px 6px;
+    width:45px;
+    padding:4px 5px;
+    font-size:12px;
+  }
+
+  .player-name {
+    font-size:12px;
+  }
+
+  .portal-modal {
+    max-height:85vh;
+  }
+
+  .portal-roster {
+    max-height:50vh;
   }
 }
