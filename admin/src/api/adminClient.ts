@@ -3,7 +3,8 @@ import type {
   LineupPortalMatch,
   LineupPortalRosterEntry,
   PlayoffCreationResult,
-  SeasonAutomationResult
+  SeasonAutomationResult,
+  SeriesFormat
 } from '../types'
 
 const API_BASE = import.meta.env.VITE_ADMIN_API_BASE || 'http://localhost:3000'
@@ -110,7 +111,7 @@ export interface SeasonAutomationPayload {
   matchTime?: string
   clubIds: number[]
   copyClubPlayersToRoster?: boolean
-  seriesFormat: 'SINGLE_MATCH' | 'TWO_LEGGED' | 'BEST_OF_N'
+  seriesFormat: SeriesFormat
 }
 
 export interface ImportClubPlayersPayload {

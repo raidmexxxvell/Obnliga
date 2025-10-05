@@ -19,8 +19,10 @@ import {
   Season,
   SeasonAutomationResult,
   PlayoffCreationResult,
-  SeasonParticipant
+  SeasonParticipant,
+  SeriesFormat
 } from '../../types'
+import { PlayoffBracket } from '../PlayoffBracket'
 
 type FeedbackLevel = 'info' | 'success' | 'error'
 
@@ -55,7 +57,7 @@ type SeasonAutomationFormState = {
   matchTime: string
   clubIds: number[]
   copyClubPlayersToRoster: boolean
-  seriesFormat: 'SINGLE_MATCH' | 'TWO_LEGGED' | 'BEST_OF_N'
+  seriesFormat: SeriesFormat
 }
 
 type MatchUpdateFormState = {
@@ -121,16 +123,18 @@ const buildMatchUpdateForm = (match: MatchSummary): MatchUpdateFormState => ({
   matchDateTime: match.matchDateTime.slice(0, 16)
 })
 
-const seriesFormatNames: Record<SeasonAutomationFormState['seriesFormat'], string> = {
+const seriesFormatNames: Record<SeriesFormat, string> = {
   SINGLE_MATCH: 'Лига: один круг',
   TWO_LEGGED: 'Лига: два круга (дом и гости)',
-  BEST_OF_N: '1 круг+плей-офф'
+  BEST_OF_N: '1 круг+плей-офф',
+  PLAYOFF_BRACKET: 'Плей-офф: случайная сетка'
 }
 
-const automationSeriesLabels: Record<SeasonAutomationFormState['seriesFormat'], string> = {
+const automationSeriesLabels: Record<SeriesFormat, string> = {
   SINGLE_MATCH: `${seriesFormatNames.SINGLE_MATCH} (каждый с каждым)`,
   TWO_LEGGED: `${seriesFormatNames.TWO_LEGGED}`,
-  BEST_OF_N: `${seriesFormatNames.BEST_OF_N}`
+  BEST_OF_N: `${seriesFormatNames.BEST_OF_N}`,
+  PLAYOFF_BRACKET: 'Плей-офф: случайная сетка (без регулярного этапа)'
 }
 
 const competitionTypeLabels: Record<'LEAGUE' | 'CUP' | 'HYBRID', string> = {
@@ -229,6 +233,8 @@ export const MatchesTab = () => {
   const [automationForm, setAutomationForm] = useState<SeasonAutomationFormState>(defaultAutomationForm)
   const [automationResult, setAutomationResult] = useState<SeasonAutomationResult | null>(null)
   const [automationLoading, setAutomationLoading] = useState(false)
+  const automationSeedingEnabled = automationForm.seriesFormat === 'BEST_OF_N'
+  const automationRandomBracket = automationForm.seriesFormat === 'PLAYOFF_BRACKET'
   const [playoffBestOf, setPlayoffBestOf] = useState<number>(playoffBestOfOptions[0])
   const [playoffLoading, setPlayoffLoading] = useState(false)
   const [playoffResult, setPlayoffResult] = useState<PlayoffCreationResult | null>(null)
@@ -242,6 +248,11 @@ export const MatchesTab = () => {
   const seasonParticipants = useMemo<SeasonParticipant[]>(() => {
     return selectedSeason?.participants ?? []
   }, [selectedSeason])
+
+  const competitionFormat: SeriesFormat | undefined = selectedSeason?.competition.seriesFormat
+  const isBestOfFormat = competitionFormat === 'BEST_OF_N'
+  const isPlayoffBracketFormat = competitionFormat === 'PLAYOFF_BRACKET'
+  const supportsPlayoffSeries = isBestOfFormat || isPlayoffBracketFormat
 
   // Одноразовая инициализация словарей и сезонов
   const bootRef = useRef(false)
@@ -810,11 +821,10 @@ export const MatchesTab = () => {
   }, [matchPlayersPool])
 
   const hasUnfinishedMatches = seasonMatches.some((match) => match.status !== 'FINISHED')
-  const playoffFormatEnabled = selectedSeason?.competition.seriesFormat === 'BEST_OF_N'
   const playoffsDisabledReason = useMemo(() => {
+    if (!isBestOfFormat) return null
     if (!selectedSeasonId) return 'Выберите сезон, чтобы запускать плей-офф'
     if (!selectedSeason) return 'Сезон не найден'
-    if (!playoffFormatEnabled) return 'Текущее соревнование не использует формат плей-офф'
     if (seasonSeries.length > 0) return 'Серии уже созданы для этого сезона'
     if (seasonParticipants.length < 2) return 'Недостаточно участников для плей-офф'
     if (seasonMatches.length === 0) return 'Нет матчей регулярного сезона'
@@ -822,7 +832,7 @@ export const MatchesTab = () => {
     return null
   }, [
     hasUnfinishedMatches,
-    playoffFormatEnabled,
+    isBestOfFormat,
     seasonMatches.length,
     seasonParticipants.length,
     seasonSeries.length,
@@ -977,11 +987,16 @@ export const MatchesTab = () => {
                 {automationForm.competitionId ? automationSeriesLabels[automationForm.seriesFormat] : 'Выберите соревнование'}
               </span>
             </div>
-            {automationForm.seriesFormat === 'BEST_OF_N' ? (
+            {automationSeedingEnabled ? (
               <p className="muted">
                 Групповой этап проходит в один круг. Порядок списка справа задаёт посев плей-офф: первая команда играет с
                 последней, вторая — с предпоследней и т.д. Если участников нечётное число, верхняя по посеву команда
                 автоматически проходит в следующий раунд.
+              </p>
+            ) : automationRandomBracket ? (
+              <p className="muted">
+                Регулярный этап пропускается. Сезон стартует сразу с плей-офф, а пары формируются случайным образом при
+                запуске автоматизации. Если участников нечётное число, одна команда получает автоматический проход далее.
               </p>
             ) : null}
             <label className="checkbox">
@@ -1012,7 +1027,7 @@ export const MatchesTab = () => {
                 </div>
               </div>
               <div className="selected-clubs">
-                <h5>Посев и порядок матчей</h5>
+                <h5>{automationSeedingEnabled ? 'Посев и порядок матчей' : 'Список участников'}</h5>
                 {automationForm.clubIds.length === 0 ? (
                   <p className="muted">Список пуст — отметьте команды слева.</p>
                 ) : (
@@ -1026,13 +1041,17 @@ export const MatchesTab = () => {
                             №{index + 1}. {club.name}
                           </span>
                           <span className="reorder-buttons">
-                            <button type="button" onClick={() => moveAutomationClub(clubId, -1)} disabled={index === 0}>
+                            <button
+                              type="button"
+                              onClick={() => moveAutomationClub(clubId, -1)}
+                              disabled={!automationSeedingEnabled || index === 0}
+                            >
                               ▲
                             </button>
                             <button
                               type="button"
                               onClick={() => moveAutomationClub(clubId, 1)}
-                              disabled={index === automationForm.clubIds.length - 1}
+                              disabled={!automationSeedingEnabled || index === automationForm.clubIds.length - 1}
                             >
                               ▼
                             </button>
@@ -1042,6 +1061,11 @@ export const MatchesTab = () => {
                     })}
                   </ol>
                 )}
+                {automationRandomBracket ? (
+                  <p className="muted" style={{ marginTop: '8px' }}>
+                    Очерёдность в списке не влияет на сетку — она будет перемешана автоматически.
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="form-actions">
@@ -1104,13 +1128,13 @@ export const MatchesTab = () => {
         <article className="card playoff-card">
           <header>
             <h4>Плей-офф после регулярки</h4>
-            <p>Когда все матчи сыграны, сформируйте сетку автоматически с учётом посева.</p>
+            <p>Когда все матчи сыграны, управляйте сеткой плей-офф и следите за прогрессом стадий.</p>
           </header>
           {!selectedSeason ? (
             <p className="muted">Выберите сезон, чтобы управлять плей-офф.</p>
-          ) : !playoffFormatEnabled ? (
+          ) : !supportsPlayoffSeries ? (
             <p className="muted">Соревнование «{selectedSeason.competition.name}» не предполагает серию до побед.</p>
-          ) : (
+          ) : isBestOfFormat ? (
             <div className="stacked">
               <label>
                 Формат серий
@@ -1151,15 +1175,39 @@ export const MatchesTab = () => {
                 </div>
               ) : null}
             </div>
+          ) : (
+            <div className="stacked">
+              <p className="muted">
+                Сетка плей-офф создаётся автоматически при запуске сезона. После завершения серий следующие стадии формируются
+                без ручного вмешательства.
+              </p>
+              <button
+                className="button-ghost"
+                type="button"
+                onClick={() => {
+                  const seasonId = selectedSeason.id
+                  void fetchSeries(seasonId).catch(() => undefined)
+                  void fetchMatches(seasonId).catch(() => undefined)
+                }}
+                disabled={Boolean(loading.series) || Boolean(loading.matches)}
+              >
+                {loading.series || loading.matches ? 'Обновляем…' : 'Обновить сетку'}
+              </button>
+              <p className="muted">Обновление подтянет актуальные стадии и расписание матчей.</p>
+            </div>
           )}
         </article>
-        {playoffFormatEnabled ? (
-        <article className="card">
-          <header>
-            <h4>{editingSeriesId ? 'Редактирование серии' : 'Создать серию'}</h4>
-            <p>Контролируйте стадии плей-офф и финальные серии.</p>
-          </header>
-          <form className="stacked" onSubmit={handleSeriesSubmit}>
+        {supportsPlayoffSeries ? (
+          <article className="card">
+            <header>
+              <h4>{editingSeriesId ? 'Редактирование серии' : 'Управление сериями'}</h4>
+              <p>
+                {isPlayoffBracketFormat
+                  ? 'Следите за автоматическими сериями и при необходимости корректируйте вручную.'
+                  : 'Контролируйте стадии плей-офф и финальные серии.'}
+              </p>
+            </header>
+            <form className="stacked" onSubmit={handleSeriesSubmit}>
             <label>
               Стадия
               <input value={seriesForm.stageName} onChange={(event) => setSeriesForm((form) => ({ ...form, stageName: event.target.value }))} required />
@@ -1273,8 +1321,23 @@ export const MatchesTab = () => {
               </tbody>
             </table>
           </div>
-        </article>
-  ) : null}
+          </article>
+        ) : null}
+        {supportsPlayoffSeries ? (
+          <article className="card bracket-card">
+            <header>
+              <h4>Сетка плей-офф</h4>
+              <p>
+                Визуализация серий и матчей. Победители подсвечиваются автоматически, статусы обновляются по мере завершения игр.
+              </p>
+            </header>
+            {selectedSeason ? (
+              <PlayoffBracket series={seasonSeries} matches={seasonMatches} clubs={availableClubs} />
+            ) : (
+              <p className="muted">Выберите сезон, чтобы отобразить сетку.</p>
+            )}
+          </article>
+        ) : null}
 
         <article className="card">
           <header>

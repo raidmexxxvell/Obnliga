@@ -30,7 +30,7 @@ type CompetitionFormState = {
 }
 
 const competitionTypeOptions: Competition['type'][] = ['LEAGUE', 'CUP', 'HYBRID']
-const seriesFormatOptions: Competition['seriesFormat'][] = ['SINGLE_MATCH', 'TWO_LEGGED', 'BEST_OF_N']
+const seriesFormatOptions: Competition['seriesFormat'][] = ['SINGLE_MATCH', 'TWO_LEGGED', 'BEST_OF_N', 'PLAYOFF_BRACKET']
 
 const competitionTypeLabels: Record<Competition['type'], string> = {
   LEAGUE: 'Лига',
@@ -41,7 +41,8 @@ const competitionTypeLabels: Record<Competition['type'], string> = {
 const seriesFormatLabels: Record<Competition['seriesFormat'], string> = {
   SINGLE_MATCH: 'Один круг (каждый с каждым)',
   TWO_LEGGED: 'Два круга (дом/гости)',
-  BEST_OF_N: '1 круг+плей-офф'
+  BEST_OF_N: '1 круг+плей-офф',
+  PLAYOFF_BRACKET: 'Плей-офф сетка (рандом)'
 }
 
 const defaultClubForm: ClubFormState = { name: '', shortName: '', logoUrl: '' }

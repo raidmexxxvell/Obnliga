@@ -30,8 +30,10 @@ export interface Competition {
   id: number
   name: string
   type: 'LEAGUE' | 'CUP' | 'HYBRID'
-  seriesFormat: 'SINGLE_MATCH' | 'TWO_LEGGED' | 'BEST_OF_N'
+  seriesFormat: SeriesFormat
 }
+
+export type SeriesFormat = 'SINGLE_MATCH' | 'TWO_LEGGED' | 'BEST_OF_N' | 'PLAYOFF_BRACKET'
 
 export interface SeasonParticipant {
   seasonId: number
@@ -96,6 +98,9 @@ export interface MatchSummary {
   stadiumId?: number | null
   refereeId?: number | null
   season?: { name: string }
+  seriesId?: string | null
+  seriesMatchNumber?: number | null
+  series?: MatchSeries | null
   round?: {
     id: number
     roundType: 'REGULAR' | 'PLAYOFF'

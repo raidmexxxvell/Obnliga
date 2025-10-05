@@ -398,6 +398,145 @@
   gap: 6px;
 }
 
+.bracket-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.bracket-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bracket-stage h5 {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.bracket-stage ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bracket-series {
+  position: relative;
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.14);
+  border-radius: 16px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.bracket-series::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.08), rgba(120, 31, 143, 0.12));
+  opacity: 0;
+  transition: opacity 160ms ease;
+  pointer-events: none;
+}
+
+.bracket-series:hover::before {
+  opacity: 1;
+}
+
+.bracket-series.status-finished {
+  border-color: rgba(49, 247, 157, 0.24);
+}
+
+.bracket-series.bye {
+  border-style: dashed;
+}
+
+.series-team {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.team-name {
+  font-weight: 600;
+}
+
+.team-name.winner {
+  color: var(--neon-cyan);
+}
+
+.team-score {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.series-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.series-matches {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.series-matches li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.match-label {
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.match-meta {
+  font-size: 11px;
+  opacity: 0.76;
+}
+
+.match-score {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.match-score.status-scheduled {
+  color: var(--text-muted);
+}
+
+.match-score.status-live {
+  color: var(--accent);
+}
+
+.match-score.status-postponed {
+  color: var(--danger);
+}
+
 .round-row td {
   padding: 14px 6px 6px;
   font-weight: 600;

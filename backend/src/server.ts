@@ -50,6 +50,10 @@ server.register(adminRoutes)
 import lineupRoutes from './routes/lineupRoutes'
 server.register(lineupRoutes)
 
+// register public bracket routes
+import bracketRoutes from './routes/bracketRoutes'
+server.register(bracketRoutes)
+
 // register fastify websocket & cookie plugins and realtime
 // websocket & cookie plugins and realtime will be registered in start() to avoid top-level await
 import websocketPlugin from '@fastify/websocket'
