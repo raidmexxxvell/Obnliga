@@ -302,6 +302,12 @@ async function rebuildPlayerCareerStats(seasonId: number, tx: PrismaTx) {
   const clubIds = Array.from(new Set(participants.map((item) => item.clubId)))
   if (!clubIds.length) return
 
+  await rebuildCareerStatsForClubs(clubIds, tx)
+}
+
+export async function rebuildCareerStatsForClubs(clubIds: number[], tx: PrismaTx) {
+  if (!clubIds.length) return
+
   const aggregates = await tx.playerSeasonStats.groupBy({
     by: ['clubId', 'personId'],
     where: { clubId: { in: clubIds } },
@@ -322,7 +328,7 @@ async function rebuildPlayerCareerStats(seasonId: number, tx: PrismaTx) {
   for (const aggregate of aggregates) {
     const sum = aggregate._sum ?? {}
     const totalGoals = sum.goals ?? 0
-  const totalPenaltyGoals = sum.penaltyGoals ?? 0
+    const totalPenaltyGoals = sum.penaltyGoals ?? 0
     const totalAssists = sum.assists ?? 0
     const yellowCards = sum.yellowCards ?? 0
     const redCards = sum.redCards ?? 0
@@ -339,7 +345,7 @@ async function rebuildPlayerCareerStats(seasonId: number, tx: PrismaTx) {
         personId: aggregate.personId,
         clubId: aggregate.clubId,
         totalGoals,
-  penaltyGoals: totalPenaltyGoals,
+        penaltyGoals: totalPenaltyGoals,
         totalMatches,
         totalAssists,
         yellowCards,
@@ -347,7 +353,7 @@ async function rebuildPlayerCareerStats(seasonId: number, tx: PrismaTx) {
       },
       update: {
         totalGoals,
-  penaltyGoals: totalPenaltyGoals,
+        penaltyGoals: totalPenaltyGoals,
         totalMatches,
         totalAssists,
         yellowCards,
@@ -378,7 +384,7 @@ async function rebuildPlayerCareerStats(seasonId: number, tx: PrismaTx) {
         personId: link.personId,
         clubId: link.clubId,
         totalGoals: 0,
-  penaltyGoals: 0,
+        penaltyGoals: 0,
         totalMatches: 0,
         totalAssists: 0,
         yellowCards: 0,

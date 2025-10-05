@@ -15,9 +15,10 @@ import {
   SeriesFormat,
   SeriesStatus
 } from '@prisma/client'
-import { handleMatchFinalization } from '../services/matchAggregation'
+import { handleMatchFinalization, rebuildCareerStatsForClubs } from '../services/matchAggregation'
 import { createSeasonPlayoffs, runSeasonAutomation } from '../services/seasonAutomation'
 import { serializePrisma } from '../utils/serialization'
+import { defaultCache } from '../cache'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -619,10 +620,41 @@ export default async function (server: FastifyInstance) {
     admin.delete('/competitions/:competitionId', async (request, reply) => {
       const competitionId = parseNumericId((request.params as any).competitionId, 'competitionId')
       try {
+        let seasonIds: number[] = []
         await prisma.$transaction(async (tx) => {
+          const seasons = await tx.season.findMany({
+            where: { competitionId },
+            select: { id: true }
+          })
+          seasonIds = seasons.map((season) => season.id)
+
+          let clubIds: number[] = []
+          if (seasonIds.length) {
+            const participants = await tx.seasonParticipant.findMany({
+              where: { seasonId: { in: seasonIds } },
+              select: { clubId: true }
+            })
+            clubIds = Array.from(new Set(participants.map((entry) => entry.clubId)))
+          }
+
           await tx.season.deleteMany({ where: { competitionId } })
           await tx.competition.delete({ where: { id: competitionId } })
+
+          if (clubIds.length) {
+            await rebuildCareerStatsForClubs(clubIds, tx)
+          }
         })
+        const cacheKeys = new Set<string>([
+          `competition:${competitionId}:club-stats`,
+          `competition:${competitionId}:player-stats`,
+          `competition:${competitionId}:player-career`,
+          ...seasonIds.flatMap((seasonId) => [
+            `season:${seasonId}:club-stats`,
+            `season:${seasonId}:player-stats`,
+            `season:${seasonId}:player-career`
+          ])
+        ])
+        await Promise.all(Array.from(cacheKeys).map((key) => defaultCache.invalidate(key).catch(() => undefined)))
         return reply.send({ ok: true })
       } catch (err) {
         request.server.log.error({ err, competitionId }, 'competition delete failed')
@@ -1737,12 +1769,16 @@ export default async function (server: FastifyInstance) {
           where: { competitionId: Number(competitionId) },
           select: { id: true }
         })
-        if (seasons.length) {
-          const participants = await prisma.seasonParticipant.findMany({
-            where: { seasonId: { in: seasons.map((entry) => entry.id) } },
-            select: { clubId: true }
-          })
-          clubFilter = Array.from(new Set(participants.map((entry) => entry.clubId)))
+        if (!seasons.length) {
+          return reply.send({ ok: true, data: [] })
+        }
+        const participants = await prisma.seasonParticipant.findMany({
+          where: { seasonId: { in: seasons.map((entry) => entry.id) } },
+          select: { clubId: true }
+        })
+        clubFilter = Array.from(new Set(participants.map((entry) => entry.clubId)))
+        if (!clubFilter.length) {
+          return reply.send({ ok: true, data: [] })
         }
       }
 

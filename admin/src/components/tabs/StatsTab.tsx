@@ -353,9 +353,6 @@ export const StatsTab = () => {
             <button type="button" className={activeView === 'standings' ? 'chip active' : 'chip'} onClick={() => setActiveView('standings')}>
               Таблица
             </button>
-            <button type="button" className={activeView === 'teams' ? 'chip active' : 'chip'} onClick={() => setActiveView('teams')}>
-              Команды
-            </button>
             <button type="button" className={activeView === 'scorers' ? 'chip active' : 'chip'} onClick={() => setActiveView('scorers')}>
               Бомбардиры
             </button>
@@ -372,11 +369,23 @@ export const StatsTab = () => {
             <button type="button" className={activeView === 'discipline' ? 'chip active' : 'chip'} onClick={() => setActiveView('discipline')}>
               Дисциплина
             </button>
-            <button type="button" className={activeView === 'career' ? 'chip active' : 'chip'} onClick={() => setActiveView('career')}>
-              Карьера
-            </button>
           </nav>
           <p className="muted">Все данные обновляются автоматически по завершении матчей.</p>
+        </article>
+        <article className="card">
+          <header>
+            <h4>Данные за всё время</h4>
+            <p>Сводные показатели по клубам и игрокам без привязки к сезону.</p>
+          </header>
+          <nav className="chip-row">
+            <button type="button" className={activeView === 'teams' ? 'chip active' : 'chip'} onClick={() => setActiveView('teams')}>
+              Команды
+            </button>
+            <button type="button" className={activeView === 'career' ? 'chip active' : 'chip'} onClick={() => setActiveView('career')}>
+              Карьера игроков
+            </button>
+          </nav>
+          <p className="muted">Данные суммируются по всем сыгранным турнирам лиги.</p>
         </article>
       </section>
 
