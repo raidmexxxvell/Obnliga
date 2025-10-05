@@ -23,7 +23,7 @@ export const LoginForm = () => {
   return (
     <form className="glass-card" onSubmit={handleSubmit} onFocus={() => clearError()}>
       <h1>Админ-панель</h1>
-      <p className="auth-meta">Войдите, используя учётные данные администратора Render.</p>
+      <p className="auth-meta">Введите логин администратора или капитана для портала составов.</p>
       {error ? <div className="error-banner">Ошибка авторизации: {error}</div> : null}
       <div className="form-field">
         <label htmlFor="admin-login">Логин</label>
@@ -51,7 +51,7 @@ export const LoginForm = () => {
       <button className="button-primary" type="submit" disabled={status === 'authenticating'}>
         {status === 'authenticating' ? 'Проверяем…' : 'Войти'}
       </button>
-      <p className="auth-meta">Переменные: LOGIN_ADMIN / PASSWORD_ADMIN (Render Dashboard).</p>
+      <p className="auth-meta">Админ: LOGIN_ADMIN / PASSWORD_ADMIN · Капитан: LINEUP_PORTAL_LOGIN / LINEUP_PORTAL_PASSWORD.</p>
     </form>
   )
 }

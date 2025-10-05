@@ -101,6 +101,7 @@ model Season {
   matches      Match[]
   playerStats  PlayerSeasonStats[]
   clubStats    ClubSeasonStats[]
+  rounds       SeasonRound[]
 
   @@map("season")
 }
@@ -160,6 +161,28 @@ model Stadium {
   @@map("stadium")
 }
 
+model SeasonRound {
+  id         Int       @id @default(autoincrement()) @map("round_id")
+  seasonId   Int       @map("season_id")
+  roundType  RoundType @map("round_type")
+  roundNumber Int?     @map("round_number")
+  label      String    @map("label")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  matches Match[]
+
+  @@unique([seasonId, label], name: "unique_round_label_per_season")
+  @@map("season_round")
+}
+
+enum RoundType {
+  REGULAR
+  PLAYOFF
+}
+
 model MatchSeries {
   id        BigInt    @id @default(autoincrement()) @map("series_id")
   seasonId  Int       @map("season_id")
@@ -199,6 +222,7 @@ model Match {
   status      MatchStatus
   stadiumId   Int?     @map("stadium_id")
   refereeId   Int?     @map("referee_id")
+  roundId     Int?     @map("round_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -212,6 +236,7 @@ model Match {
   lineups  MatchLineup[]
   events   MatchEvent[]
   predictions Prediction[]
+  round    SeasonRound? @relation(fields: [roundId], references: [id], onDelete: SetNull)
 
   @@unique([seriesId, seriesMatchNumber], map: "unique_series_match_number")
   @@map("match")
@@ -279,6 +304,8 @@ model PlayerSeasonStats {
   goals    Int @default(0)
   assists  Int @default(0)
   yellowCards Int @default(0) @map("yellow_cards")
+  redCards    Int @default(0) @map("red_cards")
+  matchesPlayed Int @default(0) @map("matches_played")
 
   updatedAt DateTime @default(now()) @map("updated_at")
 
@@ -295,6 +322,9 @@ model PlayerClubCareerStats {
   clubId   Int    @map("club_id")
   totalGoals   Int @default(0) @map("total_goals")
   totalMatches Int @default(0) @map("total_matches")
+  totalAssists Int @default(0) @map("total_assists")
+  yellowCards  Int @default(0) @map("yellow_cards")
+  redCards     Int @default(0) @map("red_cards")
 
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
   club   Club   @relation(fields: [clubId], references: [id], onDelete: Cascade)

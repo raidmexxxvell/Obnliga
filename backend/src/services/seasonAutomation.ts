@@ -1,4 +1,4 @@
-import { Competition, MatchStatus, PrismaClient, SeriesFormat, SeriesStatus } from '@prisma/client'
+import { Competition, MatchStatus, PrismaClient, RoundType, SeriesFormat, SeriesStatus } from '@prisma/client'
 import { FastifyBaseLogger } from 'fastify'
 
 type ClubId = number
@@ -266,7 +266,7 @@ export const runSeasonAutomation = async (
       await tx.clubSeasonStats.createMany({ data: statsPayload, skipDuplicates: true })
     }
 
-  let rosterEntriesCreated = 0
+    let rosterEntriesCreated = 0
     if (input.copyClubPlayersToRoster) {
       const clubPlayers = await tx.clubPlayer.findMany({
         where: { clubId: { in: uniqueClubIds } },
@@ -313,6 +313,27 @@ export const runSeasonAutomation = async (
       }
     }
 
+    const roundIndexToId = new Map<number, number>()
+    if (totalRounds > 0) {
+      for (let roundIndex = 0; roundIndex < totalRounds; roundIndex += 1) {
+        const label = `${roundIndex + 1} тур`
+        const existing = await tx.seasonRound.findFirst({
+          where: { seasonId: createdSeason.id, label }
+        })
+        const round =
+          existing ??
+          (await tx.seasonRound.create({
+            data: {
+              seasonId: createdSeason.id,
+              roundType: RoundType.REGULAR,
+              roundNumber: roundIndex + 1,
+              label
+            }
+          }))
+        roundIndexToId.set(roundIndex, round.id)
+      }
+    }
+
     const matchPayload = pairs.map((pair) => {
       const matchDate = addDays(kickoffDate, pair.roundIndex * 7)
       return {
@@ -320,7 +341,8 @@ export const runSeasonAutomation = async (
         matchDateTime: matchDate,
         homeTeamId: pair.homeClubId,
         awayTeamId: pair.awayClubId,
-        status: MatchStatus.SCHEDULED
+        status: MatchStatus.SCHEDULED,
+        roundId: roundIndexToId.get(pair.roundIndex) ?? null
       }
     })
 
@@ -330,7 +352,7 @@ export const runSeasonAutomation = async (
       matchesCreated += result.count
     }
 
-    let seriesCreated = 0
+  let seriesCreated = 0
 
     logger.info({
       seasonId: createdSeason.id,
@@ -488,6 +510,20 @@ export const createSeasonPlayoffs = async (
     let seriesCreated = 0
 
     for (const plan of plans) {
+      let playoffRound = await tx.seasonRound.findFirst({
+        where: { seasonId, label: plan.stageName }
+      })
+      if (!playoffRound) {
+        playoffRound = await tx.seasonRound.create({
+          data: {
+            seasonId,
+            roundType: RoundType.PLAYOFF,
+            roundNumber: null,
+            label: plan.stageName
+          }
+        })
+      }
+
       const series = await tx.matchSeries.create({
         data: {
           seasonId,
@@ -510,7 +546,8 @@ export const createSeasonPlayoffs = async (
           awayTeamId: index % 2 === 0 ? plan.awayClubId : plan.homeClubId,
           status: MatchStatus.SCHEDULED,
           seriesId: series.id,
-          seriesMatchNumber: index + 1
+          seriesMatchNumber: index + 1,
+          roundId: playoffRound.id
         }
       })
 

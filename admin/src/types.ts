@@ -95,6 +95,12 @@ export interface MatchSummary {
   stadiumId?: number | null
   refereeId?: number | null
   season?: { name: string }
+  round?: {
+    id: number
+    roundType: 'REGULAR' | 'PLAYOFF'
+    roundNumber?: number | null
+    label: string
+  }
 }
 
 export interface MatchLineupEntry {
@@ -129,6 +135,7 @@ export interface ClubSeasonStats {
   goalsFor: number
   goalsAgainst: number
   club: Club
+  season?: Season
 }
 
 export interface PlayerSeasonStats {
@@ -138,6 +145,8 @@ export interface PlayerSeasonStats {
   goals: number
   assists: number
   yellowCards: number
+  redCards: number
+  matchesPlayed: number
   person: Person
   club: Club
 }
@@ -147,6 +156,9 @@ export interface PlayerCareerStats {
   clubId: number
   totalGoals: number
   totalMatches: number
+  totalAssists: number
+  yellowCards: number
+  redCards: number
   person: Person
   club: Club
 }
@@ -203,4 +215,21 @@ export interface Disqualification {
   isActive: boolean
   person: Person
   club?: Club | null
+}
+
+export interface LineupPortalMatch {
+  id: string
+  matchDateTime: string
+  status: 'SCHEDULED' | 'LIVE' | 'FINISHED' | 'POSTPONED'
+  season: { id: number; name: string }
+  round?: { id: number; label: string | null }
+  homeClub: { id: number; name: string; shortName: string; logoUrl?: string | null }
+  awayClub: { id: number; name: string; shortName: string; logoUrl?: string | null }
+}
+
+export interface LineupPortalRosterEntry {
+  personId: number
+  person: { id: number; firstName: string; lastName: string }
+  shirtNumber: number
+  selected: boolean
 }
