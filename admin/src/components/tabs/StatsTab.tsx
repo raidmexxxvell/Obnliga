@@ -54,10 +54,6 @@ const sortStandings = (rows: ClubSeasonStats[], matches: MatchSummary[]) => {
   return dataset.sort((left, right) => {
     if (right.points !== left.points) return right.points - left.points
 
-    const leftDiff = left.goalsFor - left.goalsAgainst
-    const rightDiff = right.goalsFor - right.goalsAgainst
-    if (rightDiff !== leftDiff) return rightDiff - leftDiff
-
     const leftVsRight = getHeadToHead(left.clubId, right.clubId)
     const rightVsLeft = getHeadToHead(right.clubId, left.clubId)
 
@@ -68,6 +64,10 @@ const sortStandings = (rows: ClubSeasonStats[], matches: MatchSummary[]) => {
     if (rightHeadDiff !== leftHeadDiff) return rightHeadDiff - leftHeadDiff
 
     if (rightVsLeft.goalsFor !== leftVsRight.goalsFor) return rightVsLeft.goalsFor - leftVsRight.goalsFor
+
+    const leftDiff = left.goalsFor - left.goalsAgainst
+    const rightDiff = right.goalsFor - right.goalsAgainst
+    if (rightDiff !== leftDiff) return rightDiff - leftDiff
 
     return right.goalsFor - left.goalsFor
   })
@@ -227,12 +227,15 @@ export const StatsTab = () => {
   }, [data.careerStats])
 
   const finishedMatchesByClub = useMemo(() => {
-    const map = new Map<number, number>()
+    const map = new Map<string, number>()
+    const makeKey = (seasonId: number, clubId: number) => `${seasonId}:${clubId}`
     for (const match of data.matches) {
       if (selectedSeasonId && match.seasonId !== selectedSeasonId) continue
       if (match.status !== 'FINISHED') continue
-      map.set(match.homeTeamId, (map.get(match.homeTeamId) ?? 0) + 1)
-      map.set(match.awayTeamId, (map.get(match.awayTeamId) ?? 0) + 1)
+      const homeKey = makeKey(match.seasonId, match.homeTeamId)
+      const awayKey = makeKey(match.seasonId, match.awayTeamId)
+      map.set(homeKey, (map.get(homeKey) ?? 0) + 1)
+      map.set(awayKey, (map.get(awayKey) ?? 0) + 1)
     }
     return map
   }, [data.matches, selectedSeasonId])
@@ -350,13 +353,14 @@ export const StatsTab = () => {
         <section className="card">
           <header>
             <h4>Турнирная таблица</h4>
-            <p>Сортировка: очки, разница голов, личные встречи.</p>
+            <p>Сортировка: очки, личные встречи, разница голов.</p>
           </header>
           <table className="data-table">
             <thead>
               <tr>
                 <th>#</th>
                 <th>Клуб</th>
+                <th>Игры</th>
                 <th>Победы</th>
                 <th>Ничьи</th>
                 <th>Поражения</th>
@@ -365,27 +369,28 @@ export const StatsTab = () => {
               </tr>
             </thead>
             <tbody>
-              {standings.map((row, index) => (
-                <tr key={`${row.seasonId}-${row.clubId}`}>
-                  <td>{index + 1}</td>
-                  <td>{row.club.name}</td>
-                  <td>{row.wins}</td>
-                  <td>
-                    {(() => {
-                      const totalMatches = finishedMatchesByClub.get(row.clubId)
-                      if (totalMatches !== undefined) {
-                        return Math.max(0, totalMatches - row.wins - row.losses)
-                      }
-                      return Math.max(0, row.points - row.wins * 3)
-                    })()}
-                  </td>
-                  <td>{row.losses}</td>
-                  <td>
-                    {row.goalsFor}:{row.goalsAgainst} ({row.goalsFor - row.goalsAgainst})
-                  </td>
-                  <td>{row.points}</td>
-                </tr>
-              ))}
+              {standings.map((row, index) => {
+                const matchesKey = `${row.seasonId}:${row.clubId}`
+                const matches = finishedMatchesByClub.get(matchesKey)
+                const inferredDraws = Math.max(0, row.points - row.wins * 3)
+                const matchesPlayed = matches ?? row.wins + row.losses + inferredDraws
+                const draws = Math.max(0, matchesPlayed - row.wins - row.losses)
+
+                return (
+                  <tr key={`${row.seasonId}-${row.clubId}`}>
+                    <td>{index + 1}</td>
+                    <td>{row.club.name}</td>
+                    <td>{matchesPlayed}</td>
+                    <td>{row.wins}</td>
+                    <td>{draws}</td>
+                    <td>{row.losses}</td>
+                    <td>
+                      {row.goalsFor}:{row.goalsAgainst} ({row.goalsFor - row.goalsAgainst})
+                    </td>
+                    <td>{row.points}</td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
           {!standings.length ? <p className="muted">Нет данных для выбранного сезона.</p> : null}
