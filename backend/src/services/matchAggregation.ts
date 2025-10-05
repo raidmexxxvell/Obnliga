@@ -546,36 +546,17 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
 
   if (!series) return
   if (series.seriesStatus === SeriesStatus.FINISHED) return
+  // Only playoff series (BEST_OF_N) are supported for automatic winner resolution.
+  // For regular league formats (SINGLE_MATCH / TWO_LEGGED) we don't manage series at all.
+  if (series.season.competition.seriesFormat !== SeriesFormat.BEST_OF_N) return
 
-  const format = series.season.competition.seriesFormat
   const scheduledMatches = series.matches
   const finishedMatches = scheduledMatches.filter((m) => m.status === MatchStatus.FINISHED)
   if (finishedMatches.length === 0) return
   const totalPlannedMatches = scheduledMatches.length
 
   let winnerClubId: number | null = null
-
-  if (format === SeriesFormat.SINGLE_MATCH) {
-    const lastMatch = finishedMatches[finishedMatches.length - 1]
-    if (lastMatch.homeScore !== lastMatch.awayScore) {
-      winnerClubId = lastMatch.homeScore > lastMatch.awayScore ? lastMatch.homeTeamId : lastMatch.awayTeamId
-    }
-  } else if (format === SeriesFormat.TWO_LEGGED) {
-    let homeAggregate = 0
-    let awayAggregate = 0
-    for (const m of finishedMatches) {
-      if (m.homeTeamId === series.homeClubId) {
-        homeAggregate += m.homeScore
-        awayAggregate += m.awayScore
-      } else {
-        homeAggregate += m.awayScore
-        awayAggregate += m.homeScore
-      }
-    }
-    if (homeAggregate !== awayAggregate) {
-      winnerClubId = homeAggregate > awayAggregate ? series.homeClubId : series.awayClubId
-    }
-  } else {
+  {
     let homeWins = 0
     let awayWins = 0
     for (const m of finishedMatches) {

@@ -124,7 +124,7 @@ const buildMatchUpdateForm = (match: MatchSummary): MatchUpdateFormState => ({
 const seriesFormatNames: Record<SeasonAutomationFormState['seriesFormat'], string> = {
   SINGLE_MATCH: 'Лига: один круг',
   TWO_LEGGED: 'Лига: два круга (дом и гости)',
-  BEST_OF_N: 'Лига + плей-офф до двух побед'
+  BEST_OF_N: '1 круг+плей-офф'
 }
 
 const automationSeriesLabels: Record<SeasonAutomationFormState['seriesFormat'], string> = {
@@ -1066,7 +1066,8 @@ export const MatchesTab = () => {
               </p>
             </div>
           ) : null}
-        </article>
+  </article>
+  
         <article className="card">
           <header>
             <h4>Выбор сезона</h4>
@@ -1152,6 +1153,7 @@ export const MatchesTab = () => {
             </div>
           )}
         </article>
+        {playoffFormatEnabled ? (
         <article className="card">
           <header>
             <h4>{editingSeriesId ? 'Редактирование серии' : 'Создать серию'}</h4>
@@ -1272,6 +1274,7 @@ export const MatchesTab = () => {
             </table>
           </div>
         </article>
+  ) : null}
 
         <article className="card">
           <header>

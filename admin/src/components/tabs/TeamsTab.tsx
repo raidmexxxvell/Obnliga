@@ -39,9 +39,9 @@ const competitionTypeLabels: Record<Competition['type'], string> = {
 }
 
 const seriesFormatLabels: Record<Competition['seriesFormat'], string> = {
-  SINGLE_MATCH: 'Один матч (каждый с каждым)',
-  TWO_LEGGED: 'Два матча (дом/гости)',
-  BEST_OF_N: 'Серия до побед (best-of)'
+  SINGLE_MATCH: 'Один круг (каждый с каждым)',
+  TWO_LEGGED: 'Два круга (дом/гости)',
+  BEST_OF_N: '1 круг+плей-офф'
 }
 
 const defaultClubForm: ClubFormState = { name: '', shortName: '', logoUrl: '' }
