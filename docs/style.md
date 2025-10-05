@@ -21,6 +21,12 @@
   - Полупрозрачный фон (backdrop-filter: blur) с тонкой тенью.
   - Скругления 8–12px.
 
+- Модальные окна:
+  - Поддержка скролла в контенте (overflow-y: auto)
+  - Максимальная высота 60vh для мобильных устройств
+  - Адаптивная сетка с auto-fill minmax для карточек
+  - Мобильные breakpoints: 600px (одна колонка), 480px (уменьшенные отступы)
+
 Типографика
 - Система шрифтов: Segoe UI, Roboto, Arial, sans-serif.
 - Стиль заголовков — uppercase, letter-spacing: 1px.
@@ -44,6 +50,38 @@
 2. Для сплеша использовать контейнер `.splash` + `.splash-inner` и добавлять `.logo.animate` при загрузке.
    - Для heartbeat: добавить класс `.logo.heartbeat`.
    - Для прогресса: использовать структуру
+3. Для модальных окон с мобильной адаптивностью:
+
+```css
+/* Модальное окно с скроллом */
+.portal-roster {
+  max-height: 60vh;
+  overflow-y: auto;
+  border-radius: 8px;
+}
+
+/* Адаптивная сетка */
+.roster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+/* Мобильные брейкпоинты */
+@media (max-width: 600px) {
+  .roster-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .modal-content {
+    padding: 12px;
+    margin: 8px;
+  }
+}
+```
 
 ```html
 <div class="progress">

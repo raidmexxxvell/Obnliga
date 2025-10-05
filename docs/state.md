@@ -27,6 +27,9 @@ Stores (модули)
 - matchesStore
   - state: { items: Match[], byId: Record<number, Match>, loading: boolean, etag?: string }
   - actions: fetchMatches, fetchMatch, applyPatch
+- lineupStore
+  - state: { lineups: Record<number, MatchLineup>, validationErrors: ValidationError[], saveSuccess: boolean }
+  - actions: fetchLineup, saveLineup, setPlayerNumber, validateLineup
 - realtimeStore
   - state: { connected: boolean, topics: string[] }
   - actions: connect(url), subscribe(topic), unsubscribe(topic), applyPatch
@@ -54,9 +57,14 @@ setTab(tab: UITab): void
 
 Замечания по UX
 - Закрытие/переход со сплеша: сплеш скрывается только после завершения прогресса (100%) и небольшой задержки (примерно 350ms), чтобы избежать мерцания при коротких задержках загрузки.
+- Модальные окна составов: поддерживают скролл и адаптивную сетку на мобильных устройствах.
+- Ошибки валидации: отображаются внутри модальных окон, не закрывая их.
+- Успешное сохранение: показывается уведомление на 3 секунды с сохранением при закрытии модального окна.
 
 Типы и shape (коротко)
 - Match { id: number, homeTeamId: number, awayTeamId: number, matchDate: string, homeScore: number, awayScore: number, status: 'scheduled'|'live'|'finished' }
+- MatchLineupEntry { id: number, matchId: number, playerId: number, shirtNumber?: number | null, confirmed: boolean }
+- ValidationError { field: string, message: string, playerId?: number }
 - ShopItem { id: number, title: string, price: number }
 - Cart { items: { itemId: number, qty: number }[] }
 

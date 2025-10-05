@@ -12,14 +12,15 @@
 - Prisma schema и клиент (dev sqlite / production Postgres) — в `prisma/schema.prisma`.
 - Реализован multilevel cache skeleton: `backend/src/cache/multilevelCache.ts`.
 - Добавлен ETag-плагин Fastify: `backend/src/plugins/etag.ts` и зарегистрирован в `server.ts` (см. `audit/changes/0005-add-etag-middleware.md`).
-- Создан отдельный фронтенд для админ-дэшборда (`admin/`), включающий вход по ENV-параметрам Render и вкладочную структуру (Команды, Матчи, Статистика, Управление игроками, Новости) — пока содержатся заглушки.
+- Создан отдельный фронтенд для админ-дэшборда (`admin/`), включающий вход по ENV-параметрам Render и вкладочную структуру (Команды, Матчи, Статистика, Управление игроками, Новости).
+- Система управления составами: полноценная реализация с модальными окнами, валидацией ошибок, мобильной адаптивностью и синхронизацией UX между админ-панелью и капитанским порталом (см. `audit/changes/0011-lineup-portal-ux-improvements.md`).
 
 - Backend расширен эндпоинтом `/api/admin/login`, использующим переменные окружения `LOGIN_ADMIN` и `PASSWORD_ADMIN` для выдачи JWT токена администратору. Маршрут зарегистрирован в `backend/src/server.ts`.
 
 - Добавлена модель `User` и базовый flow аутентификации через Telegram WebApp (server-side `initData` verification, JWT issuance). Файлы: `backend/src/routes/authRoutes.ts`, `backend/src/routes/userRoutes.ts`, `frontend/src/Profile.tsx`.
 - Добавлена prototype реализация realtime: Fastify WebSocket endpoint + Redis pub/sub glue (`backend/src/realtime/index.ts`) и минимальный клиент `frontend/src/wsClient.ts`. Для локальной отладки необходим Redis (см. `docs/prisma.md` и `docs/dev-setup.md`).
 - Админ-панель матчей получила live-управление счётом (кнопки `+/-`, авто-обнуление при переходе в статус `LIVE`) и ограничение выбора игроков заявкой сезона.
-- Во фронтенде добавлен временный портал `/lineup` для капитанов команд, позволяющий отметить состав перед матчем (temporary stub до получения контекста MCP).
+- Реализован полноценный портал `/lineup` для капитанов команд с подтверждением составов, валидацией ошибок, успешным сохранением и мобильной адаптивностью. Синхронизирован UX с админ-панелью.
 
 Проверка правил — ОК
 1) Прочитаны `docs/roadmap.md`, `audit/mcp-context7-summary.md` и `docs/dev-setup.md`.
@@ -31,14 +32,17 @@
 Затронутые компоненты
 - Backend
   - `src/server.ts` — bootstrap, регистрация плагинов
-  - `src/plugins/etag.ts` — новый ETag middleware
+  - `src/plugins/etag.ts` — ETag middleware
   - `src/cache/*` — multilevel cache
-  - `routes/*` — demo API (например `/api/cache/:key`)
+  - `routes/*` — API endpoints (кэш, админка, составы)
 - Frontend
   - `src/api/etag.ts` — fetch wrapper (план)
   - `src/store/*` — store façade (matchesStore, userStore, shopStore, realtimeStore)
-  - `admin/src/components/tabs/MatchesTab.tsx` — live-контролы счёта и фильтрация игроков
-  - `frontend/src/LineupPortal.tsx`, `frontend/src/main.tsx` — портал подтверждения составов (temporary stub)
+  - `admin/src/components/tabs/MatchesTab.tsx` — live-контролы счёта, отображение номеров игроков
+  - `admin/src/lineup.css` — стили модальных окон с мобильной адаптивностью
+  - `admin/src/types.ts` — TypeScript интерфейсы с поддержкой номеров игроков
+  - `frontend/src/LineupPortal.tsx` — полноценный портал составов с UX улучшениями
+  - `frontend/src/app.css` — мобильные стили для адаптивности
 
 Влияние изменений на сеть / кэш / WS
 - ETag middleware работает: клиент отправляет If-None-Match, сервер возвращает 304 при совпадении, экономит трафик ✅
