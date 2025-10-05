@@ -1,11 +1,13 @@
 import React, { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  adjustMatchStatistic,
   adminDelete,
   adminGet,
   adminPost,
   adminPut,
   createSeasonAutomation,
-  createSeasonPlayoffs
+  createSeasonPlayoffs,
+  fetchMatchStatistics
 } from '../../api/adminClient'
 import { useAdminStore } from '../../store/adminStore'
 import {
@@ -18,6 +20,8 @@ import {
   Person,
   Season,
   SeasonAutomationResult,
+  MatchStatisticEntry,
+  MatchStatisticMetric,
   PlayoffCreationResult,
   SeasonParticipant,
   SeriesFormat
@@ -180,6 +184,14 @@ const eventTypeLabels: Record<MatchEventEntry['eventType'], string> = {
   SUB_OUT: 'Замена (ушёл)'
 }
 
+const matchStatisticRows: Array<{ metric: MatchStatisticMetric; label: string }> = [
+  { metric: 'totalShots', label: 'Всего ударов' },
+  { metric: 'shotsOnTarget', label: 'Удары в створ' },
+  { metric: 'corners', label: 'Угловые' },
+  { metric: 'yellowCards', label: 'Жёлтые карточки' },
+  { metric: 'redCards', label: 'Удаления' }
+]
+
 export const MatchesTab = () => {
   const {
     token,
@@ -228,7 +240,31 @@ export const MatchesTab = () => {
 
   const [matchLineup, setMatchLineup] = useState<MatchLineupEntry[]>([])
   const [matchEvents, setMatchEvents] = useState<MatchEventEntry[]>([])
-  const [lineupClubFilter, setLineupClubFilter] = useState<number | ''>('')
+  const [matchStats, setMatchStats] = useState<Record<number, MatchStatisticEntry>>({})
+  const [matchStatsVersion, setMatchStatsVersion] = useState<number | undefined>(undefined)
+  const [matchStatsLoading, setMatchStatsLoading] = useState(false)
+  const [matchStatsUpdating, setMatchStatsUpdating] = useState(false)
+
+  const mapStatisticEntries = (entries: MatchStatisticEntry[]) => {
+    const next: Record<number, MatchStatisticEntry> = {}
+    for (const entry of entries) {
+      next[entry.clubId] = entry
+    }
+    return next
+  }
+
+  const ensureClubForStats = (clubId: number): Club => {
+    const existing = data.clubs.find((club) => club.id === clubId)
+    if (existing) {
+      return existing
+    }
+    const label = `Клуб ${clubId}`
+    return {
+      id: clubId,
+      name: label,
+      shortName: label
+    }
+  }
 
   const [automationForm, setAutomationForm] = useState<SeasonAutomationFormState>(defaultAutomationForm)
   const [automationResult, setAutomationResult] = useState<SeasonAutomationResult | null>(null)
@@ -301,8 +337,28 @@ export const MatchesTab = () => {
     }
   }
 
+  const refreshMatchStats = async (matchId: string, options?: { silent?: boolean }) => {
+    if (!token) return
+    setMatchStatsLoading(true)
+    try {
+      const { entries, version } = await fetchMatchStatistics(token, matchId)
+      setMatchStats(mapStatisticEntries(entries))
+      setMatchStatsVersion(version)
+    } catch (err) {
+      setMatchStats({})
+      setMatchStatsVersion(undefined)
+      if (!options?.silent) {
+        const message = err instanceof Error ? err.message : 'Не удалось загрузить статистику матча'
+        handleFeedback(message, 'error')
+      }
+    } finally {
+      setMatchStatsLoading(false)
+    }
+  }
+
   const loadMatchDetails = async (matchId: string) => {
     if (!token) return
+    let lineupErrored = false
     try {
       const [lineup, events] = await Promise.all([
         adminGet<MatchLineupEntry[]>(token, `/api/admin/matches/${matchId}/lineup`),
@@ -311,8 +367,57 @@ export const MatchesTab = () => {
       setMatchLineup(lineup)
       setMatchEvents(events)
     } catch (err) {
+      lineupErrored = true
       const message = err instanceof Error ? err.message : 'Не удалось загрузить детали матча'
       handleFeedback(message, 'error')
+    }
+
+    await refreshMatchStats(matchId, { silent: lineupErrored })
+  }
+
+  const adjustStatistic = async (clubId: number | undefined, metric: MatchStatisticMetric, delta: -1 | 1) => {
+    if (!selectedMatchId || !selectedMatch || !clubId) return
+    if (!token) {
+      handleFeedback('Нет токена авторизации', 'error')
+      return
+    }
+    if (matchStatsUpdating) return
+
+    const previous = matchStats
+    const baseEntry = previous[clubId] ?? {
+      matchId: selectedMatchId,
+      clubId,
+      totalShots: 0,
+      shotsOnTarget: 0,
+      corners: 0,
+      yellowCards: 0,
+      redCards: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      club: ensureClubForStats(clubId)
+    }
+
+    const optimisticValue = Math.max(0, baseEntry[metric] + delta)
+    const optimisticEntry: MatchStatisticEntry = {
+      ...baseEntry,
+      [metric]: optimisticValue,
+      updatedAt: new Date().toISOString()
+    }
+
+    setMatchStats({ ...previous, [clubId]: optimisticEntry })
+    setMatchStatsUpdating(true)
+
+    try {
+      const { entries, version } = await adjustMatchStatistic(token, selectedMatchId, { clubId, metric, delta })
+      setMatchStats(mapStatisticEntries(entries))
+      setMatchStatsVersion(version)
+    } catch (err) {
+      setMatchStats(previous)
+      const message = err instanceof Error ? err.message : 'Не удалось обновить статистику матча'
+      handleFeedback(message, 'error')
+      await refreshMatchStats(selectedMatchId, { silent: true })
+    } finally {
+      setMatchStatsUpdating(false)
     }
   }
 
@@ -506,7 +611,8 @@ export const MatchesTab = () => {
   const handleMatchSelect = (match: MatchSummary) => {
     setSelectedMatchId(match.id)
     setMatchModalOpen(true)
-    setLineupClubFilter('')
+    setMatchStats({})
+    setMatchStatsVersion(undefined)
     setMatchUpdateForms((forms) => ({
       ...forms,
       [match.id]: buildMatchUpdateForm(match)
@@ -519,7 +625,8 @@ export const MatchesTab = () => {
     setSelectedMatchId(null)
     setMatchLineup([])
     setMatchEvents([])
-    setLineupClubFilter('')
+    setMatchStats({})
+    setMatchStatsVersion(undefined)
   }
 
   const handleMatchUpdate = async (match: MatchSummary, form: MatchUpdateFormState) => {
@@ -598,7 +705,6 @@ export const MatchesTab = () => {
 
   useEffect(() => {
     setEventForm(defaultEventForm)
-    setLineupClubFilter('')
   }, [selectedMatchId])
 
   useEffect(() => {
@@ -633,14 +739,6 @@ export const MatchesTab = () => {
       setMatchLineup([])
       setMatchEvents([])
     }
-  }
-
-  const handleLineupRemove = async (entry: MatchLineupEntry) => {
-    if (!selectedMatchId) return
-    await runWithMessages(async () => {
-      await adminDelete(token, `/api/admin/matches/${selectedMatchId}/lineup/${entry.personId}`)
-      await loadMatchDetails(selectedMatchId)
-    }, 'Игрок удалён из состава')
   }
 
   const handleEventSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -717,13 +815,14 @@ export const MatchesTab = () => {
     return [home, away].filter(Boolean) as Club[]
   }, [availableClubs, selectedMatch])
 
-  useEffect(() => {
-    if (!lineupClubFilter) return
-    const stillValid = selectedMatchTeams.some((team) => team.id === lineupClubFilter)
-    if (!stillValid) {
-      setLineupClubFilter('')
-    }
-  }, [lineupClubFilter, selectedMatchTeams])
+  const homeClub = selectedMatch ? availableClubs.find((club) => club.id === selectedMatch.homeTeamId) : undefined
+  const awayClub = selectedMatch ? availableClubs.find((club) => club.id === selectedMatch.awayTeamId) : undefined
+
+  const getStatisticValue = (clubId: number | undefined, metric: MatchStatisticMetric) => {
+    if (!clubId) return 0
+    const entry = matchStats[clubId]
+    return entry ? entry[metric] : 0
+  }
 
   const matchLineupByClub = useMemo(() => {
     const map = new Map<number, MatchLineupEntry[]>()
@@ -745,11 +844,6 @@ export const MatchesTab = () => {
     })
     return map
   }, [matchLineup])
-
-  const filteredMatchLineup = useMemo(() => {
-    if (!lineupClubFilter) return []
-    return matchLineupByClub.get(lineupClubFilter) ?? []
-  }, [lineupClubFilter, matchLineupByClub])
 
   const matchPlayersPool = useMemo<EventPlayerOption[]>(() => {
     const options: EventPlayerOption[] = []
@@ -1653,90 +1747,96 @@ export const MatchesTab = () => {
                 <label className="stacked">
                   Счёт
                   <div className="score-editor">
-                    <div className={`score-control${isSelectedMatchLive ? ' live' : ''}`}>
-                      {isSelectedMatchLive && selectedMatch ? (
-                        <button
-                          type="button"
-                          className="score-button"
-                          onClick={() => adjustMatchScore(selectedMatch, 'homeScore', -1)}
-                          disabled={homeScoreForControls <= 0}
-                          aria-label="Уменьшить счёт хозяев"
-                        >
-                          −
-                        </button>
-                      ) : null}
-                      <input
-                        type="number"
-                        value={homeScoreInputValue}
-                        onChange={(event) => {
-                          if (!selectedMatch) return
-                          const raw = event.target.value
-                          if (raw === '') {
-                            setMatchScore(selectedMatch, 'homeScore', '')
-                          } else {
-                            const numeric = Number(raw)
-                            if (!Number.isNaN(numeric)) {
-                              setMatchScore(selectedMatch, 'homeScore', numeric)
+                    <div className="score-block">
+                      <div className={`score-control${isSelectedMatchLive ? ' live' : ''}`}>
+                        {isSelectedMatchLive && selectedMatch ? (
+                          <button
+                            type="button"
+                            className="score-button"
+                            onClick={() => adjustMatchScore(selectedMatch, 'homeScore', -1)}
+                            disabled={homeScoreForControls <= 0}
+                            aria-label="Уменьшить счёт хозяев"
+                          >
+                            −
+                          </button>
+                        ) : null}
+                        <input
+                          type="number"
+                          value={homeScoreInputValue}
+                          onChange={(event) => {
+                            if (!selectedMatch) return
+                            const raw = event.target.value
+                            if (raw === '') {
+                              setMatchScore(selectedMatch, 'homeScore', '')
+                            } else {
+                              const numeric = Number(raw)
+                              if (!Number.isNaN(numeric)) {
+                                setMatchScore(selectedMatch, 'homeScore', numeric)
+                              }
                             }
-                          }
-                        }}
-                        className="score-input"
-                        min={0}
-                        aria-label="Счёт хозяев"
-                      />
-                      {isSelectedMatchLive && selectedMatch ? (
-                        <button
-                          type="button"
-                          className="score-button"
-                          onClick={() => adjustMatchScore(selectedMatch, 'homeScore', 1)}
-                          aria-label="Увеличить счёт хозяев"
-                        >
-                          +
-                        </button>
-                      ) : null}
+                          }}
+                          className="score-input"
+                          min={0}
+                          aria-label="Счёт хозяев"
+                        />
+                        {isSelectedMatchLive && selectedMatch ? (
+                          <button
+                            type="button"
+                            className="score-button"
+                            onClick={() => adjustMatchScore(selectedMatch, 'homeScore', 1)}
+                            aria-label="Увеличить счёт хозяев"
+                          >
+                            +
+                          </button>
+                        ) : null}
+                      </div>
+                      <span className="score-team-label">{homeClub ? homeClub.shortName || homeClub.name : 'Хозяева'}</span>
                     </div>
                     <span className="score-separator">:</span>
-                    <div className={`score-control${isSelectedMatchLive ? ' live' : ''}`}>
-                      {isSelectedMatchLive && selectedMatch ? (
-                        <button
-                          type="button"
-                          className="score-button"
-                          onClick={() => adjustMatchScore(selectedMatch, 'awayScore', -1)}
-                          disabled={awayScoreForControls <= 0}
-                          aria-label="Уменьшить счёт гостей"
-                        >
-                          −
-                        </button>
-                      ) : null}
-                      <input
-                        type="number"
-                        value={awayScoreInputValue}
-                        onChange={(event) => {
-                          if (!selectedMatch) return
-                          const raw = event.target.value
-                          if (raw === '') {
-                            setMatchScore(selectedMatch, 'awayScore', '')
-                          } else {
-                            const numeric = Number(raw)
-                            if (!Number.isNaN(numeric)) {
-                              setMatchScore(selectedMatch, 'awayScore', numeric)
+                    <div className="score-block">
+                      <div className={`score-control${isSelectedMatchLive ? ' live' : ''}`}>
+                        {isSelectedMatchLive && selectedMatch ? (
+                          <button
+                            type="button"
+                            className="score-button"
+                            onClick={() => adjustMatchScore(selectedMatch, 'awayScore', -1)}
+                            disabled={awayScoreForControls <= 0}
+                            aria-label="Уменьшить счёт гостей"
+                          >
+                            −
+                          </button>
+                        ) : null}
+                        <input
+                          type="number"
+                          value={awayScoreInputValue}
+                          onChange={(event) => {
+                            if (!selectedMatch) return
+                            const raw = event.target.value
+                            if (raw === '') {
+                              setMatchScore(selectedMatch, 'awayScore', '')
+                            } else {
+                              const numeric = Number(raw)
+                              if (!Number.isNaN(numeric)) {
+                                setMatchScore(selectedMatch, 'awayScore', numeric)
+                              }
                             }
-                          }
-                        }}
-                        className="score-input"
-                        min={0}
-                        aria-label="Счёт гостей"
-                      />
-                      {isSelectedMatchLive && selectedMatch ? (
-                        <button
-                          type="button"
-                          className="score-button"
-                          onClick={() => adjustMatchScore(selectedMatch, 'awayScore', 1)}
-                          aria-label="Увеличить счёт гостей"
-                        >
-                          +
-                        </button>
-                      ) : null}
+                          }}
+                          className="score-input"
+                          min={0}
+                          aria-label="Счёт гостей"
+                        />
+                        {isSelectedMatchLive && selectedMatch ? (
+                          <button
+                            type="button"
+                            className="score-button"
+                            onClick={() => adjustMatchScore(selectedMatch, 'awayScore', 1)}
+                            aria-label="Увеличить счёт гостей"
+                          >
+                            +
+                          </button>
+                        ) : null}
+                      </div>
+                      <span className="score-team-label">{awayClub ? awayClub.shortName || awayClub.name : 'Гости'}</span>
                     </div>
                   </div>
                 </label>
@@ -1747,45 +1847,79 @@ export const MatchesTab = () => {
               </form>
 
               <div className="split-columns">
-                <div>
-                  <h6>Состав</h6>
-                  <label className="stacked">
-                    Команда
-                    <select
-                      value={lineupClubFilter}
-                      onChange={(event) => setLineupClubFilter(event.target.value ? Number(event.target.value) : '')}
-                      disabled={!selectedMatch || selectedMatchTeams.length === 0}
-                    >
-                      <option value="">
-                        {selectedMatch ? (selectedMatchTeams.length ? 'Выберите команду' : 'Клубы не найдены') : 'Выберите матч'}
-                      </option>
-                      {selectedMatchTeams.map((team) => (
-                        <option key={team.id} value={team.id}>
-                          {team.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {!lineupClubFilter ? (
-                    <p className="muted">Сначала выберите команду, чтобы увидеть подтверждённый состав.</p>
-                  ) : filteredMatchLineup.length === 0 ? (
-                    <p className="muted">Для выбранной команды пока нет подтверждённой заявки.</p>
+                <div className="match-stats-card">
+                  <div className="match-stats-header">
+                    <h6>Статистика матча</h6>
+                    {matchStatsVersion !== undefined ? <span className="match-stats-chip">v{matchStatsVersion}</span> : null}
+                  </div>
+                  {matchStatsLoading ? (
+                    <p className="muted">Загружаем статистику…</p>
+                  ) : !selectedMatch ? (
+                    <p className="muted">Выберите матч, чтобы редактировать показатели.</p>
                   ) : (
-                    <ul className="list">
-                      {filteredMatchLineup.map((entry) => (
-                        <li key={`${entry.matchId}-${entry.personId}`}>
-                          <span>
-                            №{entry.shirtNumber || '?'} {entry.person.lastName} {entry.person.firstName}
-                          </span>
-                          <span className="list-actions">
-                            <button type="button" className="danger" onClick={() => handleLineupRemove(entry)}>
-                              Удал.
+                    <ul className="match-stat-rows">
+                      {matchStatisticRows.map(({ metric, label }) => (
+                        <li key={metric} className="match-stat-row">
+                          <div className="match-stat-side">
+                            <button
+                              type="button"
+                              className="stat-adjust-button"
+                              onClick={() => adjustStatistic(homeClub?.id, metric, -1)}
+                              disabled={
+                                matchStatsUpdating ||
+                                !homeClub ||
+                                getStatisticValue(homeClub?.id, metric) <= 0
+                              }
+                              aria-label={`Уменьшить показатель "${label}" для хозяев`}
+                            >
+                              −
                             </button>
-                          </span>
+                            <span className="match-stat-value">{getStatisticValue(homeClub?.id, metric)}</span>
+                            <button
+                              type="button"
+                              className="stat-adjust-button"
+                              onClick={() => adjustStatistic(homeClub?.id, metric, 1)}
+                              disabled={matchStatsUpdating || !homeClub}
+                              aria-label={`Увеличить показатель "${label}" для хозяев`}
+                            >
+                              +
+                            </button>
+                          </div>
+                          <div className="match-stat-label">{label}</div>
+                          <div className="match-stat-side match-stat-side-right">
+                            <button
+                              type="button"
+                              className="stat-adjust-button"
+                              onClick={() => adjustStatistic(awayClub?.id, metric, -1)}
+                              disabled={
+                                matchStatsUpdating ||
+                                !awayClub ||
+                                getStatisticValue(awayClub?.id, metric) <= 0
+                              }
+                              aria-label={`Уменьшить показатель "${label}" для гостей`}
+                            >
+                              −
+                            </button>
+                            <span className="match-stat-value">{getStatisticValue(awayClub?.id, metric)}</span>
+                            <button
+                              type="button"
+                              className="stat-adjust-button"
+                              onClick={() => adjustStatistic(awayClub?.id, metric, 1)}
+                              disabled={matchStatsUpdating || !awayClub}
+                              aria-label={`Увеличить показатель "${label}" для гостей`}
+                            >
+                              +
+                            </button>
+                          </div>
                         </li>
                       ))}
                     </ul>
                   )}
+                  {selectedMatch ? (
+                    <p className="muted match-stats-note">
+                      WebSocket топик: <code>match:{selectedMatch.id}:stats</code>
+                    </p>
+                  ) : null}
                 </div>
                 <div>
                   <h6>События</h6>

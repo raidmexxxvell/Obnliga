@@ -32,6 +32,7 @@ model Club {
   disqualifications Disqualification[]
   lineups        MatchLineup[]
   eventTeams     MatchEvent[]
+  matchStatistics MatchStatistic[]
 
   @@map("club")
 }
@@ -226,6 +227,7 @@ model Match {
   stadiumId   Int?     @map("stadium_id")
   refereeId   Int?     @map("referee_id")
   roundId     Int?     @map("round_id")
+  isArchived  Boolean  @default(false) @map("is_archived")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -240,6 +242,7 @@ model Match {
   events   MatchEvent[]
   predictions Prediction[]
   round    SeasonRound? @relation(fields: [roundId], references: [id], onDelete: SetNull)
+  statistics MatchStatistic[]
 
   @@unique([seriesId, seriesMatchNumber], map: "unique_series_match_number")
   @@map("match")
@@ -308,6 +311,24 @@ model MatchEvent {
   relatedPerson Person? @relation("event_related", fields: [relatedPlayerId], references: [id], onDelete: SetNull)
 
   @@map("match_event")
+}
+
+model MatchStatistic {
+  matchId BigInt @map("match_id")
+  clubId  Int    @map("club_id")
+  totalShots Int @default(0) @map("total_shots")
+  shotsOnTarget Int @default(0) @map("shots_on_target")
+  corners Int @default(0)
+  yellowCards Int @default(0) @map("yellow_cards")
+  redCards Int @default(0) @map("red_cards")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  club  Club  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@id([matchId, clubId])
+  @@map("match_statistic")
 }
 
 enum MatchEventType {

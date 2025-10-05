@@ -36,23 +36,23 @@
 - `GET:{endpoint}` — общий паттерн
 
 ### 8. Admin Stats Cache (Fastify Multi-Level)
-- `season:{seasonId}:club-stats` — 60 c (инвалидация при финализации матча, по ключу сезона)
-- `season:{seasonId}:player-stats` — 60 c (аналогично)
-- `competition:{competitionId}:club-career` — 180 c (инвалидация при финализации матча)
-- `competition:{competitionId}:player-career` — 180 c (инвалидация при финализации матча)
-- `league:club-career` — 180 c (инвалидация при финализации матча)
-- `league:player-career` — 180 c (инвалидация при финализации матча)
-- `club:{clubId}:player-career` — 180 c (инвалидация при финализации матча)
+- `season:{seasonId}:club-stats` — 3600 c (инвалидация при финализации матча, по ключу сезона)
+- `season:{seasonId}:player-stats` — 3600 c (аналогично)
+- `competition:{competitionId}:club-career` — 7200 c (инвалидация при финализации матча)
+- `competition:{competitionId}:player-career` — 7200 c (инвалидация при финализации матча)
+- `league:club-career` — 7200 c (инвалидация при финализации матча)
+- `league:player-career` — 7200 c (инвалидация при финализации матча)
+- `club:{clubId}:player-career` — 7200 c (инвалидация при финализации матча)
 
 Каждый ответ админских статистических эндпоинтов возвращает `X-Resource-Version` и `meta.version`, чтобы клиенты могли сравнивать версии без повторной выборки при неизменном payload.
 
 ### 9. Public Aggregates (HTTP + WS)
-- `public:league:table` — 15 c (SWR 45 c, WS topic `league:table`)
-- `public:league:top-scorers` — 30 c (SWR 60 c, WS topic `league:scorers`)
-- `public:league:form:{seasonId}` — 60 c (SWR 120 c, WS topic `league:form`)
+- `public:league:table` — 300 c (SWR 45 c, WS topic `league:table`)
+- `public:league:top-scorers` — 300 c (SWR 60 c, WS topic `league:scorers`)
+- `public:league:form:{seasonId}` — 600 c (SWR 120 c, WS topic `league:form`)
 - `public:matches:live` — 5 c (SWR 15 c, WS topic `matches:live`)
-- `public:club:{clubId}:summary` — 120 c (SWR 300 c, WS topic `club:{clubId}:summary`)
-- `public:predictions:leaderboard` — 120 c (SWR 300 c, WS topic `predictions:leaderboard`)
+- `public:club:{clubId}:summary` — 1200 c (SWR 300 c, WS topic `club:{clubId}:summary`)
+- `public:predictions:leaderboard` — 1200 c (SWR 300 c, WS topic `predictions:leaderboard`)
 
 Версия ресурса передаётся через `X-Resource-Version` и `meta.version`, обновляется воркером `stats-aggregation` после пересчётов `handleMatchFinalization`.
 

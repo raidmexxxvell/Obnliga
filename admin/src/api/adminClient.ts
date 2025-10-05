@@ -2,6 +2,8 @@ import type {
   ClubPlayerLink,
   LineupPortalMatch,
   LineupPortalRosterEntry,
+  MatchStatisticEntry,
+  MatchStatisticMetric,
   PlayoffCreationResult,
   SeasonAutomationResult,
   SeriesFormat
@@ -47,6 +49,7 @@ interface ApiResponseEnvelope<T> {
   ok: boolean
   data?: T
   error?: string
+  meta?: { version?: number }
 }
 
 const ensureToken = (token?: string): string => {
@@ -56,7 +59,17 @@ const ensureToken = (token?: string): string => {
   return token
 }
 
-export const adminRequest = async <T>(token: string | undefined, path: string, init: RequestInit = {}): Promise<T> => {
+interface AdminResponseWithMeta<T> {
+  data: T
+  meta?: { version?: number }
+  version?: number
+}
+
+export const adminRequestWithMeta = async <T>(
+  token: string | undefined,
+  path: string,
+  init: RequestInit = {}
+): Promise<AdminResponseWithMeta<T>> => {
   const safeToken = ensureToken(token)
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -67,18 +80,37 @@ export const adminRequest = async <T>(token: string | undefined, path: string, i
     }
   })
 
+  const raw = await response.text()
+  let payload: ApiResponseEnvelope<T>
+  try {
+    payload = raw ? (JSON.parse(raw) as ApiResponseEnvelope<T>) : ({ ok: response.ok } as ApiResponseEnvelope<T>)
+  } catch (err) {
+    payload = { ok: response.ok }
+  }
+
   if (!response.ok) {
-    const payload = (await response.json().catch(() => ({}))) as ApiResponseEnvelope<T>
     const error = payload?.error || response.statusText || 'request_failed'
     throw new Error(error)
   }
 
-  const payload = (await response.json().catch(() => ({}))) as ApiResponseEnvelope<T>
   if (!payload?.ok) {
     throw new Error(payload?.error || 'request_failed')
   }
 
-  return payload.data as T
+  const versionHeader = response.headers.get('X-Resource-Version')
+  const version = versionHeader !== null ? Number(versionHeader) : undefined
+  const normalizedVersion = Number.isFinite(version) ? version : undefined
+
+  return {
+    data: payload.data as T,
+    meta: payload.meta,
+    version: normalizedVersion
+  }
+}
+
+export const adminRequest = async <T>(token: string | undefined, path: string, init: RequestInit = {}): Promise<T> => {
+  const { data } = await adminRequestWithMeta<T>(token, path, init)
+  return data
 }
 
 export const adminGet = async <T>(token: string | undefined, path: string): Promise<T> =>
@@ -124,6 +156,40 @@ export interface PlayoffCreationPayload {
 
 export const fetchClubPlayers = async (token: string | undefined, clubId: number): Promise<ClubPlayerLink[]> =>
   adminGet<ClubPlayerLink[]>(token, `/api/admin/clubs/${clubId}/players`)
+
+export const fetchMatchStatistics = async (
+  token: string | undefined,
+  matchId: string
+): Promise<{ entries: MatchStatisticEntry[]; version?: number }> => {
+  const { data, version } = await adminRequestWithMeta<MatchStatisticEntry[]>(
+    token,
+    `/api/admin/matches/${matchId}/statistics`,
+    { method: 'GET' }
+  )
+  return {
+    entries: data,
+    version
+  }
+}
+
+export const adjustMatchStatistic = async (
+  token: string | undefined,
+  matchId: string,
+  payload: { clubId: number; metric: MatchStatisticMetric; delta: number }
+): Promise<{ entries: MatchStatisticEntry[]; version?: number }> => {
+  const { data, version } = await adminRequestWithMeta<MatchStatisticEntry[]>(
+    token,
+    `/api/admin/matches/${matchId}/statistics/adjust`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }
+  )
+  return {
+    entries: data,
+    version
+  }
+}
 
 export const updateClubPlayers = async (
   token: string | undefined,

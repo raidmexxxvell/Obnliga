@@ -97,6 +97,7 @@ export interface MatchSummary {
   status: 'SCHEDULED' | 'LIVE' | 'FINISHED' | 'POSTPONED'
   stadiumId?: number | null
   refereeId?: number | null
+  isArchived: boolean
   season?: { name: string }
   seriesId?: string | null
   seriesMatchNumber?: number | null
@@ -143,6 +144,21 @@ export interface MatchEventEntry {
   player: Person
   relatedPerson?: Person | null
   team: Club
+}
+
+export type MatchStatisticMetric = 'totalShots' | 'shotsOnTarget' | 'corners' | 'yellowCards' | 'redCards'
+
+export interface MatchStatisticEntry {
+  matchId: string
+  clubId: number
+  totalShots: number
+  shotsOnTarget: number
+  corners: number
+  yellowCards: number
+  redCards: number
+  createdAt: string
+  updatedAt: string
+  club: Club
 }
 
 export interface ClubSeasonStats {

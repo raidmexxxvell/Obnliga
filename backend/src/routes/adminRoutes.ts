@@ -103,9 +103,113 @@ class RequestError extends Error {
 
 const SEASON_STATS_CACHE_TTL_SECONDS = Number(process.env.ADMIN_CACHE_TTL_SEASON_STATS ?? '60')
 const CAREER_STATS_CACHE_TTL_SECONDS = Number(process.env.ADMIN_CACHE_TTL_CAREER_STATS ?? '180')
+const MATCH_STATS_CACHE_TTL_SECONDS = Number(process.env.ADMIN_CACHE_TTL_MATCH_STATS ?? '5')
 
 const seasonStatsCacheKey = (seasonId: number, suffix: string) => `season:${seasonId}:${suffix}`
 const competitionStatsCacheKey = (competitionId: number, suffix: string) => `competition:${competitionId}:${suffix}`
+const matchStatsCacheKey = (matchId: bigint) => `md:stats:${matchId.toString()}`
+
+type MatchStatisticMetric = 'totalShots' | 'shotsOnTarget' | 'corners' | 'yellowCards' | 'redCards'
+const matchStatisticMetrics: MatchStatisticMetric[] = ['totalShots', 'shotsOnTarget', 'corners', 'yellowCards', 'redCards']
+
+type MatchWithRelations = Prisma.MatchGetPayload<{
+  include: {
+    homeClub: { select: { id: true; name: string; shortName: string | null } }
+    awayClub: { select: { id: true; name: string; shortName: string | null } }
+    statistics: {
+      include: {
+        club: {
+          select: { id: true; name: string; shortName: string | null }
+        }
+      }
+    }
+  }
+}>
+
+type MatchStatisticView = {
+  matchId: string
+  clubId: number
+  totalShots: number
+  shotsOnTarget: number
+  corners: number
+  yellowCards: number
+  redCards: number
+  createdAt: Date
+  updatedAt: Date
+  club: { id: number; name: string; shortName: string | null }
+}
+
+const fetchMatchStatisticPayload = async (matchId: bigint): Promise<MatchStatisticView[]> => {
+  const match = await prisma.match.findUnique({
+    where: { id: matchId },
+    include: {
+      homeClub: { select: { id: true, name: true, shortName: true } },
+      awayClub: { select: { id: true, name: true, shortName: true } },
+      statistics: {
+        include: {
+          club: { select: { id: true, name: true, shortName: true } }
+        }
+      }
+    }
+  })
+
+  if (!match) {
+    throw new RequestError(404, 'match_not_found')
+  }
+
+  let homeClub = match.homeClub
+  if (!homeClub) {
+    homeClub = await prisma.club.findUnique({
+      where: { id: match.homeTeamId },
+      select: { id: true, name: true, shortName: true }
+    })
+  }
+
+  let awayClub = match.awayClub
+  if (!awayClub) {
+    awayClub = await prisma.club.findUnique({
+      where: { id: match.awayTeamId },
+      select: { id: true, name: true, shortName: true }
+    })
+  }
+
+  if (!homeClub || !awayClub) {
+    throw new RequestError(404, 'match_club_not_found')
+  }
+
+  const statsByClub = new Map<number, MatchWithRelations['statistics'][number]>()
+  for (const entry of match.statistics) {
+    statsByClub.set(entry.clubId, entry)
+  }
+
+  const base = [
+    { clubId: homeClub.id, club: homeClub },
+    { clubId: awayClub.id, club: awayClub }
+  ]
+
+  return base.map(({ clubId, club }) => {
+    const stat = statsByClub.get(clubId)
+    return {
+      matchId: match.id.toString(),
+      clubId,
+      totalShots: stat?.totalShots ?? 0,
+      shotsOnTarget: stat?.shotsOnTarget ?? 0,
+      corners: stat?.corners ?? 0,
+      yellowCards: stat?.yellowCards ?? 0,
+      redCards: stat?.redCards ?? 0,
+      createdAt: stat?.createdAt ?? match.createdAt,
+      updatedAt: stat?.updatedAt ?? match.updatedAt,
+      club: {
+        id: club.id,
+        name: club.name,
+        shortName: club.shortName
+      }
+    }
+  })
+}
+
+const getMatchStatisticsWithMeta = (matchId: bigint) =>
+  defaultCache.getWithMeta(matchStatsCacheKey(matchId), () => fetchMatchStatisticPayload(matchId), MATCH_STATS_CACHE_TTL_SECONDS)
 
 async function loadSeasonClubStats(seasonId: number) {
   const season = await prisma.season.findUnique({
@@ -1542,6 +1646,7 @@ export default async function (server: FastifyInstance) {
         stadiumId: number | null
         refereeId: number | null
         roundId: number | null
+        isArchived: boolean
       }>
 
       const existing = await prisma.match.findUnique({ where: { id: matchId } })
@@ -1554,7 +1659,8 @@ export default async function (server: FastifyInstance) {
         status: body.status ?? undefined,
         stadiumId: body.stadiumId ?? undefined,
         refereeId: body.refereeId ?? undefined,
-        roundId: body.roundId ?? undefined
+    roundId: body.roundId ?? undefined,
+    isArchived: typeof body.isArchived === 'boolean' ? body.isArchived : undefined
       }
 
       if (body.homeScore !== undefined) {
@@ -1670,6 +1776,120 @@ export default async function (server: FastifyInstance) {
       const personId = parseNumericId((request.params as any).personId, 'personId')
       await prisma.matchLineup.delete({ where: { matchId_personId: { matchId, personId } } })
       return reply.send({ ok: true })
+    })
+
+    admin.get('/matches/:matchId/statistics', async (request, reply) => {
+      const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+      try {
+        const { value, version } = await getMatchStatisticsWithMeta(matchId)
+        const serialized = serializePrisma(value)
+        reply.header('X-Resource-Version', String(version))
+        return reply.send({ ok: true, data: serialized, meta: { version } })
+      } catch (err) {
+        if (err instanceof RequestError) {
+          return reply.status(err.statusCode).send({ ok: false, error: err.message })
+        }
+        request.server.log.error({ err, matchId: matchId.toString() }, 'match statistics fetch failed')
+        return reply.status(500).send({ ok: false, error: 'match_statistics_failed' })
+      }
+    })
+
+    admin.post('/matches/:matchId/statistics/adjust', async (request, reply) => {
+      const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+      const body = request.body as {
+        clubId?: number
+        metric?: string
+        delta?: number
+      }
+
+      const clubId = body?.clubId !== undefined ? parseNumericId(body.clubId, 'clubId') : null
+      if (!clubId) {
+        return reply.status(400).send({ ok: false, error: 'clubId_required' })
+      }
+
+      const metric = body?.metric as MatchStatisticMetric | undefined
+      if (!metric || !matchStatisticMetrics.includes(metric)) {
+        return reply.status(400).send({ ok: false, error: 'metric_invalid' })
+      }
+
+      const rawDelta = body?.delta
+      if (typeof rawDelta !== 'number' || Number.isNaN(rawDelta) || !Number.isFinite(rawDelta) || rawDelta === 0) {
+        return reply.status(400).send({ ok: false, error: 'delta_invalid' })
+      }
+      const delta = Math.max(-20, Math.min(20, Math.trunc(rawDelta)))
+
+      const match = await prisma.match.findUnique({
+        where: { id: matchId },
+        select: {
+          id: true,
+          homeTeamId: true,
+          awayTeamId: true,
+          status: true
+        }
+      })
+
+      if (!match) {
+        return reply.status(404).send({ ok: false, error: 'match_not_found' })
+      }
+
+      if (clubId !== match.homeTeamId && clubId !== match.awayTeamId) {
+        return reply.status(400).send({ ok: false, error: 'club_not_in_match' })
+      }
+
+      try {
+        await prisma.$transaction(async (tx) => {
+          let entry = await tx.matchStatistic.findUnique({
+            where: { matchId_clubId: { matchId, clubId } }
+          })
+
+          if (!entry) {
+            entry = await tx.matchStatistic.create({
+              data: {
+                matchId,
+                clubId
+              }
+            })
+          }
+
+          const currentValue = Number(entry[metric] ?? 0)
+          const nextValue = Math.max(0, currentValue + delta)
+
+          if (nextValue !== currentValue) {
+            const updateData: Prisma.MatchStatisticUncheckedUpdateInput = {
+              [metric]: nextValue
+            } as Prisma.MatchStatisticUncheckedUpdateInput
+            await tx.matchStatistic.update({
+              where: { matchId_clubId: { matchId, clubId } },
+              data: updateData
+            })
+          }
+        })
+      } catch (err) {
+        request.server.log.error({ err, matchId: matchId.toString(), clubId, metric, delta }, 'match statistic adjust failed')
+        return reply.status(500).send({ ok: false, error: 'match_statistics_update_failed' })
+      }
+
+      await defaultCache.invalidate(matchStatsCacheKey(matchId)).catch(() => undefined)
+
+      try {
+        const { value, version } = await getMatchStatisticsWithMeta(matchId)
+        const serialized = serializePrisma(value)
+        reply.header('X-Resource-Version', String(version))
+
+        const topic = `match:${matchId.toString()}:stats`
+        const publish = (request.server as any).publishTopic
+        if (typeof publish === 'function') {
+          await publish(topic, { type: 'full', version, data: serialized })
+        }
+
+        return reply.send({ ok: true, data: serialized, meta: { version } })
+      } catch (err) {
+        if (err instanceof RequestError) {
+          return reply.status(err.statusCode).send({ ok: false, error: err.message })
+        }
+        request.server.log.error({ err, matchId: matchId.toString() }, 'match statistics reload failed')
+        return reply.status(500).send({ ok: false, error: 'match_statistics_failed' })
+      }
     })
 
     // Events
