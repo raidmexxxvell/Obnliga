@@ -130,7 +130,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
   const mapAuthError = (code: string) => {
     switch (code) {
       case 'invalid_credentials':
-        return 'Неверный логин или пароль.'
+        return 'Неверный логин или пароль, повторите попытку.'
       case 'login_failed':
       case 'auth_failed':
         return 'Не удалось выполнить вход. Попробуйте ещё раз.'
