@@ -397,18 +397,59 @@ export const MatchesTab = () => {
       club: ensureClubForStats(clubId)
     }
 
-    const optimisticValue = Math.max(0, baseEntry[metric] + delta)
-    const optimisticEntry: MatchStatisticEntry = {
+    const timestamp = new Date().toISOString()
+    let requestDelta: number = delta
+    let optimisticEntry: MatchStatisticEntry = {
       ...baseEntry,
-      [metric]: optimisticValue,
-      updatedAt: new Date().toISOString()
+      updatedAt: timestamp
+    }
+
+    if (metric === 'shotsOnTarget') {
+      const nextShotsOnTarget = Math.max(0, baseEntry.shotsOnTarget + delta)
+      const appliedDelta = nextShotsOnTarget - baseEntry.shotsOnTarget
+      if (appliedDelta === 0) return
+      const nextTotalShots = Math.max(nextShotsOnTarget, baseEntry.totalShots + appliedDelta)
+      optimisticEntry = {
+        ...optimisticEntry,
+        shotsOnTarget: nextShotsOnTarget,
+        totalShots: nextTotalShots
+      }
+      requestDelta = appliedDelta
+    } else if (metric === 'totalShots') {
+      const nextTotalShots = Math.max(baseEntry.shotsOnTarget, baseEntry.totalShots + delta)
+      const appliedDelta = nextTotalShots - baseEntry.totalShots
+      if (appliedDelta === 0) return
+      optimisticEntry = {
+        ...optimisticEntry,
+        totalShots: nextTotalShots
+      }
+      requestDelta = appliedDelta
+    } else {
+      const nextValue = Math.max(0, baseEntry[metric] + delta)
+      if (nextValue === baseEntry[metric]) return
+      optimisticEntry = {
+        ...optimisticEntry,
+        [metric]: nextValue
+      }
+      requestDelta = nextValue - baseEntry[metric]
+    }
+
+    if (optimisticEntry.totalShots < optimisticEntry.shotsOnTarget) {
+      optimisticEntry = {
+        ...optimisticEntry,
+        totalShots: optimisticEntry.shotsOnTarget
+      }
     }
 
     setMatchStats({ ...previous, [clubId]: optimisticEntry })
     setMatchStatsUpdating(true)
 
     try {
-      const { entries, version } = await adjustMatchStatistic(token, selectedMatchId, { clubId, metric, delta })
+      const { entries, version } = await adjustMatchStatistic(token, selectedMatchId, {
+        clubId,
+        metric,
+        delta: requestDelta
+      })
       setMatchStats(mapStatisticEntries(entries))
       setMatchStatsVersion(version)
     } catch (err) {
@@ -823,6 +864,24 @@ export const MatchesTab = () => {
     const entry = matchStats[clubId]
     return entry ? entry[metric] : 0
   }
+
+  const getClubDisplayName = (club: Club | undefined, fallback: string) => {
+    if (!club) return fallback
+    return club.shortName?.trim() || club.name
+  }
+
+  const canDecreaseStatistic = (clubId: number | undefined, metric: MatchStatisticMetric) => {
+    if (!clubId) return false
+    const currentValue = getStatisticValue(clubId, metric)
+    if (metric === 'totalShots') {
+      const shotsOnTarget = getStatisticValue(clubId, 'shotsOnTarget')
+      return currentValue > shotsOnTarget
+    }
+    return currentValue > 0
+  }
+
+  const homeDisplayName = selectedMatch ? getClubDisplayName(homeClub, 'Хозяева') : '—'
+  const awayDisplayName = selectedMatch ? getClubDisplayName(awayClub, 'Гости') : '—'
 
   const matchLineupByClub = useMemo(() => {
     const map = new Map<number, MatchLineupEntry[]>()
@@ -1847,30 +1906,38 @@ export const MatchesTab = () => {
               </form>
 
               <div className="split-columns">
-                <div className="match-stats-card">
+                <div className="match-stats-card" data-busy={matchStatsUpdating || undefined}>
                   <div className="match-stats-header">
-                    <h6>Статистика матча</h6>
-                    {matchStatsVersion !== undefined ? <span className="match-stats-chip">v{matchStatsVersion}</span> : null}
+                    <div className="match-stats-title">
+                      <h6>Статистика матча</h6>
+                      {matchStatsVersion !== undefined ? <span className="match-stats-chip">v{matchStatsVersion}</span> : null}
+                    </div>
+                    <div className="match-stats-teams">
+                      <div className="match-stats-team match-stats-team-home">
+                        <span className="match-stats-team-role">Дом</span>
+                        <span className="match-stats-team-name">{homeDisplayName}</span>
+                      </div>
+                      <div className="match-stats-team match-stats-team-away">
+                        <span className="match-stats-team-role">Гости</span>
+                        <span className="match-stats-team-name">{awayDisplayName}</span>
+                      </div>
+                    </div>
                   </div>
                   {matchStatsLoading ? (
                     <p className="muted">Загружаем статистику…</p>
                   ) : !selectedMatch ? (
                     <p className="muted">Выберите матч, чтобы редактировать показатели.</p>
                   ) : (
-                    <ul className="match-stat-rows">
+                    <div className="match-stats-grid" role="group" aria-label="Статистика матча">
                       {matchStatisticRows.map(({ metric, label }) => (
-                        <li key={metric} className="match-stat-row">
-                          <div className="match-stat-side">
+                        <React.Fragment key={metric}>
+                          <div className="match-stat-side match-stat-side-home" aria-label={`${label} — хозяева`}>
                             <button
                               type="button"
                               className="stat-adjust-button"
                               onClick={() => adjustStatistic(homeClub?.id, metric, -1)}
-                              disabled={
-                                matchStatsUpdating ||
-                                !homeClub ||
-                                getStatisticValue(homeClub?.id, metric) <= 0
-                              }
-                              aria-label={`Уменьшить показатель "${label}" для хозяев`}
+                              disabled={matchStatsUpdating || !homeClub || !canDecreaseStatistic(homeClub?.id, metric)}
+                              aria-label={`Уменьшить показатель «${label}» для хозяев`}
                             >
                               −
                             </button>
@@ -1880,23 +1947,19 @@ export const MatchesTab = () => {
                               className="stat-adjust-button"
                               onClick={() => adjustStatistic(homeClub?.id, metric, 1)}
                               disabled={matchStatsUpdating || !homeClub}
-                              aria-label={`Увеличить показатель "${label}" для хозяев`}
+                              aria-label={`Увеличить показатель «${label}» для хозяев`}
                             >
                               +
                             </button>
                           </div>
                           <div className="match-stat-label">{label}</div>
-                          <div className="match-stat-side match-stat-side-right">
+                          <div className="match-stat-side match-stat-side-away" aria-label={`${label} — гости`}>
                             <button
                               type="button"
                               className="stat-adjust-button"
                               onClick={() => adjustStatistic(awayClub?.id, metric, -1)}
-                              disabled={
-                                matchStatsUpdating ||
-                                !awayClub ||
-                                getStatisticValue(awayClub?.id, metric) <= 0
-                              }
-                              aria-label={`Уменьшить показатель "${label}" для гостей`}
+                              disabled={matchStatsUpdating || !awayClub || !canDecreaseStatistic(awayClub?.id, metric)}
+                              aria-label={`Уменьшить показатель «${label}» для гостей`}
                             >
                               −
                             </button>
@@ -1906,20 +1969,15 @@ export const MatchesTab = () => {
                               className="stat-adjust-button"
                               onClick={() => adjustStatistic(awayClub?.id, metric, 1)}
                               disabled={matchStatsUpdating || !awayClub}
-                              aria-label={`Увеличить показатель "${label}" для гостей`}
+                              aria-label={`Увеличить показатель «${label}» для гостей`}
                             >
                               +
                             </button>
                           </div>
-                        </li>
+                        </React.Fragment>
                       ))}
-                    </ul>
+                    </div>
                   )}
-                  {selectedMatch ? (
-                    <p className="muted match-stats-note">
-                      WebSocket топик: <code>match:{selectedMatch.id}:stats</code>
-                    </p>
-                  ) : null}
                 </div>
                 <div>
                   <h6>События</h6>

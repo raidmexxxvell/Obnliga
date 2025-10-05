@@ -7,6 +7,7 @@ import {
   CompetitionType,
   DisqualificationReason,
   LineupRole,
+  MatchEvent,
   MatchEventType,
   MatchStatus,
   PredictionResult,
@@ -111,6 +112,78 @@ const matchStatsCacheKey = (matchId: bigint) => `md:stats:${matchId.toString()}`
 
 type MatchStatisticMetric = 'totalShots' | 'shotsOnTarget' | 'corners' | 'yellowCards' | 'redCards'
 const matchStatisticMetrics: MatchStatisticMetric[] = ['totalShots', 'shotsOnTarget', 'corners', 'yellowCards', 'redCards']
+const eventStatisticMetricMap: Partial<Record<MatchEventType, MatchStatisticMetric>> = {
+  YELLOW_CARD: 'yellowCards',
+  RED_CARD: 'redCards'
+}
+
+const applyStatisticDelta = async (
+  tx: Prisma.TransactionClient,
+  matchId: bigint,
+  clubId: number,
+  metric: MatchStatisticMetric,
+  delta: number
+): Promise<boolean> => {
+  if (!delta) return false
+
+  let entry = await tx.matchStatistic.findUnique({
+    where: { matchId_clubId: { matchId, clubId } }
+  })
+
+  if (!entry) {
+    if (delta < 0) {
+      return false
+    }
+    entry = await tx.matchStatistic.create({
+      data: {
+        matchId,
+        clubId
+      }
+    })
+  }
+
+  const current: Record<MatchStatisticMetric, number> = {
+    totalShots: entry.totalShots,
+    shotsOnTarget: entry.shotsOnTarget,
+    corners: entry.corners,
+    yellowCards: entry.yellowCards,
+    redCards: entry.redCards
+  }
+
+  const updates: Prisma.MatchStatisticUncheckedUpdateInput = {}
+
+  if (metric === 'shotsOnTarget') {
+    const nextShotsOnTarget = Math.max(0, current.shotsOnTarget + delta)
+    const appliedDelta = nextShotsOnTarget - current.shotsOnTarget
+    if (appliedDelta === 0) {
+      return false
+    }
+    const nextTotalShots = Math.max(nextShotsOnTarget, current.totalShots + appliedDelta)
+    updates.shotsOnTarget = nextShotsOnTarget
+    if (nextTotalShots !== current.totalShots) {
+      updates.totalShots = nextTotalShots
+    }
+  } else if (metric === 'totalShots') {
+    const nextTotalShots = Math.max(current.shotsOnTarget, current.totalShots + delta)
+    if (nextTotalShots === current.totalShots) {
+      return false
+    }
+    updates.totalShots = nextTotalShots
+  } else {
+    const nextValue = Math.max(0, current[metric] + delta)
+    if (nextValue === current[metric]) {
+      return false
+    }
+    updates[metric] = nextValue
+  }
+
+  await tx.matchStatistic.update({
+    where: { matchId_clubId: { matchId, clubId } },
+    data: updates
+  })
+
+  return true
+}
 
 type MatchWithRelations = Prisma.MatchGetPayload<{
   include: {
@@ -218,6 +291,18 @@ const fetchMatchStatisticPayload = async (matchId: bigint): Promise<MatchStatist
 
 const getMatchStatisticsWithMeta = (matchId: bigint) =>
   defaultCache.getWithMeta(matchStatsCacheKey(matchId), () => fetchMatchStatisticPayload(matchId), MATCH_STATS_CACHE_TTL_SECONDS)
+
+const broadcastMatchStatistics = async (server: FastifyInstance, matchId: bigint) => {
+  await defaultCache.invalidate(matchStatsCacheKey(matchId)).catch(() => undefined)
+  const { value, version } = await getMatchStatisticsWithMeta(matchId)
+  const serialized = serializePrisma(value)
+  const topic = `match:${matchId.toString()}:stats`
+  const publish = (server as any).publishTopic
+  if (typeof publish === 'function') {
+    await publish(topic, { type: 'full', version, data: serialized })
+  }
+  return { serialized, version }
+}
 
 async function loadSeasonClubStats(seasonId: number) {
   const season = await prisma.season.findUnique({
@@ -1844,52 +1929,32 @@ export default async function (server: FastifyInstance) {
         return reply.status(400).send({ ok: false, error: 'club_not_in_match' })
       }
 
+      let adjusted = false
       try {
-        await prisma.$transaction(async (tx) => {
-          let entry = await tx.matchStatistic.findUnique({
-            where: { matchId_clubId: { matchId, clubId } }
-          })
-
-          if (!entry) {
-            entry = await tx.matchStatistic.create({
-              data: {
-                matchId,
-                clubId
-              }
-            })
-          }
-
-          const currentValue = Number(entry[metric] ?? 0)
-          const nextValue = Math.max(0, currentValue + delta)
-
-          if (nextValue !== currentValue) {
-            const updateData: Prisma.MatchStatisticUncheckedUpdateInput = {
-              [metric]: nextValue
-            } as Prisma.MatchStatisticUncheckedUpdateInput
-            await tx.matchStatistic.update({
-              where: { matchId_clubId: { matchId, clubId } },
-              data: updateData
-            })
-          }
-        })
+        adjusted = await prisma.$transaction((tx) => applyStatisticDelta(tx, matchId, clubId, metric, delta))
       } catch (err) {
         request.server.log.error({ err, matchId: matchId.toString(), clubId, metric, delta }, 'match statistic adjust failed')
         return reply.status(500).send({ ok: false, error: 'match_statistics_update_failed' })
       }
 
-      await defaultCache.invalidate(matchStatsCacheKey(matchId)).catch(() => undefined)
+      if (adjusted) {
+        try {
+          const { serialized, version } = await broadcastMatchStatistics(request.server, matchId)
+          reply.header('X-Resource-Version', String(version))
+          return reply.send({ ok: true, data: serialized, meta: { version } })
+        } catch (err) {
+          if (err instanceof RequestError) {
+            return reply.status(err.statusCode).send({ ok: false, error: err.message })
+          }
+          request.server.log.error({ err, matchId: matchId.toString() }, 'match statistics reload failed')
+          return reply.status(500).send({ ok: false, error: 'match_statistics_failed' })
+        }
+      }
 
       try {
         const { value, version } = await getMatchStatisticsWithMeta(matchId)
         const serialized = serializePrisma(value)
         reply.header('X-Resource-Version', String(version))
-
-        const topic = `match:${matchId.toString()}:stats`
-        const publish = (request.server as any).publishTopic
-        if (typeof publish === 'function') {
-          await publish(topic, { type: 'full', version, data: serialized })
-        }
-
         return reply.send({ ok: true, data: serialized, meta: { version } })
       } catch (err) {
         if (err instanceof RequestError) {
@@ -1976,23 +2041,41 @@ export default async function (server: FastifyInstance) {
       if (!body?.playerId || !body?.teamId || !body?.minute || !body?.eventType) {
         return reply.status(400).send({ ok: false, error: 'event_fields_required' })
       }
-      const event = await prisma.matchEvent.create({
-        data: {
-          matchId,
-          playerId: body.playerId,
-          teamId: body.teamId,
-          minute: body.minute,
-          eventType: body.eventType,
-          relatedPlayerId: body.relatedPlayerId ?? null
-        }
-      })
+  let created: { event: MatchEvent; statAdjusted: boolean }
+      try {
+        created = await prisma.$transaction(async (tx) => {
+          const event = await tx.matchEvent.create({
+            data: {
+              matchId,
+              playerId: body.playerId!,
+              teamId: body.teamId!,
+              minute: body.minute!,
+              eventType: body.eventType!,
+              relatedPlayerId: body.relatedPlayerId ?? null
+            }
+          })
+
+          const metric = eventStatisticMetricMap[event.eventType]
+          const statAdjusted = metric ? await applyStatisticDelta(tx, matchId, event.teamId, metric, 1) : false
+          return { event, statAdjusted }
+        })
+      } catch (err) {
+        request.server.log.error({ err, matchId: matchId.toString() }, 'match event create failed')
+        return reply.status(500).send({ ok: false, error: 'event_create_failed' })
+      }
+
+      if (created.statAdjusted) {
+        await broadcastMatchStatistics(request.server, matchId).catch((err) => {
+          request.server.log.error({ err, matchId: matchId.toString() }, 'match statistics broadcast failed')
+        })
+      }
 
       const match = await prisma.match.findUnique({ where: { id: matchId } })
       if (match?.status === MatchStatus.FINISHED) {
         await handleMatchFinalization(matchId, request.server.log)
       }
 
-      return sendSerialized(reply, event)
+      return sendSerialized(reply, created.event)
     })
 
     admin.put('/matches/:matchId/events/:eventId', async (request, reply) => {
@@ -2005,33 +2088,107 @@ export default async function (server: FastifyInstance) {
         playerId: number
         relatedPlayerId: number | null
       }>
-      const event = await prisma.matchEvent.update({
-        where: { id: eventId },
-        data: {
-          minute: body.minute ?? undefined,
-          eventType: body.eventType ?? undefined,
-          teamId: body.teamId ?? undefined,
-          playerId: body.playerId ?? undefined,
-          relatedPlayerId: body.relatedPlayerId ?? undefined
+  let updated: { event: MatchEvent; statAdjusted: boolean }
+      try {
+        updated = await prisma.$transaction(async (tx) => {
+          const before = await tx.matchEvent.findUnique({ where: { id: eventId } })
+          if (!before) {
+            throw new RequestError(404, 'event_not_found')
+          }
+
+          const event = await tx.matchEvent.update({
+            where: { id: eventId },
+            data: {
+              minute: body.minute ?? undefined,
+              eventType: body.eventType ?? undefined,
+              teamId: body.teamId ?? undefined,
+              playerId: body.playerId ?? undefined,
+              relatedPlayerId: body.relatedPlayerId ?? undefined
+            }
+          })
+
+          let statAdjusted = false
+          const beforeMetric = eventStatisticMetricMap[before.eventType]
+          const afterMetric = eventStatisticMetricMap[event.eventType]
+
+          if (beforeMetric) {
+            const shouldDecrement = !afterMetric || beforeMetric !== afterMetric || before.teamId !== event.teamId
+            if (shouldDecrement) {
+              const changed = await applyStatisticDelta(tx, matchId, before.teamId, beforeMetric, -1)
+              statAdjusted = statAdjusted || changed
+            }
+          }
+
+          if (afterMetric) {
+            const shouldIncrement = !beforeMetric || beforeMetric !== afterMetric || before.teamId !== event.teamId
+            if (shouldIncrement) {
+              const changed = await applyStatisticDelta(tx, matchId, event.teamId, afterMetric, 1)
+              statAdjusted = statAdjusted || changed
+            }
+          }
+
+          return { event, statAdjusted }
+        })
+      } catch (err) {
+        if (err instanceof RequestError) {
+          return reply.status(err.statusCode).send({ ok: false, error: err.message })
         }
-      })
+        request.server.log.error({ err, matchId: matchId.toString(), eventId: eventId.toString() }, 'match event update failed')
+        return reply.status(500).send({ ok: false, error: 'event_update_failed' })
+      }
+
+      if (updated.statAdjusted) {
+        await broadcastMatchStatistics(request.server, matchId).catch((err) => {
+          request.server.log.error({ err, matchId: matchId.toString() }, 'match statistics broadcast failed')
+        })
+      }
 
       const match = await prisma.match.findUnique({ where: { id: matchId } })
       if (match?.status === MatchStatus.FINISHED) {
         await handleMatchFinalization(matchId, request.server.log)
       }
 
-  return sendSerialized(reply, event)
+      return sendSerialized(reply, updated.event)
     })
 
     admin.delete('/matches/:matchId/events/:eventId', async (request, reply) => {
       const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
       const eventId = parseBigIntId((request.params as any).eventId, 'eventId')
-      await prisma.matchEvent.delete({ where: { id: eventId } })
+      let statAdjusted = false
+      try {
+        await prisma.$transaction(async (tx) => {
+          const existing = await tx.matchEvent.findUnique({ where: { id: eventId } })
+          if (!existing) {
+            throw new RequestError(404, 'event_not_found')
+          }
+
+          await tx.matchEvent.delete({ where: { id: eventId } })
+
+          const metric = eventStatisticMetricMap[existing.eventType]
+          if (metric) {
+            const changed = await applyStatisticDelta(tx, matchId, existing.teamId, metric, -1)
+            statAdjusted = statAdjusted || changed
+          }
+        })
+      } catch (err) {
+        if (err instanceof RequestError) {
+          return reply.status(err.statusCode).send({ ok: false, error: err.message })
+        }
+        request.server.log.error({ err, matchId: matchId.toString(), eventId: eventId.toString() }, 'match event delete failed')
+        return reply.status(500).send({ ok: false, error: 'event_delete_failed' })
+      }
+
+      if (statAdjusted) {
+        await broadcastMatchStatistics(request.server, matchId).catch((err) => {
+          request.server.log.error({ err, matchId: matchId.toString() }, 'match statistics broadcast failed')
+        })
+      }
+
       const match = await prisma.match.findUnique({ where: { id: matchId } })
       if (match?.status === MatchStatus.FINISHED) {
         await handleMatchFinalization(matchId, request.server.log)
       }
+
       return reply.send({ ok: true })
     })
 
