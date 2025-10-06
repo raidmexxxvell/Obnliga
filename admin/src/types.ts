@@ -29,11 +29,16 @@ export interface Stadium {
 export interface Competition {
   id: number
   name: string
-  type: 'LEAGUE' | 'CUP' | 'HYBRID'
+  type: 'LEAGUE' | 'CUP'
   seriesFormat: SeriesFormat
 }
 
-export type SeriesFormat = 'SINGLE_MATCH' | 'TWO_LEGGED' | 'BEST_OF_N' | 'PLAYOFF_BRACKET'
+export type SeriesFormat =
+  | 'SINGLE_MATCH'
+  | 'TWO_LEGGED'
+  | 'BEST_OF_N'
+  | 'DOUBLE_ROUND_PLAYOFF'
+  | 'PLAYOFF_BRACKET'
 
 export interface SeasonParticipant {
   seasonId: number

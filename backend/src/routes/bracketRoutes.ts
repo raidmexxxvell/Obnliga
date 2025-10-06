@@ -265,7 +265,7 @@ const findSeasonForBracket = async (seasonId?: number): Promise<SeasonWithRelati
     where: {
       competition: {
         seriesFormat: {
-          in: [SeriesFormat.BEST_OF_N, SeriesFormat.PLAYOFF_BRACKET]
+          in: [SeriesFormat.BEST_OF_N, SeriesFormat.DOUBLE_ROUND_PLAYOFF, SeriesFormat.PLAYOFF_BRACKET]
         }
       },
       series: {

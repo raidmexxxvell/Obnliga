@@ -131,6 +131,7 @@ const seriesFormatNames: Record<SeriesFormat, string> = {
   SINGLE_MATCH: 'Лига: один круг',
   TWO_LEGGED: 'Лига: два круга (дом и гости)',
   BEST_OF_N: '1 круг+плей-офф',
+  DOUBLE_ROUND_PLAYOFF: '2 круга+плей-офф',
   PLAYOFF_BRACKET: 'Плей-офф: случайная сетка'
 }
 
@@ -138,13 +139,13 @@ const automationSeriesLabels: Record<SeriesFormat, string> = {
   SINGLE_MATCH: `${seriesFormatNames.SINGLE_MATCH} (каждый с каждым)`,
   TWO_LEGGED: `${seriesFormatNames.TWO_LEGGED}`,
   BEST_OF_N: `${seriesFormatNames.BEST_OF_N}`,
+  DOUBLE_ROUND_PLAYOFF: `${seriesFormatNames.DOUBLE_ROUND_PLAYOFF}`,
   PLAYOFF_BRACKET: 'Плей-офф: случайная сетка (без регулярного этапа)'
 }
 
-const competitionTypeLabels: Record<'LEAGUE' | 'CUP' | 'HYBRID', string> = {
+const competitionTypeLabels: Record<'LEAGUE' | 'CUP', string> = {
   LEAGUE: 'Лига',
-  CUP: 'Кубок',
-  HYBRID: 'Лига + кубок'
+  CUP: 'Кубок'
 }
 
 const weekdayOptions = [
@@ -269,7 +270,8 @@ export const MatchesTab = () => {
   const [automationForm, setAutomationForm] = useState<SeasonAutomationFormState>(defaultAutomationForm)
   const [automationResult, setAutomationResult] = useState<SeasonAutomationResult | null>(null)
   const [automationLoading, setAutomationLoading] = useState(false)
-  const automationSeedingEnabled = automationForm.seriesFormat === 'BEST_OF_N'
+  const automationSeedingEnabled =
+    automationForm.seriesFormat === 'BEST_OF_N' || automationForm.seriesFormat === 'DOUBLE_ROUND_PLAYOFF'
   const automationRandomBracket = automationForm.seriesFormat === 'PLAYOFF_BRACKET'
   const [playoffBestOf, setPlayoffBestOf] = useState<number>(playoffBestOfOptions[0])
   const [playoffLoading, setPlayoffLoading] = useState(false)
@@ -286,7 +288,7 @@ export const MatchesTab = () => {
   }, [selectedSeason])
 
   const competitionFormat: SeriesFormat | undefined = selectedSeason?.competition.seriesFormat
-  const isBestOfFormat = competitionFormat === 'BEST_OF_N'
+  const isBestOfFormat = competitionFormat === 'BEST_OF_N' || competitionFormat === 'DOUBLE_ROUND_PLAYOFF'
   const isPlayoffBracketFormat = competitionFormat === 'PLAYOFF_BRACKET'
   const supportsPlayoffSeries = isBestOfFormat || isPlayoffBracketFormat
 

@@ -48,6 +48,8 @@ const getGroupStageRounds = (format: SeriesFormat): number => {
   switch (format) {
     case SeriesFormat.TWO_LEGGED:
       return 2
+    case SeriesFormat.DOUBLE_ROUND_PLAYOFF:
+      return 2
     case SeriesFormat.SINGLE_MATCH:
     case SeriesFormat.BEST_OF_N:
     default:
@@ -548,7 +550,10 @@ export const createSeasonPlayoffs = async (
     if (!season) {
       throw new Error('season_not_found')
     }
-    if (season.competition.seriesFormat !== SeriesFormat.BEST_OF_N) {
+    if (
+      season.competition.seriesFormat !== SeriesFormat.BEST_OF_N &&
+      season.competition.seriesFormat !== SeriesFormat.DOUBLE_ROUND_PLAYOFF
+    ) {
       throw new Error('playoffs_not_supported')
     }
 
@@ -634,7 +639,7 @@ export const createSeasonPlayoffs = async (
       .map((participant) => participant.clubId)
       .sort(compareClubs)
 
-    const configuredBestOf = input.bestOfLength && input.bestOfLength >= 3 ? input.bestOfLength : 3
+  const configuredBestOf = input.bestOfLength && input.bestOfLength >= 3 ? input.bestOfLength : 3
     const bestOfLength = toOdd(configuredBestOf)
 
     const lastMatch = await tx.match.findFirst({

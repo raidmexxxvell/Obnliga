@@ -52,8 +52,8 @@
 ## 🔍 ДЕТАЛЬНАЯ ПРОВЕРКА ENUM'ОВ
 
 ### Полностью соответствуют BD.md: ✅
-- `CompetitionType` ✅ (LEAGUE, CUP, HYBRID)
-- `SeriesFormat` ✅ (SINGLE_MATCH, TWO_LEGGED, BEST_OF_N) 
+- `CompetitionType` ✅ (LEAGUE, CUP)
+- `SeriesFormat` ✅ (SINGLE_MATCH, TWO_LEGGED, BEST_OF_N, DOUBLE_ROUND_PLAYOFF, PLAYOFF_BRACKET)
 - `SeriesStatus` ✅ (IN_PROGRESS, FINISHED)
 - `MatchStatus` ✅ (SCHEDULED, LIVE, FINISHED, POSTPONED)
 - `LineupRole` ✅ (STARTER, SUBSTITUTE)

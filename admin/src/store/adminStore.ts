@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { adminGet, adminLogin, lineupLogin } from '../api/adminClient'
+import { adminGet, adminLogin, lineupLogin, translateAdminError } from '../api/adminClient'
 import {
   AchievementType,
   AppUser,
@@ -175,21 +175,11 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     }
   }
 
-  const mapAuthError = (code: string) => {
-    switch (code) {
-      case 'invalid_credentials':
-        return 'Неверный логин или пароль, повторите попытку.'
-      case 'login_failed':
-      case 'auth_failed':
-        return 'Не удалось выполнить вход. Попробуйте ещё раз.'
-      case 'missing_token':
-        return 'Сессия истекла, авторизуйтесь снова.'
-      default:
-        if (code?.toLowerCase().includes('fetch')) {
-          return 'Нет соединения с сервером. Проверьте подключение.'
-        }
-        return code
+  const mapAuthError = (value: string) => {
+    if (value?.toLowerCase().includes('fetch')) {
+      return 'Нет соединения с сервером. Проверьте подключение.'
     }
+    return translateAdminError(value)
   }
 
   const run = async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
@@ -288,13 +278,16 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           return
         }
 
-        if (adminResult.error && adminResult.error !== 'invalid_credentials') {
-          throw new Error(adminResult.error)
+        const adminErrorCode = adminResult.errorCode ?? 'invalid_credentials'
+        if (adminErrorCode !== 'invalid_credentials') {
+          throw new Error(adminResult.error ?? translateAdminError(adminErrorCode))
         }
 
         const lineupResult = await lineupLogin(login, password)
         if (!lineupResult.ok || !lineupResult.token) {
-          throw new Error(lineupResult.error || 'invalid_credentials')
+          const lineupErrorCode = lineupResult.errorCode ?? 'invalid_credentials'
+          const lineupMessage = lineupResult.error ?? translateAdminError(lineupErrorCode)
+          throw new Error(lineupMessage)
         }
 
         if (typeof window !== 'undefined') {

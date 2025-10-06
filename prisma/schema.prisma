@@ -77,13 +77,13 @@ model Competition {
 enum CompetitionType {
   LEAGUE
   CUP
-  HYBRID
 }
 
 enum SeriesFormat {
   SINGLE_MATCH
   TWO_LEGGED
   BEST_OF_N
+  DOUBLE_ROUND_PLAYOFF
   PLAYOFF_BRACKET
 }
 

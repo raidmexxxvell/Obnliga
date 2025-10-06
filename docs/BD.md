@@ -24,8 +24,8 @@
 | :---- | :---- | :---- | :---- | :---- |
 | **Турнир (Competition)** | competition\_id | INT (PK) | Уникальный ID турнира (напр. "Высшая Лига", "1я Лига"). | \- |
 |  | name | VARCHAR(255) | Название турнира. | \- |
-|  | type | ENUM | Тип ('LEAGUE', 'CUP', 'HYBRID'). | \- |
-|  | **series\\\_format** | **ENUM** | **Формат плей-офф:** 'SINGLE\_MATCH', 'TWO\_LEGGED', 'BEST\_OF\_N'. | \- |
+|  | type | ENUM | Тип ('LEAGUE', 'CUP'). | \- |
+|  | **series_format** | **ENUM** | **Формат регулярки/плей-офф:** 'SINGLE_MATCH', 'TWO_LEGGED', 'BEST_OF_N', 'DOUBLE_ROUND_PLAYOFF', 'PLAYOFF_BRACKET'. | \- |
 | **Сезон (Season)** | season\_id | INT (PK) | Уникальный ID конкретного розыгрыша (напр. "Высшая Лига 2024"). | \- |
 |  | competition\_id | INT (FK) | Ссылка на родительский турнир. | \-\> Турнир |
 |  | name | VARCHAR(100) | Название сезона (напр. '2024'). | \- |

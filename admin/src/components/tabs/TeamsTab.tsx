@@ -29,20 +29,34 @@ type CompetitionFormState = {
   seriesFormat: Competition['seriesFormat']
 }
 
-const competitionTypeOptions: Competition['type'][] = ['LEAGUE', 'CUP', 'HYBRID']
-const seriesFormatOptions: Competition['seriesFormat'][] = ['SINGLE_MATCH', 'TWO_LEGGED', 'BEST_OF_N', 'PLAYOFF_BRACKET']
+const competitionTypeOptions: Competition['type'][] = ['LEAGUE', 'CUP']
+
+const baseSeriesFormatOptions: Array<Competition['seriesFormat']> = [
+  'SINGLE_MATCH',
+  'TWO_LEGGED',
+  'BEST_OF_N',
+  'DOUBLE_ROUND_PLAYOFF',
+  'PLAYOFF_BRACKET'
+]
 
 const competitionTypeLabels: Record<Competition['type'], string> = {
   LEAGUE: 'Лига',
-  CUP: 'Кубок',
-  HYBRID: 'Лига + кубок'
+  CUP: 'Кубок'
 }
 
 const seriesFormatLabels: Record<Competition['seriesFormat'], string> = {
   SINGLE_MATCH: 'Один круг (каждый с каждым)',
   TWO_LEGGED: 'Два круга (дом/гости)',
   BEST_OF_N: '1 круг+плей-офф',
+  DOUBLE_ROUND_PLAYOFF: '2 круга+плей-офф',
   PLAYOFF_BRACKET: 'Плей-офф сетка (рандом)'
+}
+
+const getSeriesFormatOptions = (type: Competition['type']): Array<Competition['seriesFormat']> => {
+  if (type === 'CUP') {
+    return ['PLAYOFF_BRACKET']
+  }
+  return baseSeriesFormatOptions.filter((option) => option !== 'PLAYOFF_BRACKET')
 }
 
 const defaultClubForm: ClubFormState = { name: '', shortName: '', logoUrl: '' }
@@ -122,6 +136,20 @@ export const TeamsTab = () => {
       handleFeedback(message, 'error')
     }
   }
+
+  const availableSeriesFormats = useMemo<Array<Competition['seriesFormat']>>(() => {
+    return getSeriesFormatOptions(competitionForm.type)
+  }, [competitionForm.type])
+
+  useEffect(() => {
+    const options = getSeriesFormatOptions(competitionForm.type)
+    if (!options.includes(competitionForm.seriesFormat)) {
+      setCompetitionForm((form) => ({
+        ...form,
+        seriesFormat: options[0] ?? form.seriesFormat
+      }))
+    }
+  }, [competitionForm.type, competitionForm.seriesFormat])
 
   const handleClubSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -543,7 +571,7 @@ export const TeamsTab = () => {
                   }))
                 }
               >
-                {seriesFormatOptions.map((option) => (
+                {availableSeriesFormats.map((option: Competition['seriesFormat']) => (
                   <option key={option} value={option}>
                     {seriesFormatLabels[option]}
                   </option>

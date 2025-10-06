@@ -11,11 +11,148 @@ import type {
 
 const API_BASE = import.meta.env.VITE_ADMIN_API_BASE || 'http://localhost:3000'
 
+const DEFAULT_ERROR_MESSAGE = 'Произошла ошибка. Попробуйте ещё раз.'
+
+const ERROR_DICTIONARY: Record<string, string> = {
+  request_failed: 'Не удалось выполнить запрос. Попробуйте ещё раз.',
+  unauthorized: 'Необходима авторизация.',
+  invalid_token: 'Токен авторизации недействителен. Войдите снова.',
+  missing_token: 'Сессия администратора истекла. Авторизуйтесь снова.',
+  missing_lineup_token: 'Сеанс капитана истёк. Авторизуйтесь снова.',
+  forbidden: 'Недостаточно прав для выполнения операции.',
+  login_and_password_required: 'Введите логин и пароль.',
+  invalid_credentials: 'Неверный логин или пароль.',
+  admin_auth_unavailable: 'Сервис авторизации временно недоступен.',
+  auth_failed: 'Не удалось выполнить вход. Попробуйте ещё раз.',
+  login_failed: 'Не удалось выполнить вход. Попробуйте ещё раз.',
+  lineup_auth_failed: 'Не удалось авторизоваться на портале составов.',
+  season_or_competition_required: 'Для статистики укажите сезон или соревнование.',
+  achievement_fields_required: 'Заполните поля достижения.',
+  automation_fields_required: 'Заполните параметры автоматизации сезона.',
+  automation_needs_participants: 'Добавьте минимум две команды для автоматизации сезона.',
+  automation_failed: 'Не удалось запустить автоматизацию сезона.',
+  club_already_played: 'Клуб уже сыграл матчи — операция невозможна.',
+  club_and_shirt_required: 'Выберите клуб и укажите номер игрока.',
+  club_in_active_season: 'Клуб участвует в активном сезоне. Сначала завершите сезон.',
+  club_in_finished_matches: 'Клуб участвовал в завершённых матчах. Операция запрещена.',
+  club_invalid: 'Некорректный клуб.',
+  club_not_found: 'Клуб не найден.',
+  club_not_in_match: 'Клуб не участвует в выбранном матче.',
+  club_players_import_failed: 'Не удалось импортировать игроков. Проверьте формат данных.',
+  club_players_update_failed: 'Не удалось обновить список игроков клуба.',
+  clubid_required: 'Выберите клуб.',
+  competition_delete_failed: 'Не удалось удалить соревнование.',
+  competition_invalid: 'Некорректное соревнование.',
+  competition_not_found: 'Соревнование не найдено.',
+  delta_invalid: 'Некорректное изменение значения.',
+  disqualification_fields_required: 'Заполните данные дисквалификации.',
+  duplicate_person: 'Такая персона уже есть в списке.',
+  duplicate_shirt_number: 'Этот игровой номер уже занят.',
+  event_create_failed: 'Не удалось добавить событие матча.',
+  event_delete_failed: 'Не удалось удалить событие матча.',
+  event_fields_required: 'Заполните поля события матча.',
+  event_not_found: 'Событие матча не найдено.',
+  event_update_failed: 'Не удалось обновить событие матча.',
+  finished_match_locked: 'Матч завершён — редактирование недоступно.',
+  first_and_last_name_required: 'Введите имя и фамилию.',
+  friendly_match_fields_required: 'Заполните данные товарищеского матча.',
+  friendly_match_not_found: 'Товарищеский матч не найден.',
+  friendly_match_same_teams: 'Выберите разные команды для товарищеского матча.',
+  internal: 'Внутренняя ошибка сервера. Попробуйте позже.',
+  invalid_full_name: 'Введите имя и фамилию через пробел.',
+  lineup_fields_required: 'Заполните поля заявки.',
+  match_club_not_found: 'Клуб не найден среди участников матча.',
+  match_fields_required: 'Заполните параметры матча.',
+  match_not_found: 'Матч не найден.',
+  match_statistics_failed: 'Не удалось получить статистику матча.',
+  match_statistics_update_failed: 'Не удалось обновить статистику матча.',
+  matches_not_finished: 'Завершите все матчи перед созданием плей-офф.',
+  metric_invalid: 'Некорректный показатель статистики.',
+  name_and_city_required: 'Укажите название и город.',
+  name_and_short_name_required: 'Укажите название и короткое имя.',
+  name_type_series_format_required: 'Укажите название, тип и формат серий.',
+  no_names_provided: 'Список имён пуст.',
+  not_enough_pairs: 'Недостаточно команд для формирования плей-офф.',
+  not_enough_participants: 'Недостаточно участников.',
+  participant_exists_or_invalid: 'Участник уже добавлен или указан неверно.',
+  person_has_history: 'У игрока есть история матчей — удаление невозможно.',
+  person_is_not_player: 'Выбранная персона не является игроком.',
+  personid_required: 'Выберите игрока.',
+  playoffs_already_exists: 'Плей-офф уже создан.',
+  playoffs_creation_failed: 'Не удалось создать плей-офф.',
+  playoffs_not_supported: 'Этот формат турнира не поддерживает плей-офф.',
+  regular_season_not_finished: 'Регулярный сезон ещё не завершён.',
+  roster_fields_required: 'Заполните поля состава.',
+  season_dates_locked: 'Даты сезона заблокированы — сезон уже начался.',
+  season_fields_required: 'Заполните поля сезона.',
+  season_not_found: 'Сезон не найден.',
+  series_already_exist: 'Серии уже созданы.',
+  series_fields_required: 'Заполните поля серии.',
+  series_format_locked: 'Формат серий изменить нельзя.',
+  series_has_matches: 'Серия содержит матчи — операция невозможна.',
+  stadium_used_in_matches: 'Стадион используется в матчах.',
+  too_many_names: 'Слишком много имён в списке.',
+  update_failed: 'Не удалось сохранить изменения.',
+  userid_required: 'Укажите пользователя.'
+}
+
+const normalizeErrorKey = (value: string): string => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_')
+
+const containsCyrillic = (value: string): boolean => /[а-яё]/i.test(value)
+
+export const translateAdminError = (input?: string): string => {
+  if (!input) {
+    return DEFAULT_ERROR_MESSAGE
+  }
+  const raw = input.trim()
+  if (!raw) {
+    return DEFAULT_ERROR_MESSAGE
+  }
+  if (containsCyrillic(raw)) {
+    return raw
+  }
+  if (/failed to fetch/i.test(raw)) {
+    return 'Нет соединения с сервером. Проверьте интернет.'
+  }
+
+  const direct = ERROR_DICTIONARY[raw] || ERROR_DICTIONARY[raw.toLowerCase()]
+  if (direct) {
+    return direct
+  }
+
+  const normalized = normalizeErrorKey(raw)
+  if (normalized && ERROR_DICTIONARY[normalized]) {
+    return ERROR_DICTIONARY[normalized]
+  }
+
+  if (normalized.endsWith('_required')) {
+    return 'Заполните обязательные поля.'
+  }
+
+  if (normalized.endsWith('_invalid')) {
+    return 'Проверьте корректность введённых данных.'
+  }
+
+  return `Ошибка: ${raw}`
+}
+
+export class AdminApiError extends Error {
+  code: string
+
+  constructor(code: string) {
+    const message = translateAdminError(code)
+    super(message)
+    this.code = code
+    this.name = 'AdminApiError'
+  }
+}
+
 interface AdminLoginResponse {
   ok: boolean
   token: string
   expiresIn: number
   error?: string
+  errorCode?: string
 }
 
 export const adminLogin = async (login: string, password: string): Promise<AdminLoginResponse> => {
@@ -30,11 +167,13 @@ export const adminLogin = async (login: string, password: string): Promise<Admin
   const data = (await response.json().catch(() => ({}))) as Partial<AdminLoginResponse>
 
   if (!response.ok) {
+    const errorCode = (data.error as string) || 'invalid_credentials'
     return {
       ok: false,
       token: '',
       expiresIn: 0,
-      error: data.error || 'invalid_credentials'
+      error: translateAdminError(errorCode),
+      errorCode
     }
   }
 
@@ -54,7 +193,7 @@ interface ApiResponseEnvelope<T> {
 
 const ensureToken = (token?: string): string => {
   if (!token) {
-    throw new Error('missing_token')
+    throw new AdminApiError('missing_token')
   }
   return token
 }
@@ -89,12 +228,13 @@ export const adminRequestWithMeta = async <T>(
   }
 
   if (!response.ok) {
-    const error = payload?.error || response.statusText || 'request_failed'
-    throw new Error(error)
+    const errorCode = payload?.error || response.statusText || 'request_failed'
+    throw new AdminApiError(errorCode)
   }
 
   if (!payload?.ok) {
-    throw new Error(payload?.error || 'request_failed')
+    const errorCode = payload?.error || 'request_failed'
+    throw new AdminApiError(errorCode)
   }
 
   const versionHeader = response.headers.get('X-Resource-Version')
@@ -218,6 +358,7 @@ interface LineupLoginResponse {
   ok: boolean
   token?: string
   error?: string
+  errorCode?: string
 }
 
 export const lineupLogin = async (login: string, password: string): Promise<LineupLoginResponse> => {
@@ -232,22 +373,27 @@ export const lineupLogin = async (login: string, password: string): Promise<Line
   const payload = (await response.json().catch(() => ({}))) as LineupLoginResponse
 
   if (!response.ok) {
+    const errorCode = payload.error || 'login_failed'
     return {
       ok: false,
-      error: payload.error || 'login_failed'
+      error: translateAdminError(errorCode),
+      errorCode
     }
   }
+
+  const errorCode = payload.error
 
   return {
     ok: Boolean(payload.token),
     token: payload.token,
-    error: payload.error
+    error: errorCode ? translateAdminError(errorCode) : undefined,
+    errorCode
   }
 }
 
 const ensureLineupToken = (token?: string): string => {
   if (!token) {
-    throw new Error('missing_lineup_token')
+    throw new AdminApiError('missing_lineup_token')
   }
   return token
 }
@@ -266,15 +412,17 @@ const lineupRequest = async <T>(token: string | undefined, path: string, init: R
   const payload = (await response.json().catch(() => ({}))) as ApiResponseEnvelope<T>
 
   if (response.status === 401) {
-    throw new Error('unauthorized')
+    throw new AdminApiError('unauthorized')
   }
 
   if (!response.ok) {
-    throw new Error(payload?.error || 'request_failed')
+    const errorCode = payload?.error || response.statusText || 'request_failed'
+    throw new AdminApiError(errorCode)
   }
 
   if (!payload?.ok) {
-    throw new Error(payload?.error || 'request_failed')
+    const errorCode = payload?.error || 'request_failed'
+    throw new AdminApiError(errorCode)
   }
 
   return (payload.data ?? undefined) as T

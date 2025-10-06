@@ -339,23 +339,19 @@ audit/                   # Audit trail
 #### Сущности для админ-панели (приоритет)
 
 **Группа 1: Foundation (базовые справочники)**
-- **Club** — футбольные клубы
   - Поля: id, name, shortName, logoUrl
   - Валидация: name уникален, logoUrl опционален
   - CRUD операции: Full (Create, Read, Update, Delete)
 
-- **Person** — люди (игроки, судьи)
   - Поля: id, firstName, lastName, isPlayer
   - Валидация: имена обязательны
   - CRUD операции: Full
 
 **Группа 2: Competitions (турниры и сезоны)**
-- **Competition** — турниры
-  - Поля: id, name, type (LEAGUE/CUP/HYBRID), seriesFormat
+  Поля: id, name, type (LEAGUE/CUP), seriesFormat
   - Отношения: hasMany Season
   - CRUD операции: Full
 
-- **Season** — сезоны
   - Поля: id, competitionId, name, startDate, endDate
   - Отношения: belongsTo Competition, hasMany SeasonParticipant
   - CRUD операции: Full

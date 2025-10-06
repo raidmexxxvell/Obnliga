@@ -580,7 +580,7 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
 
   const format = series.season.competition.seriesFormat
 
-  if (format === SeriesFormat.BEST_OF_N) {
+  if (format === SeriesFormat.BEST_OF_N || format === SeriesFormat.DOUBLE_ROUND_PLAYOFF) {
     const scheduledMatches = series.matches
     const finishedMatches = scheduledMatches.filter((m) => m.status === MatchStatus.FINISHED)
     if (finishedMatches.length === 0) return
@@ -705,7 +705,7 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
 
   if (uniqueWinners.length < 2) return
 
-  if (context.format === SeriesFormat.BEST_OF_N) {
+  if (context.format === SeriesFormat.BEST_OF_N || context.format === SeriesFormat.DOUBLE_ROUND_PLAYOFF) {
     const stats = await tx.clubSeasonStats.findMany({ where: { seasonId: context.seasonId } })
     const statsMap = new Map<number, (typeof stats)[number]>()
     for (const stat of stats) {
