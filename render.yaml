@@ -4,7 +4,8 @@ services:
     runtime: node
     plan: free
     region: Frankfurt
-    buildCommand: "cd backend && npm install && npm run build && npx prisma generate --schema ../prisma/schema.prisma && npx prisma db push --schema ../prisma/schema.prisma"
+  # Use migrate deploy instead of db push to safely apply enum changes and data migrations
+    buildCommand: "cd backend && npm install && npm run build && npx prisma generate --schema ../prisma/schema.prisma && npx prisma migrate deploy --schema ../prisma/schema.prisma"
     autoDeployTrigger: commit
     branch: main
     envVars:
