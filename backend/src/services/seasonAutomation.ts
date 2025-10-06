@@ -1,4 +1,4 @@
-import { Competition, MatchStatus, PrismaClient, RoundType, SeriesFormat, SeriesStatus } from '@prisma/client'
+﻿import { Competition, MatchStatus, Prisma, PrismaClient, RoundType, SeriesFormat, SeriesStatus } from '@prisma/client'
 import { FastifyBaseLogger } from 'fastify'
 
 type ClubId = number
@@ -7,6 +7,115 @@ type RoundRobinPair = {
   roundIndex: number
   homeClubId: ClubId
   awayClubId: ClubId
+}
+
+type GroupStageSlotInput = {
+  position: number
+  clubId: ClubId
+}
+
+type GroupStageGroupInput = {
+  groupIndex: number
+  label: string
+  qualifyCount: number
+  slots: GroupStageSlotInput[]
+}
+
+type GroupStageConfigInput = {
+  groupCount: number
+  groupSize: number
+  qualifyCount: number
+  groups: GroupStageGroupInput[]
+}
+
+type ValidatedGroupStage = {
+  groupSize: number
+  groups: GroupStageGroupInput[]
+  clubIds: ClubId[]
+}
+
+const validateGroupStageConfig = (config?: GroupStageConfigInput): ValidatedGroupStage => {
+  if (!config) {
+    throw new Error('group_stage_missing')
+  }
+  const { groupCount, groupSize, groups } = config
+  if (!Number.isFinite(groupCount) || groupCount <= 0) {
+    throw new Error('group_stage_invalid_count')
+  }
+  if (!Number.isFinite(groupSize) || groupSize < 2) {
+    throw new Error('group_stage_invalid_size')
+  }
+  if (!Array.isArray(groups) || groups.length !== groupCount) {
+    throw new Error('group_stage_count_mismatch')
+  }
+
+  const normalizedGroups = [...groups].sort((a, b) => a.groupIndex - b.groupIndex)
+  const seenGroupIndexes = new Set<number>()
+  const seenClubIds = new Set<number>()
+  const allClubIds: number[] = []
+
+  normalizedGroups.forEach((group, index) => {
+    if (!Number.isFinite(group.groupIndex) || group.groupIndex < 1) {
+      throw new Error('group_stage_invalid_index')
+    }
+    if (seenGroupIndexes.has(group.groupIndex)) {
+      throw new Error('group_stage_duplicate_index')
+    }
+    seenGroupIndexes.add(group.groupIndex)
+
+    if (!group.label || !group.label.trim()) {
+      throw new Error('group_stage_label_required')
+    }
+
+    if (!Array.isArray(group.slots) || group.slots.length !== groupSize) {
+      throw new Error('group_stage_slot_count')
+    }
+
+    if (!Number.isFinite(group.qualifyCount) || group.qualifyCount < 1 || group.qualifyCount > groupSize) {
+      throw new Error('group_stage_invalid_qualify')
+    }
+
+    const seenPositions = new Set<number>()
+    group.slots.forEach((slot) => {
+      if (!Number.isFinite(slot.position) || slot.position < 1 || slot.position > groupSize) {
+        throw new Error('group_stage_invalid_slot_position')
+      }
+      if (seenPositions.has(slot.position)) {
+        throw new Error('group_stage_duplicate_slot_position')
+      }
+      seenPositions.add(slot.position)
+
+      if (!Number.isFinite(slot.clubId) || slot.clubId <= 0) {
+        throw new Error('group_stage_slot_club_required')
+      }
+      if (seenClubIds.has(slot.clubId)) {
+        throw new Error('group_stage_duplicate_club')
+      }
+      seenClubIds.add(slot.clubId)
+      allClubIds.push(slot.clubId)
+    })
+
+    // Поддерживаем непрерывность индексов групп (1..groupCount)
+    if (index === 0 && group.groupIndex !== 1) {
+      throw new Error('group_stage_index_range')
+    }
+    if (index > 0) {
+      const previous = normalizedGroups[index - 1].groupIndex
+      if (group.groupIndex !== previous + 1) {
+        throw new Error('group_stage_index_range')
+      }
+    }
+  })
+
+  if (seenClubIds.size !== groupCount * groupSize) {
+    throw new Error('group_stage_incomplete')
+  }
+
+  return {
+    groupSize,
+    groups: normalizedGroups,
+    clubIds: allClubIds
+  }
 }
 
 type SeasonAutomationInput = {
@@ -19,6 +128,7 @@ type SeasonAutomationInput = {
   copyClubPlayersToRoster?: boolean
   seriesFormat: SeriesFormat
   bestOfLength?: number
+  groupStage?: GroupStageConfigInput
 }
 
 export type SeasonAutomationResult = {
@@ -27,6 +137,8 @@ export type SeasonAutomationResult = {
   participantsCreated: number
   rosterEntriesCreated: number
   seriesCreated: number
+  groupsCreated: number
+  groupSlotsCreated: number
 }
 
 const ensureUniqueClubs = (clubIds: ClubId[]): ClubId[] => {
@@ -288,16 +400,22 @@ export const runSeasonAutomation = async (
   logger: FastifyBaseLogger,
   input: SeasonAutomationInput
 ): Promise<SeasonAutomationResult> => {
-  const uniqueClubIds = ensureUniqueClubs(input.clubIds)
+  const isGroupStageFormat = input.seriesFormat === (SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF as SeriesFormat)
+  const validatedGroupStage = isGroupStageFormat ? validateGroupStageConfig(input.groupStage) : undefined
+
+  const sourceClubIds = isGroupStageFormat ? validatedGroupStage!.clubIds : input.clubIds
+  const uniqueClubIds = ensureUniqueClubs(sourceClubIds)
   if (uniqueClubIds.length < 2) {
     throw new Error('not_enough_participants')
   }
 
-  const groupRounds = getGroupStageRounds(input.seriesFormat)
-  const pairs = generateRoundRobinPairs(uniqueClubIds, groupRounds)
+  const groupRounds = isGroupStageFormat ? 0 : getGroupStageRounds(input.seriesFormat)
+  const pairs = isGroupStageFormat ? [] : generateRoundRobinPairs(uniqueClubIds, groupRounds)
   const alignedStartDate = alignDateToWeekday(new Date(input.startDateISO), input.matchDayOfWeek)
   const kickoffDate = applyTimeToDate(alignedStartDate, input.matchTime)
-  const totalRounds = pairs.reduce((max, pair) => Math.max(max, pair.roundIndex), 0) + (pairs.length ? 1 : 0)
+  const totalRounds = isGroupStageFormat
+    ? 0
+    : pairs.reduce((max, pair) => Math.max(max, pair.roundIndex), 0) + (pairs.length ? 1 : 0)
 
   const seasonEndDate = totalRounds > 0 ? addDays(kickoffDate, (totalRounds - 1) * 7) : kickoffDate
 
@@ -380,7 +498,7 @@ export const runSeasonAutomation = async (
 
     const isRandomPlayoff = input.seriesFormat === ('PLAYOFF_BRACKET' as SeriesFormat)
     const roundIndexToId = new Map<number, number>()
-    if (!isRandomPlayoff && totalRounds > 0) {
+    if (!isGroupStageFormat && !isRandomPlayoff && totalRounds > 0) {
       for (let roundIndex = 0; roundIndex < totalRounds; roundIndex += 1) {
         const label = `${roundIndex + 1} тур`
         const existing = await tx.seasonRound.findFirst({
@@ -402,11 +520,30 @@ export const runSeasonAutomation = async (
 
     let matchesCreated = 0
     let seriesCreated = 0
-    let bracketByeClubId: number | undefined
+    let groupsCreated = 0
+    let groupSlotsCreated = 0
+    const bracketByeClubIds: number[] = []
 
-    if (isRandomPlayoff) {
+    if (isGroupStageFormat && validatedGroupStage) {
+      const groupStageResult = await createGroupStageSchedule(tx, {
+        seasonId: createdSeason.id,
+        seasonStart: kickoffDate,
+        matchTime: input.matchTime ?? null,
+        groups: validatedGroupStage.groups
+      })
+      matchesCreated += groupStageResult.matchesCreated
+      groupsCreated += groupStageResult.groupsCreated
+      groupSlotsCreated += groupStageResult.groupSlotsCreated
+
+      if (groupStageResult.lastMatchDate && groupStageResult.lastMatchDate > createdSeason.endDate) {
+        await tx.season.update({ where: { id: createdSeason.id }, data: { endDate: groupStageResult.lastMatchDate } })
+        createdSeason.endDate = groupStageResult.lastMatchDate
+      }
+    } else if (isRandomPlayoff) {
       const { plans, byeClubId } = createRandomPlayoffPlans(uniqueClubIds, kickoffDate, input.matchTime, 1)
-      bracketByeClubId = byeClubId
+      if (byeClubId) {
+        bracketByeClubIds.push(byeClubId)
+      }
       let latestMatchDate: Date | null = null
 
       for (const plan of plans) {
@@ -502,8 +639,10 @@ export const runSeasonAutomation = async (
         matchesCreated,
         rosterEntriesCreated,
         seriesCreated,
+        groupsCreated,
+        groupSlotsCreated,
         format: input.seriesFormat,
-        byeClubId: bracketByeClubId ?? null
+        byeClubIds: bracketByeClubIds
       },
       'season automation completed'
     )
@@ -514,7 +653,9 @@ export const runSeasonAutomation = async (
         participantsCreated,
         matchesCreated,
         rosterEntriesCreated,
-        seriesCreated
+        seriesCreated,
+        groupsCreated,
+        groupSlotsCreated
       }
     }
   })
@@ -524,7 +665,115 @@ export const runSeasonAutomation = async (
     participantsCreated: season.stats.participantsCreated,
     matchesCreated: season.stats.matchesCreated,
     rosterEntriesCreated: season.stats.rosterEntriesCreated,
-    seriesCreated: season.stats.seriesCreated
+    seriesCreated: season.stats.seriesCreated,
+    groupsCreated: season.stats.groupsCreated,
+    groupSlotsCreated: season.stats.groupSlotsCreated
+  }
+}
+
+type GroupStageCreationResult = {
+  matchesCreated: number
+  groupsCreated: number
+  groupSlotsCreated: number
+  lastMatchDate: Date | null
+}
+
+const createGroupStageSchedule = async (
+  tx: Prisma.TransactionClient,
+  params: {
+    seasonId: number
+    seasonStart: Date
+    matchTime: string | null | undefined
+    groups: GroupStageGroupInput[]
+  }
+): Promise<GroupStageCreationResult> => {
+  let matchesCreated = 0
+  let groupsCreated = 0
+  let groupSlotsCreated = 0
+  let latestMatchDate: Date | null = null
+
+  for (const group of params.groups) {
+    const seasonGroup = await tx.seasonGroup.create({
+      data: {
+        seasonId: params.seasonId,
+        groupIndex: group.groupIndex,
+        label: group.label.trim(),
+        qualifyCount: group.qualifyCount
+      }
+    })
+    groupsCreated += 1
+
+    const slotsPayload = group.slots.map((slot) => ({
+      groupId: seasonGroup.id,
+      position: slot.position,
+      clubId: slot.clubId
+    }))
+    if (slotsPayload.length) {
+      const createdSlots = await tx.seasonGroupSlot.createMany({ data: slotsPayload, skipDuplicates: true })
+      groupSlotsCreated += createdSlots.count
+    }
+
+    const clubIds = group.slots.map((slot) => slot.clubId)
+    const pairs = generateRoundRobinPairs(clubIds, 1)
+    if (!pairs.length) {
+      continue
+    }
+
+    const roundCache = new Map<number, number>()
+    const matchesPayload: Array<{
+      seasonId: number
+      matchDateTime: Date
+      homeTeamId: number
+      awayTeamId: number
+      status: MatchStatus
+      roundId: number | null
+      groupId: number
+    }> = []
+
+    for (const pair of pairs) {
+      let roundId = roundCache.get(pair.roundIndex) ?? null
+      if (!roundId) {
+        const round = await tx.seasonRound.create({
+          data: {
+            seasonId: params.seasonId,
+            roundType: RoundType.REGULAR,
+            roundNumber: pair.roundIndex + 1,
+            label: `${group.label.trim()} — тур ${pair.roundIndex + 1}`,
+            groupId: seasonGroup.id
+          }
+        })
+        roundId = round.id
+        roundCache.set(pair.roundIndex, roundId)
+      }
+
+      const baseDate = addDays(params.seasonStart, pair.roundIndex * 7)
+      const scheduled = applyTimeToDate(baseDate, params.matchTime)
+      if (!latestMatchDate || scheduled > latestMatchDate) {
+        latestMatchDate = scheduled
+      }
+
+      matchesPayload.push({
+        seasonId: params.seasonId,
+        matchDateTime: scheduled,
+        homeTeamId: pair.homeClubId,
+        awayTeamId: pair.awayClubId,
+        status: MatchStatus.SCHEDULED,
+        roundId,
+        groupId: seasonGroup.id
+      })
+    }
+
+    if (matchesPayload.length) {
+      const result = await tx.match.createMany({ data: matchesPayload })
+      matchesCreated += result.count
+    }
+  }
+
+  return {
+    matchesCreated,
+    groupsCreated,
+    groupSlotsCreated,
+    lastMatchDate: latestMatchDate
   }
 }
 

@@ -309,7 +309,19 @@ async function loadSeasonClubStats(seasonId: number) {
     where: { id: seasonId },
     include: {
       competition: true,
-      participants: { include: { club: true } }
+      participants: { include: { club: true } },
+      groups: {
+        include: {
+          slots: {
+            include: {
+              club: {
+                select: { id: true, name: true, shortName: true, logoUrl: true }
+              }
+            }
+          }
+        },
+        orderBy: { groupIndex: 'asc' }
+      }
     }
   })
 
@@ -382,18 +394,53 @@ async function loadSeasonClubStats(seasonId: number) {
     }
   }
 
+  const seasonGroups = (season.groups ?? []).map((group) => ({
+    id: group.id,
+    seasonId: season.id,
+    groupIndex: group.groupIndex,
+    label: group.label,
+    qualifyCount: group.qualifyCount,
+    slots: [...group.slots]
+      .sort((left, right) => left.position - right.position)
+      .map((slot) => ({
+        id: slot.id,
+        groupId: slot.groupId,
+        position: slot.position,
+        clubId: slot.clubId,
+        club: slot.club
+          ? {
+              id: slot.club.id,
+              name: slot.club.name,
+              shortName: slot.club.shortName,
+              logoUrl: slot.club.logoUrl
+            }
+          : null
+      }))
+  }))
+
+  const groupMembership = new Map<number, { groupIndex: number; label: string }>()
+  for (const group of seasonGroups) {
+    for (const slot of group.slots) {
+      if (slot.clubId) {
+        groupMembership.set(slot.clubId, { groupIndex: group.groupIndex, label: group.label })
+      }
+    }
+  }
+
   const seasonPayload = {
     id: season.id,
     competitionId: season.competitionId,
     name: season.name,
     startDate: season.startDate,
     endDate: season.endDate,
-    competition: season.competition
+    competition: season.competition,
+    groups: seasonGroups
   }
 
   const rows = season.participants.map((participant) => {
     const computed = computedStats.get(participant.clubId)
     const stat = statsByClub.get(participant.clubId)
+    const membership = groupMembership.get(participant.clubId)
     return {
       seasonId: season.id,
       clubId: participant.clubId,
@@ -403,13 +450,16 @@ async function loadSeasonClubStats(seasonId: number) {
       goalsFor: computed?.goalsFor ?? stat?.goalsFor ?? 0,
       goalsAgainst: computed?.goalsAgainst ?? stat?.goalsAgainst ?? 0,
       club: participant.club,
-      season: seasonPayload
+      season: seasonPayload,
+      groupIndex: membership?.groupIndex ?? null,
+      groupLabel: membership?.label ?? null
     }
   })
 
   for (const stat of rawStats) {
     if (rows.some((row) => row.clubId === stat.clubId)) continue
     const computed = computedStats.get(stat.clubId)
+    const membership = groupMembership.get(stat.clubId)
     rows.push({
       seasonId: season.id,
       clubId: stat.clubId,
@@ -419,7 +469,9 @@ async function loadSeasonClubStats(seasonId: number) {
       goalsFor: computed?.goalsFor ?? stat.goalsFor,
       goalsAgainst: computed?.goalsAgainst ?? stat.goalsAgainst,
       club: stat.club,
-      season: seasonPayload
+      season: seasonPayload,
+      groupIndex: membership?.groupIndex ?? null,
+      groupLabel: membership?.label ?? null
     })
   }
 
@@ -1341,6 +1393,18 @@ export default async function (server: FastifyInstance) {
               club: true
             },
             orderBy: [{ clubId: 'asc' }, { shirtNumber: 'asc' }]
+          },
+          groups: {
+            include: {
+              slots: {
+                include: {
+                  club: {
+                    select: { id: true, name: true, shortName: true, logoUrl: true }
+                  }
+                }
+              }
+            },
+            orderBy: { groupIndex: 'asc' }
           }
         }
       })
@@ -1378,16 +1442,29 @@ export default async function (server: FastifyInstance) {
         clubIds?: number[]
         copyClubPlayersToRoster?: boolean
         seriesFormat?: string
+        groupStage?: {
+          groupCount?: number
+          groupSize?: number
+          qualifyCount?: number
+          groups?: Array<{
+            groupIndex?: number
+            label?: string
+            qualifyCount?: number
+            slots?: Array<{
+              position?: number
+              clubId?: number
+            }>
+          }>
+        }
       }
 
       if (!body?.competitionId || !body?.seasonName || !body?.startDate || typeof body.matchDayOfWeek !== 'number') {
         return reply.status(400).send({ ok: false, error: 'automation_fields_required' })
       }
 
-      const clubIds = Array.isArray(body.clubIds) ? body.clubIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0) : []
-      if (clubIds.length < 2) {
-        return reply.status(400).send({ ok: false, error: 'automation_needs_participants' })
-      }
+      let clubIds = Array.isArray(body.clubIds)
+        ? body.clubIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+        : []
 
       const competition = await prisma.competition.findUnique({ where: { id: body.competitionId } })
       if (!competition) {
@@ -1399,6 +1476,55 @@ export default async function (server: FastifyInstance) {
       const seriesFormat = requestedFormat && allowedFormats.has(requestedFormat as SeriesFormat)
         ? (requestedFormat as SeriesFormat)
         : competition.seriesFormat
+
+      let groupStageConfig: {
+        groupCount: number
+        groupSize: number
+        qualifyCount: number
+        groups: Array<{ groupIndex: number; label: string; qualifyCount: number; slots: Array<{ position: number; clubId: number }> }>
+      } | undefined
+
+      if (seriesFormat === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF) {
+        const rawGroupStage = body.groupStage
+        if (!rawGroupStage || typeof rawGroupStage !== 'object') {
+          return reply.status(400).send({ ok: false, error: 'group_stage_required' })
+        }
+
+        const rawGroups = Array.isArray(rawGroupStage.groups) ? rawGroupStage.groups : []
+        const parsedGroups = rawGroups.map((group: any, index: number) => {
+          const slotsRaw = Array.isArray(group?.slots) ? group.slots : []
+          const slots = slotsRaw.map((slot: any, slotIndex: number) => ({
+            position: Number(slot?.position ?? slotIndex + 1),
+            clubId: Number(slot?.clubId ?? 0)
+          }))
+          return {
+            groupIndex: Number(group?.groupIndex ?? index + 1),
+            label: typeof group?.label === 'string' ? group.label : `Группа ${index + 1}`,
+            qualifyCount: Number(group?.qualifyCount ?? rawGroupStage?.qualifyCount ?? 0),
+            slots
+          }
+        })
+
+        groupStageConfig = {
+          groupCount: Number(rawGroupStage.groupCount ?? parsedGroups.length),
+          groupSize: Number(rawGroupStage.groupSize ?? (parsedGroups[0]?.slots.length ?? 0)),
+          qualifyCount: Number(rawGroupStage.qualifyCount ?? (parsedGroups[0]?.qualifyCount ?? 0)),
+          groups: parsedGroups
+        }
+
+        clubIds = []
+        for (const group of parsedGroups) {
+          for (const slot of group.slots) {
+            if (Number.isFinite(slot.clubId) && slot.clubId > 0) {
+              clubIds.push(slot.clubId)
+            }
+          }
+        }
+      }
+
+      if (clubIds.length < 2) {
+        return reply.status(400).send({ ok: false, error: 'automation_needs_participants' })
+      }
 
       const matchDay = Number(body.matchDayOfWeek)
       const normalizedMatchDay = ((matchDay % 7) + 7) % 7
@@ -1412,13 +1538,17 @@ export default async function (server: FastifyInstance) {
           matchDayOfWeek: normalizedMatchDay,
           matchTime: body.matchTime,
           copyClubPlayersToRoster: body.copyClubPlayersToRoster ?? true,
-          seriesFormat
+          seriesFormat,
+          groupStage: groupStageConfig
         })
 
         return reply.send({ ok: true, data: result })
       } catch (err) {
         const error = err as Error & { code?: string }
         request.server.log.error({ err }, 'season automation failed')
+        if (typeof error.message === 'string' && error.message.startsWith('group_stage_')) {
+          return reply.status(400).send({ ok: false, error: error.message })
+        }
         if ((error.message as string) === 'not_enough_participants') {
           return reply.status(400).send({ ok: false, error: 'automation_needs_participants' })
         }

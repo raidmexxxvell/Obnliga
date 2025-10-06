@@ -39,6 +39,7 @@ export type SeriesFormat =
   | 'BEST_OF_N'
   | 'DOUBLE_ROUND_PLAYOFF'
   | 'PLAYOFF_BRACKET'
+  | 'GROUP_SINGLE_ROUND_PLAYOFF'
 
 export interface SeasonParticipant {
   seasonId: number
@@ -65,6 +66,7 @@ export interface Season {
   competition: Competition
   participants: SeasonParticipant[]
   rosters?: SeasonRosterEntry[]
+  groups?: SeasonGroup[]
 }
 
 export interface SeasonAutomationResult {
@@ -73,6 +75,25 @@ export interface SeasonAutomationResult {
   matchesCreated: number
   rosterEntriesCreated: number
   seriesCreated: number
+  groupsCreated: number
+  groupSlotsCreated: number
+}
+
+export interface SeasonGroup {
+  id: number
+  seasonId: number
+  groupIndex: number
+  label: string
+  qualifyCount: number
+  slots: SeasonGroupSlot[]
+}
+
+export interface SeasonGroupSlot {
+  id: number
+  groupId: number
+  position: number
+  clubId?: number | null
+  club?: Club | null
 }
 
 export interface PlayoffCreationResult {
@@ -176,6 +197,8 @@ export interface ClubSeasonStats {
   goalsAgainst: number
   club: Club
   season?: Season
+  groupIndex?: number | null
+  groupLabel?: string | null
 }
 
 export interface ClubCareerTotals {

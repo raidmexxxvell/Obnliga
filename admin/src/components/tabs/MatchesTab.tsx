@@ -9,6 +9,7 @@ import {
   createSeasonPlayoffs,
   fetchMatchStatistics
 } from '../../api/adminClient'
+import type { SeasonGroupStagePayload } from '../../api/adminClient'
 import { useAdminStore } from '../../store/adminStore'
 import {
   Club,
@@ -62,6 +63,24 @@ type SeasonAutomationFormState = {
   clubIds: number[]
   copyClubPlayersToRoster: boolean
   seriesFormat: SeriesFormat
+}
+
+type GroupStageSlotState = {
+  position: number
+  clubId: number | ''
+}
+
+type GroupStageGroupState = {
+  groupIndex: number
+  label: string
+  slots: GroupStageSlotState[]
+}
+
+type GroupStageState = {
+  groupCount: number
+  groupSize: number
+  qualifyCount: number
+  groups: GroupStageGroupState[]
 }
 
 type MatchUpdateFormState = {
@@ -118,6 +137,44 @@ const defaultAutomationForm: SeasonAutomationFormState = {
   seriesFormat: 'SINGLE_MATCH'
 }
 
+const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+const groupLabelForIndex = (index: number): string => {
+  if (index < alphabet.length) {
+    return `Группа ${alphabet[index]}`
+  }
+  const first = Math.floor(index / alphabet.length) - 1
+  const second = index % alphabet.length
+  return `Группа ${alphabet[first] ?? 'X'}${alphabet[second]}`
+}
+
+const createEmptyGroup = (groupIndex: number, groupSize: number): GroupStageGroupState => ({
+  groupIndex,
+  label: groupLabelForIndex(groupIndex - 1),
+  slots: Array.from({ length: groupSize }, (_, position) => ({ position: position + 1, clubId: '' as number | '' }))
+})
+
+const buildDefaultGroupStage = (groupCount = 2, groupSize = 3, qualifyCount = 2): GroupStageState => ({
+  groupCount,
+  groupSize,
+  qualifyCount: Math.min(qualifyCount, groupSize),
+  groups: Array.from({ length: groupCount }, (_, index) => createEmptyGroup(index + 1, groupSize))
+})
+
+const resizeGroupSlots = (slots: GroupStageSlotState[], groupSize: number): GroupStageSlotState[] => {
+  const next = slots.slice(0, groupSize)
+  if (next.length < groupSize) {
+    for (let position = next.length + 1; position <= groupSize; position += 1) {
+      next.push({ position, clubId: '' })
+    }
+  } else {
+    next.forEach((slot, index) => {
+      next[index] = { ...slot, position: index + 1 }
+    })
+  }
+  return next
+}
+
 const buildMatchUpdateForm = (match: MatchSummary): MatchUpdateFormState => ({
   homeScore: typeof match.homeScore === 'number' ? match.homeScore : '',
   awayScore: typeof match.awayScore === 'number' ? match.awayScore : '',
@@ -132,7 +189,8 @@ const seriesFormatNames: Record<SeriesFormat, string> = {
   TWO_LEGGED: 'Лига: два круга (дом и гости)',
   BEST_OF_N: '1 круг+плей-офф',
   DOUBLE_ROUND_PLAYOFF: '2 круга+плей-офф',
-  PLAYOFF_BRACKET: 'Плей-офф: случайная сетка'
+  PLAYOFF_BRACKET: 'Плей-офф: случайная сетка',
+  GROUP_SINGLE_ROUND_PLAYOFF: 'Кубок: группы (1 круг) + плей-офф'
 }
 
 const automationSeriesLabels: Record<SeriesFormat, string> = {
@@ -140,7 +198,8 @@ const automationSeriesLabels: Record<SeriesFormat, string> = {
   TWO_LEGGED: `${seriesFormatNames.TWO_LEGGED}`,
   BEST_OF_N: `${seriesFormatNames.BEST_OF_N}`,
   DOUBLE_ROUND_PLAYOFF: `${seriesFormatNames.DOUBLE_ROUND_PLAYOFF}`,
-  PLAYOFF_BRACKET: 'Плей-офф: случайная сетка (без регулярного этапа)'
+  PLAYOFF_BRACKET: 'Плей-офф: случайная сетка (без регулярного этапа)',
+  GROUP_SINGLE_ROUND_PLAYOFF: 'Кубок: групповой этап в один круг + плей-офф'
 }
 
 const competitionTypeLabels: Record<'LEAGUE' | 'CUP', string> = {
@@ -268,11 +327,14 @@ export const MatchesTab = () => {
   }
 
   const [automationForm, setAutomationForm] = useState<SeasonAutomationFormState>(defaultAutomationForm)
+  const [groupStageState, setGroupStageState] = useState<GroupStageState>(buildDefaultGroupStage())
   const [automationResult, setAutomationResult] = useState<SeasonAutomationResult | null>(null)
   const [automationLoading, setAutomationLoading] = useState(false)
   const automationSeedingEnabled =
     automationForm.seriesFormat === 'BEST_OF_N' || automationForm.seriesFormat === 'DOUBLE_ROUND_PLAYOFF'
   const automationRandomBracket = automationForm.seriesFormat === 'PLAYOFF_BRACKET'
+  const automationGroupStage = automationForm.seriesFormat === 'GROUP_SINGLE_ROUND_PLAYOFF'
+  const [lastGroupStagePreview, setLastGroupStagePreview] = useState<SeasonGroupStagePayload | null>(null)
   const [playoffBestOf, setPlayoffBestOf] = useState<number>(playoffBestOfOptions[0])
   const [playoffLoading, setPlayoffLoading] = useState(false)
   const [playoffResult, setPlayoffResult] = useState<PlayoffCreationResult | null>(null)
@@ -286,6 +348,14 @@ export const MatchesTab = () => {
   const seasonParticipants = useMemo<SeasonParticipant[]>(() => {
     return selectedSeason?.participants ?? []
   }, [selectedSeason])
+
+  const clubsById = useMemo(() => {
+    const map = new Map<number, Club>()
+    for (const club of data.clubs) {
+      map.set(club.id, club)
+    }
+    return map
+  }, [data.clubs])
 
   const competitionFormat: SeriesFormat | undefined = selectedSeason?.competition.seriesFormat
   const isBestOfFormat = competitionFormat === 'BEST_OF_N' || competitionFormat === 'DOUBLE_ROUND_PLAYOFF'
@@ -473,6 +543,87 @@ export const MatchesTab = () => {
     })
   }
 
+  const updateGroupCount = (nextCount: number) => {
+    setGroupStageState((prev) => {
+      const groupCount = Math.max(1, Math.min(nextCount, 12))
+      if (groupCount === prev.groupCount) return prev
+
+      const groups: GroupStageGroupState[] = []
+      for (let index = 0; index < groupCount; index += 1) {
+        const existing = prev.groups[index]
+        if (existing) {
+          groups.push({
+            ...existing,
+            groupIndex: index + 1,
+            label: existing.label.trim() || groupLabelForIndex(index),
+            slots: resizeGroupSlots(existing.slots, prev.groupSize)
+          })
+        } else {
+          groups.push(createEmptyGroup(index + 1, prev.groupSize))
+        }
+      }
+
+      return {
+        groupCount,
+        groupSize: prev.groupSize,
+        qualifyCount: Math.min(prev.qualifyCount, prev.groupSize),
+        groups
+      }
+    })
+  }
+
+  const updateGroupSize = (nextSize: number) => {
+    setGroupStageState((prev) => {
+      const groupSize = Math.max(2, Math.min(nextSize, 8))
+      if (groupSize === prev.groupSize) return prev
+
+      return {
+        groupCount: prev.groupCount,
+        groupSize,
+        qualifyCount: Math.min(prev.qualifyCount, groupSize),
+        groups: prev.groups.map((group) => ({
+          ...group,
+          slots: resizeGroupSlots(group.slots, groupSize)
+        }))
+      }
+    })
+  }
+
+  const updateQualifyCount = (nextQualify: number) => {
+    setGroupStageState((prev) => {
+      const qualifyCount = Math.max(1, Math.min(nextQualify, prev.groupSize))
+      if (qualifyCount === prev.qualifyCount) return prev
+      return {
+        ...prev,
+        qualifyCount
+      }
+    })
+  }
+
+  const updateGroupLabel = (groupIndex: number, label: string) => {
+    setGroupStageState((prev) => ({
+      ...prev,
+      groups: prev.groups.map((group) =>
+        group.groupIndex === groupIndex ? { ...group, label } : group
+      )
+    }))
+  }
+
+  const updateGroupSlotClub = (groupIndex: number, position: number, clubId: number | '') => {
+    setGroupStageState((prev) => ({
+      ...prev,
+      groups: prev.groups.map((group) => {
+        if (group.groupIndex !== groupIndex) return group
+        return {
+          ...group,
+          slots: group.slots.map((slot) =>
+            slot.position === position ? { ...slot, clubId } : slot
+          )
+        }
+      })
+    }))
+  }
+
   const moveAutomationClub = (clubId: number, direction: -1 | 1) => {
     setAutomationForm((form) => {
       const index = form.clubIds.findIndex((id) => id === clubId)
@@ -492,7 +643,7 @@ export const MatchesTab = () => {
       handleFeedback('Заполните данные соревнования, даты и названия', 'error')
       return
     }
-    if (automationForm.clubIds.length < 2) {
+    if (!automationGroupStage && automationForm.clubIds.length < 2) {
       handleFeedback('Выберите минимум две команды для участия', 'error')
       return
     }
@@ -503,15 +654,87 @@ export const MatchesTab = () => {
 
     const competitionId = Number(automationForm.competitionId)
     const matchDay = Number(automationForm.matchDayOfWeek)
+    let groupStagePayload: SeasonGroupStagePayload | undefined
+    let payloadClubIds: number[] = automationForm.clubIds
+
+    if (automationGroupStage) {
+      const qualifyCount = Math.min(groupStageState.qualifyCount, groupStageState.groupSize)
+      const expectedSlots = groupStageState.groupCount * groupStageState.groupSize
+      const usedSet = new Set<number>()
+      const usedClubIds: number[] = []
+
+      try {
+        const groups = groupStageState.groups.slice(0, groupStageState.groupCount).map((group, groupIndex) => {
+          const normalizedLabel = group.label.trim() || groupLabelForIndex(groupIndex)
+          if (!normalizedLabel.trim()) {
+            throw new Error('group_stage_label_required')
+          }
+
+          const slots = resizeGroupSlots(group.slots, groupStageState.groupSize).map((slot, slotIndex) => {
+            const rawValue = slot.clubId
+            const numericClubId = rawValue === '' ? NaN : Number(rawValue)
+            if (!Number.isFinite(numericClubId)) {
+              throw new Error('group_stage_slot_club_required')
+            }
+            if (usedSet.has(numericClubId)) {
+              throw new Error('group_stage_duplicate_club')
+            }
+            usedSet.add(numericClubId)
+            usedClubIds.push(numericClubId)
+            return {
+              position: slotIndex + 1,
+              clubId: numericClubId
+            }
+          })
+
+          return {
+            groupIndex: groupIndex + 1,
+            label: normalizedLabel,
+            qualifyCount,
+            slots
+          }
+        })
+
+        if (usedClubIds.length !== expectedSlots) {
+          throw new Error('group_stage_slot_count')
+        }
+
+        groupStagePayload = {
+          groupCount: groupStageState.groupCount,
+          groupSize: groupStageState.groupSize,
+          qualifyCount,
+          groups
+        }
+        payloadClubIds = usedClubIds
+      } catch (validationError) {
+        const error = validationError instanceof Error ? validationError.message : 'group_stage_incomplete'
+        switch (error) {
+          case 'group_stage_label_required':
+            handleFeedback('Укажите название для каждой группы', 'error')
+            break
+          case 'group_stage_duplicate_club':
+            handleFeedback('Каждый клуб может быть только в одной группе', 'error')
+            break
+          case 'group_stage_slot_club_required':
+          case 'group_stage_slot_count':
+          default:
+            handleFeedback('Заполните все слоты групп участниками', 'error')
+            break
+        }
+        return
+      }
+    }
+
     const payload = {
       competitionId,
       seasonName: automationForm.seasonName.trim(),
       startDate: automationForm.startDate,
       matchDayOfWeek: Number.isFinite(matchDay) ? matchDay : 0,
       matchTime: automationForm.matchTime || undefined,
-      clubIds: automationForm.clubIds,
+      clubIds: payloadClubIds,
       copyClubPlayersToRoster: automationForm.copyClubPlayersToRoster,
-      seriesFormat: automationForm.seriesFormat
+      seriesFormat: automationForm.seriesFormat,
+      groupStage: groupStagePayload
     }
 
     try {
@@ -519,7 +742,7 @@ export const MatchesTab = () => {
       const result = await createSeasonAutomation(token, payload)
       setAutomationResult(result)
       handleFeedback(
-        `Сезон создан автоматически: ${result.participantsCreated} команд, ${result.matchesCreated} матчей, ${result.rosterEntriesCreated} заявок, ${result.seriesCreated} серий плей-офф`,
+        `Сезон создан автоматически: ${result.participantsCreated} команд, ${result.matchesCreated} матчей, ${result.rosterEntriesCreated} заявок, ${result.seriesCreated} серий плей-офф, ${result.groupsCreated} групп (слотов: ${result.groupSlotsCreated})`,
         'success'
       )
       await fetchSeasons()
@@ -528,6 +751,20 @@ export const MatchesTab = () => {
         ...defaultAutomationForm,
         startDate: new Date().toISOString().slice(0, 10)
       })
+      setGroupStageState(buildDefaultGroupStage())
+      setLastGroupStagePreview(
+        groupStagePayload
+          ? {
+              groupCount: groupStagePayload.groupCount,
+              groupSize: groupStagePayload.groupSize,
+              qualifyCount: groupStagePayload.qualifyCount,
+              groups: groupStagePayload.groups.map((group) => ({
+                ...group,
+                slots: group.slots.map((slot) => ({ ...slot }))
+              }))
+            }
+          : null
+      )
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Не удалось запустить автоматизацию'
       handleFeedback(message, 'error')
@@ -1142,7 +1379,12 @@ export const MatchesTab = () => {
                 {automationForm.competitionId ? automationSeriesLabels[automationForm.seriesFormat] : 'Выберите соревнование'}
               </span>
             </div>
-            {automationSeedingEnabled ? (
+            {automationGroupStage ? (
+              <p className="muted">
+                Распределите клубы по группам и задайте параметры этапа. Все ячейки должны быть заполнены, а клуб может
+                участвовать только в одной группе.
+              </p>
+            ) : automationSeedingEnabled ? (
               <p className="muted">
                 Групповой этап проходит в один круг. Порядок списка справа задаёт посев плей-офф: первая команда играет с
                 последней, вторая — с предпоследней и т.д. Если участников нечётное число, верхняя по посеву команда
@@ -1164,65 +1406,174 @@ export const MatchesTab = () => {
               />
               Перенести шаблонные составы клуба в сезонную заявку
             </label>
-            <div className="club-selection">
-              <div>
-                <h5>Команды</h5>
-                <p className="muted">Выберите участников (минимум 2).</p>
-                <div className="club-selection-list">
-                  {data.clubs.map((club) => (
-                    <label key={club.id} className="checkbox club-checkbox">
-                      <span>{club.name}</span>
-                      <input
-                        type="checkbox"
-                        checked={automationForm.clubIds.includes(club.id)}
-                        onChange={() => toggleAutomationClub(club.id)}
-                      />
-                    </label>
+            {automationGroupStage ? (
+              <div className="group-stage-editor">
+                <div className="group-stage-controls">
+                  <label>
+                    Количество групп
+                    <input
+                      type="number"
+                      min={1}
+                      max={12}
+                      value={groupStageState.groupCount}
+                      onChange={(event) => updateGroupCount(Number(event.target.value) || 1)}
+                    />
+                  </label>
+                  <label>
+                    Команд в группе
+                    <input
+                      type="number"
+                      min={2}
+                      max={8}
+                      value={groupStageState.groupSize}
+                      onChange={(event) => updateGroupSize(Number(event.target.value) || 2)}
+                    />
+                  </label>
+                  <label>
+                    Проходят дальше
+                    <input
+                      type="number"
+                      min={1}
+                      max={groupStageState.groupSize}
+                      value={groupStageState.qualifyCount}
+                      onChange={(event) => updateQualifyCount(Number(event.target.value) || 1)}
+                    />
+                  </label>
+                  <div className="group-stage-summary">
+                    Слотов заполнено{' '}
+                    {
+                      groupStageState.groups
+                        .slice(0, groupStageState.groupCount)
+                        .reduce((acc, group) => {
+                          const filled = resizeGroupSlots(group.slots, groupStageState.groupSize).filter(
+                            (slot) => typeof slot.clubId === 'number'
+                          ).length
+                          return acc + filled
+                        }, 0)
+                    }
+                    {' '}
+                    из {groupStageState.groupCount * groupStageState.groupSize}
+                  </div>
+                </div>
+                <div className="group-stage-grid">
+                  {groupStageState.groups.slice(0, groupStageState.groupCount).map((group, groupIndex) => (
+                    <div key={group.groupIndex} className="group-card">
+                      <div className="group-card-header">
+                        <span className="group-card-index">Группа {groupIndex + 1}</span>
+                        <input
+                          value={group.label}
+                          onChange={(event) => updateGroupLabel(group.groupIndex, event.target.value)}
+                          placeholder={groupLabelForIndex(groupIndex)}
+                        />
+                      </div>
+                      <ol>
+                        {resizeGroupSlots(group.slots, groupStageState.groupSize).map((slot) => {
+                          const currentValue = typeof slot.clubId === 'number' ? slot.clubId : ''
+                          const usedInOtherSlots = new Set<number>()
+                          groupStageState.groups.slice(0, groupStageState.groupCount).forEach((otherGroup) => {
+                            resizeGroupSlots(otherGroup.slots, groupStageState.groupSize).forEach((otherSlot) => {
+                              const raw = typeof otherSlot.clubId === 'number' ? otherSlot.clubId : NaN
+                              if (!Number.isFinite(raw)) return
+                              if (otherGroup.groupIndex === group.groupIndex && otherSlot.position === slot.position) {
+                                return
+                              }
+                              usedInOtherSlots.add(Number(raw))
+                            })
+                          })
+                          const availableClubs = data.clubs.filter((club) => {
+                            if (currentValue !== '' && club.id === currentValue) return true
+                            return !usedInOtherSlots.has(club.id)
+                          })
+                          return (
+                            <li key={`${group.groupIndex}-${slot.position}`}>
+                              <span className="slot-index">№{slot.position}</span>
+                              <select
+                                value={currentValue === '' ? '' : String(currentValue)}
+                                onChange={(event) => {
+                                  const value = event.target.value
+                                  updateGroupSlotClub(
+                                    group.groupIndex,
+                                    slot.position,
+                                    value === '' ? '' : Number(value)
+                                  )
+                                }}
+                              >
+                                <option value="">—</option>
+                                {availableClubs.map((club) => (
+                                  <option key={club.id} value={club.id}>
+                                    {club.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </li>
+                          )
+                        })}
+                      </ol>
+                    </div>
                   ))}
                 </div>
               </div>
-              <div className="selected-clubs">
-                <h5>{automationSeedingEnabled ? 'Посев и порядок матчей' : 'Список участников'}</h5>
-                {automationForm.clubIds.length === 0 ? (
-                  <p className="muted">Список пуст — отметьте команды слева.</p>
-                ) : (
-                  <ol>
-                    {automationForm.clubIds.map((clubId, index) => {
-                      const club = data.clubs.find((item) => item.id === clubId)
-                      if (!club) return null
-                      return (
-                        <li key={clubId}>
-                          <span>
-                            №{index + 1}. {club.name}
-                          </span>
-                          <span className="reorder-buttons">
-                            <button
-                              type="button"
-                              onClick={() => moveAutomationClub(clubId, -1)}
-                              disabled={!automationSeedingEnabled || index === 0}
-                            >
-                              ▲
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => moveAutomationClub(clubId, 1)}
-                              disabled={!automationSeedingEnabled || index === automationForm.clubIds.length - 1}
-                            >
-                              ▼
-                            </button>
-                          </span>
-                        </li>
-                      )
-                    })}
-                  </ol>
-                )}
-                {automationRandomBracket ? (
-                  <p className="muted" style={{ marginTop: '8px' }}>
-                    Очерёдность в списке не влияет на сетку — она будет перемешана автоматически.
-                  </p>
-                ) : null}
+            ) : (
+              <div className="club-selection">
+                <div>
+                  <h5>Команды</h5>
+                  <p className="muted">Выберите участников (минимум 2).</p>
+                  <div className="club-selection-list">
+                    {data.clubs.map((club) => (
+                      <label key={club.id} className="checkbox club-checkbox">
+                        <span>{club.name}</span>
+                        <input
+                          type="checkbox"
+                          checked={automationForm.clubIds.includes(club.id)}
+                          onChange={() => toggleAutomationClub(club.id)}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="selected-clubs">
+                  <h5>{automationSeedingEnabled ? 'Посев и порядок матчей' : 'Список участников'}</h5>
+                  {automationForm.clubIds.length === 0 ? (
+                    <p className="muted">Список пуст — отметьте команды слева.</p>
+                  ) : (
+                    <ol>
+                      {automationForm.clubIds.map((clubId, index) => {
+                        const club = data.clubs.find((item) => item.id === clubId)
+                        if (!club) return null
+                        return (
+                          <li key={clubId}>
+                            <span>
+                              №{index + 1}. {club.name}
+                            </span>
+                            <span className="reorder-buttons">
+                              <button
+                                type="button"
+                                onClick={() => moveAutomationClub(clubId, -1)}
+                                disabled={!automationSeedingEnabled || index === 0}
+                              >
+                                ▲
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => moveAutomationClub(clubId, 1)}
+                                disabled={!automationSeedingEnabled || index === automationForm.clubIds.length - 1}
+                              >
+                                ▼
+                              </button>
+                            </span>
+                          </li>
+                        )
+                      })}
+                    </ol>
+                  )}
+                  {automationRandomBracket ? (
+                    <p className="muted" style={{ marginTop: '8px' }}>
+                      Очерёдность в списке не влияет на сетку — она будет перемешана автоматически.
+                    </p>
+                  ) : null}
+                </div>
               </div>
-            </div>
+            )}
             <div className="form-actions">
               <button className="button-primary" type="submit" disabled={automationLoading}>
                 {automationLoading ? 'Формируем…' : 'Создать сезон автоматически'}
@@ -1230,7 +1581,10 @@ export const MatchesTab = () => {
               <button
                 className="button-secondary"
                 type="button"
-                onClick={() => setAutomationForm({ ...defaultAutomationForm, startDate: new Date().toISOString().slice(0, 10) })}
+                onClick={() => {
+                  setAutomationForm({ ...defaultAutomationForm, startDate: new Date().toISOString().slice(0, 10) })
+                  setGroupStageState(buildDefaultGroupStage())
+                }}
                 disabled={automationLoading}
               >
                 Очистить форму
@@ -1241,8 +1595,31 @@ export const MatchesTab = () => {
             <div className="automation-summary">
               <p>
                 Сезон #{automationResult.seasonId}: команд — {automationResult.participantsCreated}, матчей — {automationResult.matchesCreated},
-                заявок — {automationResult.rosterEntriesCreated}, серий — {automationResult.seriesCreated}.
+                заявок — {automationResult.rosterEntriesCreated}, серий — {automationResult.seriesCreated}, групп — {automationResult.groupsCreated},
+                слотов групп — {automationResult.groupSlotsCreated}.
               </p>
+              {lastGroupStagePreview ? (
+                <div className="group-preview">
+                  {lastGroupStagePreview.groups.map((group, index) => {
+                    const label = group.label.trim() || groupLabelForIndex(group.groupIndex - 1 || index)
+                    return (
+                      <div className="group-preview-card" key={`group-preview-${group.groupIndex}`}>
+                        <h5>{label}</h5>
+                        <ol>
+                          {group.slots.map((slot) => {
+                            const club = slot.clubId ? clubsById.get(slot.clubId) : undefined
+                            return (
+                              <li key={`${group.groupIndex}-${slot.position}`}>
+                                {slot.position}. {club ? club.name : '—'}
+                              </li>
+                            )
+                          })}
+                        </ol>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : null}
             </div>
           ) : null}
   </article>

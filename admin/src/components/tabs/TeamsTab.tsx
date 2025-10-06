@@ -36,7 +36,8 @@ const baseSeriesFormatOptions: Array<Competition['seriesFormat']> = [
   'TWO_LEGGED',
   'BEST_OF_N',
   'DOUBLE_ROUND_PLAYOFF',
-  'PLAYOFF_BRACKET'
+  'PLAYOFF_BRACKET',
+  'GROUP_SINGLE_ROUND_PLAYOFF'
 ]
 
 const competitionTypeLabels: Record<Competition['type'], string> = {
@@ -49,14 +50,17 @@ const seriesFormatLabels: Record<Competition['seriesFormat'], string> = {
   TWO_LEGGED: 'Два круга (дом/гости)',
   BEST_OF_N: '1 круг+плей-офф',
   DOUBLE_ROUND_PLAYOFF: '2 круга+плей-офф',
-  PLAYOFF_BRACKET: 'Плей-офф сетка (рандом)'
+  PLAYOFF_BRACKET: 'Плей-офф сетка (рандом)',
+  GROUP_SINGLE_ROUND_PLAYOFF: 'Группы + плей-офф (1 круг)'
 }
 
 const getSeriesFormatOptions = (type: Competition['type']): Array<Competition['seriesFormat']> => {
   if (type === 'CUP') {
-    return ['PLAYOFF_BRACKET']
+    return ['GROUP_SINGLE_ROUND_PLAYOFF', 'PLAYOFF_BRACKET']
   }
-  return baseSeriesFormatOptions.filter((option) => option !== 'PLAYOFF_BRACKET')
+  return baseSeriesFormatOptions.filter(
+    (option) => option !== 'PLAYOFF_BRACKET' && option !== 'GROUP_SINGLE_ROUND_PLAYOFF'
+  )
 }
 
 const defaultClubForm: ClubFormState = { name: '', shortName: '', logoUrl: '' }

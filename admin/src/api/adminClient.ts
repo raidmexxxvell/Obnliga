@@ -61,6 +61,22 @@ const ERROR_DICTIONARY: Record<string, string> = {
   internal: 'Внутренняя ошибка сервера. Попробуйте позже.',
   invalid_full_name: 'Введите имя и фамилию через пробел.',
   lineup_fields_required: 'Заполните поля заявки.',
+  group_stage_required: 'Настройте группы перед автоматизацией сезона.',
+  group_stage_missing: 'Настройте группы перед автоматизацией сезона.',
+  group_stage_invalid_count: 'Некорректное количество групп.',
+  group_stage_invalid_size: 'Размер группы должен быть не меньше двух команд.',
+  group_stage_count_mismatch: 'Количество групп не совпадает с заданным значением.',
+  group_stage_invalid_index: 'Некорректный индекс группы.',
+  group_stage_duplicate_index: 'Индексы групп должны быть уникальны и идти по порядку.',
+  group_stage_label_required: 'Укажите название для каждой группы.',
+  group_stage_slot_count: 'Заполните все слоты участников в каждой группе.',
+  group_stage_invalid_qualify: 'Квалификационный порог должен быть в пределах размера группы.',
+  group_stage_invalid_slot_position: 'Некорректная позиция слота в группе.',
+  group_stage_duplicate_slot_position: 'Позиции внутри группы не должны повторяться.',
+  group_stage_slot_club_required: 'Выберите клуб для каждой позиции в группе.',
+  group_stage_duplicate_club: 'Клуб не может участвовать в нескольких группах одновременно.',
+  group_stage_index_range: 'Индексы групп должны идти последовательно начиная с 1.',
+  group_stage_incomplete: 'Все группы должны быть полностью заполнены.',
   match_club_not_found: 'Клуб не найден среди участников матча.',
   match_fields_required: 'Заполните параметры матча.',
   match_not_found: 'Матч не найден.',
@@ -284,6 +300,26 @@ export interface SeasonAutomationPayload {
   clubIds: number[]
   copyClubPlayersToRoster?: boolean
   seriesFormat: SeriesFormat
+  groupStage?: SeasonGroupStagePayload
+}
+
+export interface SeasonGroupStagePayload {
+  groupCount: number
+  groupSize: number
+  qualifyCount: number
+  groups: SeasonGroupAutomationPayload[]
+}
+
+export interface SeasonGroupAutomationPayload {
+  groupIndex: number
+  label: string
+  qualifyCount: number
+  slots: SeasonGroupSlotAutomationPayload[]
+}
+
+export interface SeasonGroupSlotAutomationPayload {
+  position: number
+  clubId: number
 }
 
 export interface ImportClubPlayersPayload {

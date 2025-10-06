@@ -33,6 +33,7 @@ model Club {
   lineups        MatchLineup[]
   eventTeams     MatchEvent[]
   matchStatistics MatchStatistic[]
+  groupSlots     SeasonGroupSlot[]
 
   @@map("club")
 }
@@ -85,6 +86,7 @@ enum SeriesFormat {
   BEST_OF_N
   DOUBLE_ROUND_PLAYOFF
   PLAYOFF_BRACKET
+  GROUP_SINGLE_ROUND_PLAYOFF
 }
 
 model Season {
@@ -105,6 +107,7 @@ model Season {
   playerStats  PlayerSeasonStats[]
   clubStats    ClubSeasonStats[]
   rounds       SeasonRound[]
+  groups       SeasonGroup[]
 
   @@map("season")
 }
@@ -171,12 +174,14 @@ model SeasonRound {
   roundType  RoundType @map("round_type")
   roundNumber Int?     @map("round_number")
   label      String    @map("label")
+  groupId    Int?      @map("group_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   matches Match[]
+  group   SeasonGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
   @@unique([seasonId, label], name: "unique_round_label_per_season")
   @@map("season_round")
@@ -227,6 +232,7 @@ model Match {
   stadiumId   Int?     @map("stadium_id")
   refereeId   Int?     @map("referee_id")
   roundId     Int?     @map("round_id")
+  groupId     Int?     @map("group_id")
   isArchived  Boolean  @default(false) @map("is_archived")
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -242,10 +248,46 @@ model Match {
   events   MatchEvent[]
   predictions Prediction[]
   round    SeasonRound? @relation(fields: [roundId], references: [id], onDelete: SetNull)
+  group    SeasonGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
   statistics MatchStatistic[]
 
   @@unique([seriesId, seriesMatchNumber], map: "unique_series_match_number")
   @@map("match")
+}
+
+model SeasonGroup {
+  id           Int    @id @default(autoincrement()) @map("season_group_id")
+  seasonId     Int    @map("season_id")
+  groupIndex   Int    @map("group_index")
+  label        String
+  qualifyCount Int    @map("qualify_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  slots  SeasonGroupSlot[]
+  rounds SeasonRound[]
+  matches Match[]
+
+  @@unique([seasonId, groupIndex], name: "unique_group_index_per_season")
+  @@map("season_group")
+}
+
+model SeasonGroupSlot {
+  id       Int  @id @default(autoincrement()) @map("season_group_slot_id")
+  groupId  Int  @map("group_id")
+  position Int  @map("position")
+  clubId   Int? @map("club_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  group SeasonGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  club  Club?       @relation(fields: [clubId], references: [id], onDelete: SetNull)
+
+  @@unique([groupId, position], name: "unique_slot_per_group")
+  @@map("season_group_slot")
 }
 
 model FriendlyMatch {

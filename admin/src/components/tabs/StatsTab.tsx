@@ -268,6 +268,48 @@ export const StatsTab = () => {
     return map
   }, [data.matches, selectedSeasonId])
 
+  const groupStandings = useMemo(() => {
+    if (!selectedSeason) return null
+    if (selectedSeason.competition.seriesFormat !== 'GROUP_SINGLE_ROUND_PLAYOFF') return null
+    const groups = selectedSeason.groups ?? []
+    if (!groups.length) return []
+
+    const seasonMatches = data.matches.filter(
+      (match) =>
+        match.seasonId === selectedSeason.id &&
+        match.round?.roundType !== 'PLAYOFF'
+    )
+
+    return groups
+      .map((group) => {
+        const clubIds = new Set(
+          group.slots
+            .filter((slot) => typeof slot.clubId === 'number')
+            .map((slot) => slot.clubId as number)
+        )
+        if (!clubIds.size) {
+          return {
+            groupIndex: group.groupIndex,
+            label: group.label,
+            qualifyCount: group.qualifyCount,
+            rows: [] as typeof standings
+          }
+        }
+        const groupRows = standings.filter((row) => clubIds.has(row.clubId))
+        const groupMatches = seasonMatches.filter(
+          (match) => clubIds.has(match.homeTeamId) && clubIds.has(match.awayTeamId)
+        )
+        return {
+          groupIndex: group.groupIndex,
+          label: group.label,
+          qualifyCount: group.qualifyCount,
+          rows: sortStandings(groupRows, groupMatches)
+        }
+      })
+      .filter((entry) => entry !== null)
+      .sort((left, right) => left.groupIndex - right.groupIndex)
+  }, [data.matches, selectedSeason, standings])
+
   useEffect(() => {
     if (!careerClubId) return
     if (!careerClubOptions.some(([id]) => id === careerClubId)) {
@@ -395,45 +437,109 @@ export const StatsTab = () => {
             <h4>Турнирная таблица</h4>
             <p>Сортировка: очки, личные встречи, разница голов.</p>
           </header>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Клуб</th>
-                <th>Игры</th>
-                <th>Победы</th>
-                <th>Ничьи</th>
-                <th>Поражения</th>
-                <th>Голы</th>
-                <th>Очки</th>
-              </tr>
-            </thead>
-            <tbody>
-              {standings.map((row, index) => {
-                const matchesKey = `${row.seasonId}:${row.clubId}`
-                const matches = finishedMatchesByClub.get(matchesKey)
-                const inferredDraws = Math.max(0, row.points - row.wins * 3)
-                const matchesPlayed = matches ?? row.wins + row.losses + inferredDraws
-                const draws = Math.max(0, matchesPlayed - row.wins - row.losses)
-
+          {groupStandings && groupStandings.length ? (
+            <div className="group-standings-grid">
+              {groupStandings.map((group) => {
+                const hasRows = group.rows.length > 0
                 return (
-                  <tr key={`${row.seasonId}-${row.clubId}`}>
-                    <td>{index + 1}</td>
-                    <td>{row.club.name}</td>
-                    <td>{matchesPlayed}</td>
-                    <td>{row.wins}</td>
-                    <td>{draws}</td>
-                    <td>{row.losses}</td>
-                    <td>
-                      {row.goalsFor}:{row.goalsAgainst} ({row.goalsFor - row.goalsAgainst})
-                    </td>
-                    <td>{row.points}</td>
-                  </tr>
+                  <div className="group-standings-card" key={`group-${group.groupIndex}`}>
+                    <div className="group-standings-header">
+                      <h5>{group.label}</h5>
+                      <span className="muted">Проходят: {group.qualifyCount}</span>
+                    </div>
+                    {hasRows ? (
+                      <table className="data-table compact">
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>Клуб</th>
+                            <th>Игры</th>
+                            <th>Победы</th>
+                            <th>Ничьи</th>
+                            <th>Поражения</th>
+                            <th>Голы</th>
+                            <th>Очки</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.rows.map((row, index) => {
+                            const matchesKey = `${row.seasonId}:${row.clubId}`
+                            const matches = finishedMatchesByClub.get(matchesKey)
+                            const inferredDraws = Math.max(0, row.points - row.wins * 3)
+                            const matchesPlayed = matches ?? row.wins + row.losses + inferredDraws
+                            const draws = Math.max(0, matchesPlayed - row.wins - row.losses)
+                            const highlight = index < group.qualifyCount
+
+                            return (
+                              <tr
+                                key={`${row.seasonId}-${row.clubId}`}
+                                className={highlight ? 'qualify-row' : undefined}
+                              >
+                                <td>{index + 1}</td>
+                                <td>{row.club.name}</td>
+                                <td>{matchesPlayed}</td>
+                                <td>{row.wins}</td>
+                                <td>{draws}</td>
+                                <td>{row.losses}</td>
+                                <td>
+                                  {row.goalsFor}:{row.goalsAgainst} ({row.goalsFor - row.goalsAgainst})
+                                </td>
+                                <td>{row.points}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <p className="muted">Группа ещё не заполнена участниками.</p>
+                    )}
+                  </div>
                 )
               })}
-            </tbody>
-          </table>
-          {!standings.length ? <p className="muted">Нет данных для выбранного сезона.</p> : null}
+            </div>
+          ) : (
+            <>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Клуб</th>
+                    <th>Игры</th>
+                    <th>Победы</th>
+                    <th>Ничьи</th>
+                    <th>Поражения</th>
+                    <th>Голы</th>
+                    <th>Очки</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {standings.map((row, index) => {
+                    const matchesKey = `${row.seasonId}:${row.clubId}`
+                    const matches = finishedMatchesByClub.get(matchesKey)
+                    const inferredDraws = Math.max(0, row.points - row.wins * 3)
+                    const matchesPlayed = matches ?? row.wins + row.losses + inferredDraws
+                    const draws = Math.max(0, matchesPlayed - row.wins - row.losses)
+
+                    return (
+                      <tr key={`${row.seasonId}-${row.clubId}`}>
+                        <td>{index + 1}</td>
+                        <td>{row.club.name}</td>
+                        <td>{matchesPlayed}</td>
+                        <td>{row.wins}</td>
+                        <td>{draws}</td>
+                        <td>{row.losses}</td>
+                        <td>
+                          {row.goalsFor}:{row.goalsAgainst} ({row.goalsFor - row.goalsAgainst})
+                        </td>
+                        <td>{row.points}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              {!standings.length ? <p className="muted">Нет данных для выбранного сезона.</p> : null}
+            </>
+          )}
         </section>
       ) : null}
 
