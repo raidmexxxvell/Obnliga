@@ -310,6 +310,70 @@ export const StatsTab = () => {
       .sort((left, right) => left.groupIndex - right.groupIndex)
   }, [data.matches, selectedSeason, standings])
 
+  const groupSeedPreview = useMemo(() => {
+    if (!groupStandings || !selectedSeason) return null
+    if (selectedSeason.competition.seriesFormat !== 'GROUP_SINGLE_ROUND_PLAYOFF') return null
+
+    const seeds: Array<{
+      clubId: number
+      points: number
+      goalDiff: number
+      goalsFor: number
+      wins: number
+      preRank: number
+    }> = []
+
+    const groupByIndex = new Map<number, (typeof groupStandings)[number]>()
+    for (const entry of groupStandings) {
+      groupByIndex.set(entry.groupIndex, entry)
+    }
+
+    for (const group of selectedSeason.groups ?? []) {
+      const standingsEntry = groupByIndex.get(group.groupIndex)
+      if (!standingsEntry) continue
+
+      const slotRank = new Map<number, number>()
+      for (const slot of group.slots) {
+        if (typeof slot.clubId === 'number' && slot.clubId > 0) {
+          slotRank.set(slot.clubId, slot.position)
+        }
+      }
+
+      for (let index = 0; index < group.qualifyCount; index += 1) {
+        const row = standingsEntry.rows[index]
+        if (!row) continue
+        const goalDiff = row.goalsFor - row.goalsAgainst
+        const slot = slotRank.get(row.clubId) ?? index + 1
+        const preRank = group.groupIndex * 100 + slot
+        seeds.push({
+          clubId: row.clubId,
+          points: row.points,
+          goalDiff,
+          goalsFor: row.goalsFor,
+          wins: row.wins,
+          preRank
+        })
+      }
+    }
+
+    if (!seeds.length) return null
+
+    seeds.sort((left, right) => {
+      if (right.points !== left.points) return right.points - left.points
+      if (right.goalDiff !== left.goalDiff) return right.goalDiff - left.goalDiff
+      if (right.goalsFor !== left.goalsFor) return right.goalsFor - left.goalsFor
+      if (left.preRank !== right.preRank) return left.preRank - right.preRank
+      if (right.wins !== left.wins) return right.wins - left.wins
+      return left.clubId - right.clubId
+    })
+
+    const map = new Map<number, number>()
+    seeds.forEach((entry, index) => {
+      map.set(entry.clubId, index + 1)
+    })
+    return map
+  }, [groupStandings, selectedSeason])
+
   useEffect(() => {
     if (!careerClubId) return
     if (!careerClubOptions.some(([id]) => id === careerClubId)) {
@@ -459,6 +523,7 @@ export const StatsTab = () => {
                             <th title="Поражения">П</th>
                             <th>Голы</th>
                             <th>Очки</th>
+                            <th>Р</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -476,6 +541,7 @@ export const StatsTab = () => {
                                 className={highlight ? 'qualify-row' : undefined}
                               >
                                 <td>{index + 1}</td>
+                                <td>{groupSeedPreview?.get(row.clubId) ?? '—'}</td>
                                 <td>{row.club.name}</td>
                                 <td>{matchesPlayed}</td>
                                 <td>{row.wins}</td>
