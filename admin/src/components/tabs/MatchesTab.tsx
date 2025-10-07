@@ -233,12 +233,25 @@ const matchStatusLabels: Record<MatchSummary['status'], string> = {
   POSTPONED: 'Перенесён'
 }
 
-const eventTypes: MatchEventEntry['eventType'][] = ['GOAL', 'PENALTY_GOAL', 'YELLOW_CARD', 'RED_CARD', 'SUB_IN', 'SUB_OUT']
+const eventTypes: MatchEventEntry['eventType'][] = [
+  'GOAL',
+  'PENALTY_GOAL',
+  'OWN_GOAL',
+  'PENALTY_MISSED',
+  'YELLOW_CARD',
+  'SECOND_YELLOW_CARD',
+  'RED_CARD',
+  'SUB_IN',
+  'SUB_OUT'
+]
 
 const eventTypeLabels: Record<MatchEventEntry['eventType'], string> = {
   GOAL: 'Гол',
   PENALTY_GOAL: 'Гол с пенальти',
+  OWN_GOAL: 'Автогол',
+  PENALTY_MISSED: 'Незабитый пенальти',
   YELLOW_CARD: 'Жёлтая карточка',
+  SECOND_YELLOW_CARD: 'Вторая жёлтая (удаление)',
   RED_CARD: 'Красная карточка',
   SUB_IN: 'Замена (вышел)',
   SUB_OUT: 'Замена (ушёл)'
@@ -1033,7 +1046,8 @@ export const MatchesTab = () => {
       handleFeedback('Игрок должен быть из выбранной команды', 'error')
       return
     }
-    if (eventForm.relatedPlayerId) {
+    const assistEnabled = eventForm.eventType === 'GOAL'
+    if (assistEnabled && eventForm.relatedPlayerId) {
       const relatedEntry = matchPlayersById.get(eventForm.relatedPlayerId)
       if (!relatedEntry || relatedEntry.clubId !== playerEntry.clubId) {
         handleFeedback('Второй игрок должен быть из той же команды, что и автор события', 'error')
@@ -1046,7 +1060,7 @@ export const MatchesTab = () => {
         playerId: eventForm.playerId,
         minute: eventForm.minute,
         eventType: eventForm.eventType,
-        relatedPlayerId: eventForm.relatedPlayerId || undefined
+        relatedPlayerId: assistEnabled && eventForm.relatedPlayerId ? eventForm.relatedPlayerId : undefined
       })
       await loadMatchDetails(selectedMatchId)
     }, 'Событие добавлено')
@@ -1178,12 +1192,14 @@ export const MatchesTab = () => {
     return matchPlayersPool.filter((entry) => entry.clubId === eventForm.teamId)
   }, [eventForm.teamId, matchPlayersPool])
 
+  const eventAllowsAssist = eventForm.eventType === 'GOAL'
+
   const relatedEventPlayerOptions = useMemo(() => {
-    if (!eventForm.playerId) return []
+    if (!eventAllowsAssist || !eventForm.playerId) return []
     const primary = matchPlayersById.get(eventForm.playerId)
     if (!primary) return []
     return matchPlayersPool.filter((entry) => entry.clubId === primary.clubId && entry.personId !== primary.personId)
-  }, [eventForm.playerId, matchPlayersById, matchPlayersPool])
+  }, [eventAllowsAssist, eventForm.playerId, matchPlayersById, matchPlayersPool])
 
   useEffect(() => {
     setMatchUpdateForms((forms) => {
@@ -2449,7 +2465,16 @@ export const MatchesTab = () => {
                         Тип события
                         <select
                           value={eventForm.eventType}
-                          onChange={(event) => setEventForm((form) => ({ ...form, eventType: event.target.value as EventFormState['eventType'] }))}
+                          onChange={(event) =>
+                            setEventForm((form) => {
+                              const nextType = event.target.value as EventFormState['eventType']
+                              return {
+                                ...form,
+                                eventType: nextType,
+                                relatedPlayerId: nextType === 'GOAL' ? form.relatedPlayerId : ''
+                              }
+                            })
+                          }
                         >
                           {eventTypes.map((type) => (
                             <option key={type} value={type}>
@@ -2464,15 +2489,22 @@ export const MatchesTab = () => {
                       <select
                         value={eventForm.relatedPlayerId}
                         onChange={(event) => setEventForm((form) => ({ ...form, relatedPlayerId: event.target.value ? Number(event.target.value) : '' }))}
-                        disabled={!selectedMatch || !eventForm.playerId || relatedEventPlayerOptions.length === 0}
+                        disabled={
+                          !selectedMatch ||
+                          !eventAllowsAssist ||
+                          !eventForm.playerId ||
+                          relatedEventPlayerOptions.length === 0
+                        }
                       >
                         <option value="">
                           {selectedMatch
-                            ? eventForm.playerId
-                              ? relatedEventPlayerOptions.length === 0
-                                ? 'Нет второго игрока'
-                                : 'Выберите игрока'
-                              : 'Сначала выберите основного игрока'
+                            ? eventAllowsAssist
+                              ? eventForm.playerId
+                                ? relatedEventPlayerOptions.length === 0
+                                  ? 'Нет второго игрока'
+                                  : 'Выберите игрока'
+                                : 'Сначала выберите основного игрока'
+                              : 'Ассист доступен только для гола'
                             : 'Выберите матч'}
                         </option>
                         {relatedEventPlayerOptions.map((entry) => (

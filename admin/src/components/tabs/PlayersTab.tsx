@@ -46,6 +46,8 @@ const formatDisqualificationReason = (reason: Disqualification['reason']) => {
   switch (reason) {
     case 'RED_CARD':
       return 'Красная карточка'
+    case 'SECOND_YELLOW':
+      return 'Вторая жёлтая'
     case 'ACCUMULATED_CARDS':
       return 'Накопление карточек'
     default:

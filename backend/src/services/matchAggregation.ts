@@ -20,7 +20,8 @@ import { defaultCache } from '../cache'
 import { addDays, createInitialPlayoffPlans, createRandomPlayoffPlans, stageNameForTeams } from './seasonAutomation'
 
 const YELLOW_CARD_LIMIT = 4
-const RED_CARD_BAN_MATCHES = 1
+const RED_CARD_BAN_MATCHES = 2
+const SECOND_YELLOW_BAN_MATCHES = 1
 
 export async function handleMatchFinalization(matchId: bigint, logger: FastifyBaseLogger) {
   const match = await prisma.match.findUnique({
@@ -225,10 +226,10 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
         primary.penaltyGoals += 1
       }
     }
-    if (ev.eventType === MatchEventType.YELLOW_CARD) {
+    if (ev.eventType === MatchEventType.YELLOW_CARD || ev.eventType === MatchEventType.SECOND_YELLOW_CARD) {
       primary.yellow += 1
     }
-    if (ev.eventType === MatchEventType.RED_CARD) {
+    if (ev.eventType === MatchEventType.RED_CARD || ev.eventType === MatchEventType.SECOND_YELLOW_CARD) {
       primary.red += 1
     }
     statsMap.set(ev.playerId, primary)
@@ -432,11 +433,16 @@ async function processDisqualifications(match: MatchWithEvents, tx: PrismaTx) {
   }
 
   for (const ev of match.events) {
-    if (ev.eventType === MatchEventType.RED_CARD) {
+    if (ev.eventType === MatchEventType.RED_CARD || ev.eventType === MatchEventType.SECOND_YELLOW_CARD) {
+      const reason =
+        ev.eventType === MatchEventType.SECOND_YELLOW_CARD
+          ? DisqualificationReason.SECOND_YELLOW
+          : DisqualificationReason.RED_CARD
+      const banDuration = ev.eventType === MatchEventType.SECOND_YELLOW_CARD ? SECOND_YELLOW_BAN_MATCHES : RED_CARD_BAN_MATCHES
       const exists = await tx.disqualification.findFirst({
         where: {
           personId: ev.playerId,
-          reason: DisqualificationReason.RED_CARD,
+          reason,
           isActive: true
         }
       })
@@ -445,9 +451,9 @@ async function processDisqualifications(match: MatchWithEvents, tx: PrismaTx) {
           data: {
             personId: ev.playerId,
             clubId: ev.teamId,
-            reason: DisqualificationReason.RED_CARD,
+            reason,
             sanctionDate: match.matchDateTime,
-            banDurationMatches: RED_CARD_BAN_MATCHES,
+            banDurationMatches: banDuration,
             matchesMissed: 0,
             isActive: true
           }

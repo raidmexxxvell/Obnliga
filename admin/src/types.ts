@@ -164,7 +164,16 @@ export interface MatchEventEntry {
   matchId: string
   teamId: number
   minute: number
-  eventType: 'GOAL' | 'PENALTY_GOAL' | 'YELLOW_CARD' | 'RED_CARD' | 'SUB_IN' | 'SUB_OUT'
+  eventType:
+    | 'GOAL'
+    | 'PENALTY_GOAL'
+    | 'OWN_GOAL'
+    | 'PENALTY_MISSED'
+    | 'YELLOW_CARD'
+    | 'SECOND_YELLOW_CARD'
+    | 'RED_CARD'
+    | 'SUB_IN'
+    | 'SUB_OUT'
   playerId: number
   relatedPlayerId?: number | null
   player: Person
@@ -285,7 +294,7 @@ export interface Disqualification {
   id: string
   personId: number
   clubId?: number | null
-  reason: 'RED_CARD' | 'ACCUMULATED_CARDS' | 'OTHER'
+  reason: 'RED_CARD' | 'SECOND_YELLOW' | 'ACCUMULATED_CARDS' | 'OTHER'
   sanctionDate: string
   banDurationMatches: number
   matchesMissed: number

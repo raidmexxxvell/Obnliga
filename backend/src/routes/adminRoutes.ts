@@ -112,9 +112,13 @@ const matchStatsCacheKey = (matchId: bigint) => `md:stats:${matchId.toString()}`
 
 type MatchStatisticMetric = 'totalShots' | 'shotsOnTarget' | 'corners' | 'yellowCards' | 'redCards'
 const matchStatisticMetrics: MatchStatisticMetric[] = ['totalShots', 'shotsOnTarget', 'corners', 'yellowCards', 'redCards']
-const eventStatisticMetricMap: Partial<Record<MatchEventType, MatchStatisticMetric>> = {
-  YELLOW_CARD: 'yellowCards',
-  RED_CARD: 'redCards'
+
+type EventStatisticAdjustments = Partial<Record<MatchStatisticMetric, number>>
+
+const eventStatisticAdjustments: Partial<Record<MatchEventType, EventStatisticAdjustments>> = {
+  YELLOW_CARD: { yellowCards: 1 },
+  RED_CARD: { redCards: 1 },
+  SECOND_YELLOW_CARD: { yellowCards: 1, redCards: 1 }
 }
 
 const applyStatisticDelta = async (
@@ -183,6 +187,27 @@ const applyStatisticDelta = async (
   })
 
   return true
+}
+
+const applyStatisticAdjustments = async (
+  tx: Prisma.TransactionClient,
+  matchId: bigint,
+  clubId: number,
+  adjustments: EventStatisticAdjustments | undefined,
+  direction: 1 | -1
+): Promise<boolean> => {
+  if (!adjustments || !clubId) {
+    return false
+  }
+  let changed = false
+  for (const [metric, amount] of Object.entries(adjustments) as Array<[MatchStatisticMetric, number]>) {
+    if (!amount) continue
+    const delta = amount * direction
+    if (!delta) continue
+    const applied = await applyStatisticDelta(tx, matchId, clubId, metric, delta)
+    changed = changed || applied
+  }
+  return changed
 }
 
 type MatchWithRelations = Prisma.MatchGetPayload<{
@@ -2185,8 +2210,8 @@ export default async function (server: FastifyInstance) {
             }
           })
 
-          const metric = eventStatisticMetricMap[event.eventType]
-          const statAdjusted = metric ? await applyStatisticDelta(tx, matchId, event.teamId, metric, 1) : false
+          const adjustments = eventStatisticAdjustments[event.eventType]
+          const statAdjusted = await applyStatisticAdjustments(tx, matchId, event.teamId, adjustments, 1)
           return { event, statAdjusted }
         })
       } catch (err) {
@@ -2238,21 +2263,17 @@ export default async function (server: FastifyInstance) {
           })
 
           let statAdjusted = false
-          const beforeMetric = eventStatisticMetricMap[before.eventType]
-          const afterMetric = eventStatisticMetricMap[event.eventType]
+          const beforeAdjustments = eventStatisticAdjustments[before.eventType]
+          const afterAdjustments = eventStatisticAdjustments[event.eventType]
 
-          if (beforeMetric) {
-            const shouldDecrement = !afterMetric || beforeMetric !== afterMetric || before.teamId !== event.teamId
-            if (shouldDecrement) {
-              const changed = await applyStatisticDelta(tx, matchId, before.teamId, beforeMetric, -1)
+          if (before.teamId !== event.teamId || before.eventType !== event.eventType) {
+            if (beforeAdjustments) {
+              const changed = await applyStatisticAdjustments(tx, matchId, before.teamId, beforeAdjustments, -1)
               statAdjusted = statAdjusted || changed
             }
-          }
 
-          if (afterMetric) {
-            const shouldIncrement = !beforeMetric || beforeMetric !== afterMetric || before.teamId !== event.teamId
-            if (shouldIncrement) {
-              const changed = await applyStatisticDelta(tx, matchId, event.teamId, afterMetric, 1)
+            if (afterAdjustments) {
+              const changed = await applyStatisticAdjustments(tx, matchId, event.teamId, afterAdjustments, 1)
               statAdjusted = statAdjusted || changed
             }
           }
@@ -2294,9 +2315,9 @@ export default async function (server: FastifyInstance) {
 
           await tx.matchEvent.delete({ where: { id: eventId } })
 
-          const metric = eventStatisticMetricMap[existing.eventType]
-          if (metric) {
-            const changed = await applyStatisticDelta(tx, matchId, existing.teamId, metric, -1)
+          const adjustments = eventStatisticAdjustments[existing.eventType]
+          if (adjustments) {
+            const changed = await applyStatisticAdjustments(tx, matchId, existing.teamId, adjustments, -1)
             statAdjusted = statAdjusted || changed
           }
         })
