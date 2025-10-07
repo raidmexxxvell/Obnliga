@@ -516,6 +516,7 @@ export const StatsTab = () => {
                         <thead>
                           <tr>
                             <th>#</th>
+                            <th>Р</th>
                             <th>Клуб</th>
                             <th>И</th>
                             <th title="Победы">В</th>
@@ -523,7 +524,6 @@ export const StatsTab = () => {
                             <th title="Поражения">П</th>
                             <th>Голы</th>
                             <th>Очки</th>
-                            <th>Р</th>
                           </tr>
                         </thead>
                         <tbody>

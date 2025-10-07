@@ -398,10 +398,11 @@ export const MatchesTab = () => {
 
   const playoffSuccessBanner = useMemo(() => {
     if (!playoffResult) return null
-    const byeNames = (playoffResult.byeClubIds ?? [])
-      .map((clubId) => data.clubs.find((club) => club.id === clubId)?.name ?? `клуб #${clubId}`)
-    const byeSuffix = byeNames.length > 1 ? 'получают автопроход дальше' : 'получает автопроход дальше'
-    const byeText = byeNames.length ? `, ${byeNames.join(', ')} ${byeSuffix}` : ''
+    const byeDescriptions = (playoffResult.byeSeries ?? []).map((entry) => {
+      const clubName = data.clubs.find((club) => club.id === entry.clubId)?.name ?? `клуб #${entry.clubId}`
+      return `Посев #${entry.seed} — ${clubName}`
+    })
+    const byeText = byeDescriptions.length ? `, автопроход: ${byeDescriptions.join('; ')}` : ''
     return (
       <div className="inline-feedback success">
         Серий: {playoffResult.seriesCreated}, матчей: {playoffResult.matchesCreated}
@@ -830,12 +831,13 @@ export const MatchesTab = () => {
         typeof bestOfPayload === 'number' ? { bestOfLength: bestOfPayload } : {}
       )
       setPlayoffResult(result)
-      const byeClubNames = (result.byeClubIds ?? [])
-        .map((clubId) => data.clubs.find((club) => club.id === clubId)?.name ?? `клуб #${clubId}`)
+      const byeDescriptions = (result.byeSeries ?? []).map((entry) => {
+        const clubName = data.clubs.find((club) => club.id === entry.clubId)?.name ?? `клуб #${entry.clubId}`
+        return `Посев #${entry.seed} — ${clubName}`
+      })
       const successMessage = [`Серий: ${result.seriesCreated}`, `Матчей: ${result.matchesCreated}`]
-      if (byeClubNames.length) {
-        const byeSuffix = byeClubNames.length > 1 ? 'получают автопроход дальше' : 'получает автопроход дальше'
-        successMessage.push(`${byeClubNames.join(', ')} ${byeSuffix}`)
+      if (byeDescriptions.length) {
+        successMessage.push(`Автопроход: ${byeDescriptions.join('; ')}`)
       }
       handleFeedback(`Плей-офф создан (${successMessage.join(', ')})`, 'success')
       await Promise.all([

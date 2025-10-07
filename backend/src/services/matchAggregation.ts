@@ -17,7 +17,13 @@ import {
 } from '@prisma/client'
 import prisma from '../db'
 import { defaultCache } from '../cache'
-import { addDays, createInitialPlayoffPlans, createRandomPlayoffPlans, stageNameForTeams } from './seasonAutomation'
+import {
+  addDays,
+  applyTimeToDate,
+  createInitialPlayoffPlans,
+  createRandomPlayoffPlans,
+  stageNameForTeams
+} from './seasonAutomation'
 
 const YELLOW_CARD_LIMIT = 4
 const RED_CARD_BAN_MATCHES = 2
@@ -772,14 +778,9 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
     const matchTime = latestMatch ? latestMatch.matchDateTime.toISOString().slice(11, 16) : null
     const startDate = latestMatch ? addDays(latestMatch.matchDateTime, 7) : new Date()
 
-    const { plans, byeClubIds } = createInitialPlayoffPlans(
-      seededWinners,
-      startDate,
-      matchTime,
-      context.bestOfLength
-    )
+    const { plans, byeSeries } = createInitialPlayoffPlans(seededWinners, startDate, matchTime, context.bestOfLength)
 
-    if (plans.length === 0 && byeClubIds.length === 0) return
+    if (plans.length === 0 && byeSeries.length === 0) return
 
     let latestDate: Date | null = latestMatch?.matchDateTime ?? null
     let createdSeries = 0
@@ -806,7 +807,10 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
           stageName: plan.stageName,
           homeClubId: plan.homeClubId,
           awayClubId: plan.awayClubId,
-          seriesStatus: SeriesStatus.IN_PROGRESS
+          seriesStatus: SeriesStatus.IN_PROGRESS,
+          homeSeed: plan.homeSeed,
+          awaySeed: plan.awaySeed,
+          bracketSlot: plan.targetSlot
         }
       })
       createdSeries += 1
@@ -833,6 +837,39 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
       }
     }
 
+    if (byeSeries.length) {
+      for (const bye of byeSeries) {
+        await tx.matchSeries.create({
+          data: {
+            seasonId: context.seasonId,
+            stageName: nextStageName,
+            homeClubId: bye.clubId,
+            awayClubId: bye.clubId,
+            seriesStatus: SeriesStatus.FINISHED,
+            winnerClubId: bye.clubId,
+            homeSeed: bye.seed,
+            awaySeed: bye.seed,
+            bracketSlot: bye.targetSlot
+          }
+        })
+        createdSeries += 1
+      }
+    }
+
+    const thirdPlaceOutcome = await scheduleThirdPlaceIfFinal(tx, {
+      context,
+      stageSeries,
+      nextStageName,
+      startDate,
+      matchTime,
+      bestOfLength: context.bestOfLength,
+      latestDate
+    })
+
+    createdSeries += thirdPlaceOutcome.seriesCreated
+    createdMatches += thirdPlaceOutcome.matchesCreated
+    latestDate = thirdPlaceOutcome.latestDate
+
     if (latestDate) {
       await tx.season.update({ where: { id: context.seasonId }, data: { endDate: latestDate } })
     }
@@ -843,7 +880,8 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
         stageName: nextStageName,
         seriesCreated: createdSeries,
         matchesCreated: createdMatches,
-        byeClubIds
+        byeClubIds: byeSeries.map((entry) => entry.clubId),
+        thirdPlaceCreated: thirdPlaceOutcome.seriesCreated > 0
       },
       'playoff stage progressed'
     )
@@ -868,11 +906,11 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
     const startDate = latestMatch ? addDays(latestMatch.matchDateTime, 7) : new Date()
 
     const bestOfLength = Math.max(1, context.bestOfLength ?? 1)
-    const { plans, byeClubIds } = createRandomPlayoffPlans(uniqueWinners, startDate, matchTime, bestOfLength, {
+    const { plans, byeSeries } = createRandomPlayoffPlans(uniqueWinners, startDate, matchTime, bestOfLength, {
       shuffle: false
     })
 
-    if (plans.length === 0 && byeClubIds.length === 0) return
+    if (plans.length === 0 && byeSeries.length === 0) return
 
     let latestDate: Date | null = latestMatch?.matchDateTime ?? null
     let createdSeries = 0
@@ -899,7 +937,10 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
           stageName: nextStageName,
           homeClubId: plan.homeClubId,
           awayClubId: plan.awayClubId,
-          seriesStatus: SeriesStatus.IN_PROGRESS
+          seriesStatus: SeriesStatus.IN_PROGRESS,
+          homeSeed: plan.homeSeed,
+          awaySeed: plan.awaySeed,
+          bracketSlot: plan.targetSlot
         }
       })
       createdSeries += 1
@@ -926,20 +967,37 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
       }
     }
 
-    if (byeClubIds.length) {
-      for (const byeClubId of byeClubIds) {
+    if (byeSeries.length) {
+      for (const bye of byeSeries) {
         await tx.matchSeries.create({
           data: {
             seasonId: context.seasonId,
             stageName: nextStageName,
-            homeClubId: byeClubId,
-            awayClubId: byeClubId,
+            homeClubId: bye.clubId,
+            awayClubId: bye.clubId,
             seriesStatus: SeriesStatus.FINISHED,
-            winnerClubId: byeClubId
+            winnerClubId: bye.clubId,
+            homeSeed: bye.seed,
+            awaySeed: bye.seed,
+            bracketSlot: bye.targetSlot
           }
         })
       }
     }
+
+    const thirdPlaceOutcome = await scheduleThirdPlaceIfFinal(tx, {
+      context,
+      stageSeries,
+      nextStageName,
+      startDate,
+      matchTime,
+      bestOfLength,
+      latestDate
+    })
+
+    createdSeries += thirdPlaceOutcome.seriesCreated
+    createdMatches += thirdPlaceOutcome.matchesCreated
+    latestDate = thirdPlaceOutcome.latestDate
 
     if (latestDate) {
       await tx.season.update({ where: { id: context.seasonId }, data: { endDate: latestDate } })
@@ -949,13 +1007,150 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
       {
         seasonId: context.seasonId,
         stageName: nextStageName,
-        seriesCreated: createdSeries + byeClubIds.length,
+        seriesCreated: createdSeries + byeSeries.length,
         matchesCreated: createdMatches,
-        byeClubIds
+        byeClubIds: byeSeries.map((entry) => entry.clubId),
+        thirdPlaceCreated: thirdPlaceOutcome.seriesCreated > 0
       },
       'playoff stage progressed'
     )
 
     return
+  }
+}
+
+type ThirdPlaceScheduleInput = {
+  context: PlayoffProgressionContext
+  stageSeries: MatchSeries[]
+  nextStageName: string
+  startDate: Date
+  matchTime: string | null
+  bestOfLength: number
+  latestDate: Date | null
+}
+
+type ThirdPlaceScheduleResult = {
+  seriesCreated: number
+  matchesCreated: number
+  latestDate: Date | null
+}
+
+async function scheduleThirdPlaceIfFinal(tx: PrismaTx, input: ThirdPlaceScheduleInput): Promise<ThirdPlaceScheduleResult> {
+  if (input.nextStageName !== 'Финал') {
+    return { seriesCreated: 0, matchesCreated: 0, latestDate: input.latestDate }
+  }
+
+  const thirdPlaceStageName = 'Матч за 3 место'
+  const existingThirdPlace = await tx.matchSeries.count({
+    where: { seasonId: input.context.seasonId, stageName: thirdPlaceStageName }
+  })
+
+  if (existingThirdPlace > 0) {
+    return { seriesCreated: 0, matchesCreated: 0, latestDate: input.latestDate }
+  }
+
+  type SeriesWithSeeds = MatchSeries & {
+    homeSeed?: number | null
+    awaySeed?: number | null
+  }
+
+  const stageWithSeeds = input.stageSeries as SeriesWithSeeds[]
+  const uniqueLosers: { clubId: number; seed?: number }[] = []
+  const seenLosers = new Set<number>()
+
+  for (const series of stageWithSeeds) {
+    const { winnerClubId, homeClubId, awayClubId } = series
+    if (winnerClubId == null || homeClubId == null || awayClubId == null) continue
+
+    const isHomeWinner = winnerClubId === homeClubId
+    const losingClubId = isHomeWinner ? awayClubId : homeClubId
+    if (losingClubId == null || seenLosers.has(losingClubId)) continue
+
+    const losingSeedValue = isHomeWinner ? series.awaySeed : series.homeSeed
+    const normalizedSeed = typeof losingSeedValue === 'number' ? losingSeedValue : undefined
+
+    seenLosers.add(losingClubId)
+    uniqueLosers.push({ clubId: losingClubId, seed: normalizedSeed })
+  }
+
+  if (uniqueLosers.length < 2) {
+    return { seriesCreated: 0, matchesCreated: 0, latestDate: input.latestDate }
+  }
+
+  const sorted = [...uniqueLosers].sort((a, b) => {
+    const seedA = a.seed ?? Number.MAX_SAFE_INTEGER
+    const seedB = b.seed ?? Number.MAX_SAFE_INTEGER
+    if (seedA !== seedB) return seedA - seedB
+    return a.clubId - b.clubId
+  })
+
+  const home = sorted[0]
+  const away = sorted[1]
+
+  let thirdPlaceRound = await tx.seasonRound.findFirst({
+    where: { seasonId: input.context.seasonId, label: thirdPlaceStageName }
+  })
+
+  if (!thirdPlaceRound) {
+    thirdPlaceRound = await tx.seasonRound.create({
+      data: {
+        seasonId: input.context.seasonId,
+        roundType: RoundType.PLAYOFF,
+        roundNumber: null,
+        label: thirdPlaceStageName
+      }
+    })
+  }
+
+  const seriesData: Prisma.MatchSeriesUncheckedCreateInput = {
+    seasonId: input.context.seasonId,
+    stageName: thirdPlaceStageName,
+    homeClubId: home.clubId,
+    awayClubId: away.clubId,
+    seriesStatus: SeriesStatus.IN_PROGRESS,
+    bracketSlot: null
+  }
+
+  if (typeof home.seed === 'number') {
+    seriesData.homeSeed = home.seed
+  }
+  if (typeof away.seed === 'number') {
+    seriesData.awaySeed = away.seed
+  }
+
+  const thirdPlaceSeries = await tx.matchSeries.create({ data: seriesData })
+
+  const bestOfLength = Math.max(1, input.bestOfLength)
+  const baseDate = addDays(input.startDate, 1)
+  let latestDate = input.latestDate
+
+  const matches = Array.from({ length: bestOfLength }).map((_, index) => {
+    const scheduledBase = addDays(baseDate, index * 3)
+    const scheduled = applyTimeToDate(scheduledBase, input.matchTime)
+    if (!latestDate || scheduled > latestDate) {
+      latestDate = scheduled
+    }
+    return {
+      seasonId: input.context.seasonId,
+      matchDateTime: scheduled,
+      homeTeamId: index % 2 === 0 ? home.clubId : away.clubId,
+      awayTeamId: index % 2 === 0 ? away.clubId : home.clubId,
+      status: MatchStatus.SCHEDULED,
+      seriesId: thirdPlaceSeries.id,
+      seriesMatchNumber: index + 1,
+      roundId: thirdPlaceRound?.id ?? null
+    }
+  })
+
+  let createdMatches = 0
+  if (matches.length) {
+    const created = await tx.match.createMany({ data: matches })
+    createdMatches = created.count
+  }
+
+  return {
+    seriesCreated: 1,
+    matchesCreated: createdMatches,
+    latestDate
   }
 }

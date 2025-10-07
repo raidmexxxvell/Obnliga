@@ -96,10 +96,16 @@ export interface SeasonGroupSlot {
   club?: Club | null
 }
 
+export interface PlayoffByeSeriesEntry {
+  clubId: number
+  seed: number
+  targetSlot: number
+}
+
 export interface PlayoffCreationResult {
   seriesCreated: number
   matchesCreated: number
-  byeClubIds?: number[]
+  byeSeries?: PlayoffByeSeriesEntry[]
 }
 
 export interface MatchSeries {
@@ -110,6 +116,9 @@ export interface MatchSeries {
   awayClubId: number
   seriesStatus: 'IN_PROGRESS' | 'FINISHED'
   winnerClubId?: number | null
+  homeSeed?: number | null
+  awaySeed?: number | null
+  bracketSlot?: number | null
 }
 
 export interface MatchSummary {

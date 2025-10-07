@@ -200,6 +200,9 @@ model MatchSeries {
   awayClubId Int      @map("away_club_id")
   seriesStatus SeriesStatus @map("series_status")
   winnerClubId Int? @map("winner_club_id")
+  homeSeed Int? @map("home_seed")
+  awaySeed Int? @map("away_seed")
+  bracketSlot Int? @map("bracket_slot")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
