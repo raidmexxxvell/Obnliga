@@ -804,7 +804,9 @@ export const MatchesTab = () => {
   const handleRefreshPlayoffData = () => {
     const seasonId = ensureSeasonSelected()
     if (!seasonId) return
-    void Promise.all([fetchSeries(seasonId), fetchMatches(seasonId)]).catch(() => undefined)
+    void Promise.all([fetchSeries(seasonId, { force: true }), fetchMatches(seasonId, { force: true })]).catch(() =>
+      undefined
+    )
   }
 
   const handleCreatePlayoffs = async () => {
@@ -836,7 +838,11 @@ export const MatchesTab = () => {
         successMessage.push(`${byeClubNames.join(', ')} ${byeSuffix}`)
       }
       handleFeedback(`Плей-офф создан (${successMessage.join(', ')})`, 'success')
-      await Promise.all([fetchSeries(seasonId), fetchMatches(seasonId), fetchSeasons()])
+      await Promise.all([
+        fetchSeries(seasonId, { force: true }),
+        fetchMatches(seasonId, { force: true }),
+        fetchSeasons()
+      ])
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Не удалось создать плей-офф'
       handleFeedback(message, 'error')
@@ -867,7 +873,7 @@ export const MatchesTab = () => {
       } else {
         await adminPost(token, '/api/admin/series', payload)
       }
-      await fetchSeries(seasonId)
+      await fetchSeries(seasonId, { force: true })
     }, 'Серия сохранена')
     setSeriesForm(defaultSeriesForm)
     setEditingSeriesId(null)
@@ -887,7 +893,7 @@ export const MatchesTab = () => {
     if (!seasonId) return
     await runWithMessages(async () => {
       await adminDelete(token, `/api/admin/series/${series.id}`)
-      await fetchSeries(seasonId)
+      await fetchSeries(seasonId, { force: true })
     }, `Серия «${series.stageName}» удалена`)
   }
 
@@ -959,8 +965,8 @@ export const MatchesTab = () => {
         stadiumId: form.stadiumId === '' ? undefined : Number(form.stadiumId),
         refereeId: form.refereeId === '' ? undefined : Number(form.refereeId)
       })
-      await fetchSeries(seasonId)
-      await fetchMatches(seasonId)
+      await fetchSeries(seasonId, { force: true })
+      await fetchMatches(seasonId, { force: true })
       await loadMatchDetails(match.id)
     }, 'Матч обновлён')
   }
@@ -1050,7 +1056,7 @@ export const MatchesTab = () => {
     if (!seasonId) return
     await runWithMessages(async () => {
       await adminDelete(token, `/api/admin/matches/${match.id}`)
-      await fetchMatches(seasonId)
+      await fetchMatches(seasonId, { force: true })
     }, 'Матч удалён')
     if (selectedMatchId === match.id) {
       setMatchModalOpen(false)

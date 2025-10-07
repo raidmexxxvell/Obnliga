@@ -99,8 +99,8 @@ interface AdminState {
   setSelectedSeason(seasonId?: number): void
   fetchDictionaries(): Promise<void>
   fetchSeasons(): Promise<void>
-  fetchSeries(seasonId?: number): Promise<void>
-  fetchMatches(seasonId?: number): Promise<void>
+  fetchSeries(seasonId?: number, options?: FetchOptions): Promise<void>
+  fetchMatches(seasonId?: number, options?: FetchOptions): Promise<void>
   fetchFriendlyMatches(): Promise<void>
   fetchStats(seasonId?: number, competitionId?: number): Promise<void>
   fetchUsers(): Promise<void>
@@ -124,6 +124,10 @@ type FetchKey =
   | 'predictions'
   | 'achievements'
   | 'disqualifications'
+
+type FetchOptions = {
+  force?: boolean
+}
 
 const FETCH_TTL: Record<FetchKey, number> = {
   dictionaries: 60_000,
@@ -421,25 +425,35 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         })
       })
     },
-    async fetchSeries(seasonId?: number) {
+    async fetchSeries(seasonId?: number, options?: FetchOptions) {
       if (get().mode !== 'admin') return
       const activeSeason = seasonId ?? get().selectedSeasonId
-      await runCachedFetch('series', [activeSeason ? `season:${activeSeason}` : undefined], async () => {
-        const token = ensureToken()
-        const query = activeSeason ? `?seasonId=${activeSeason}` : ''
-        const series = await adminGet<MatchSeries[]>(token, `/api/admin/series${query}`)
-        set((state) => ({ data: { ...state.data, series } }))
-      })
+      await runCachedFetch(
+        'series',
+        [activeSeason ? `season:${activeSeason}` : undefined],
+        async () => {
+          const token = ensureToken()
+          const query = activeSeason ? `?seasonId=${activeSeason}` : ''
+          const series = await adminGet<MatchSeries[]>(token, `/api/admin/series${query}`)
+          set((state) => ({ data: { ...state.data, series } }))
+        },
+        options?.force ? 0 : undefined
+      )
     },
-    async fetchMatches(seasonId?: number) {
+    async fetchMatches(seasonId?: number, options?: FetchOptions) {
       if (get().mode !== 'admin') return
       const activeSeason = seasonId ?? get().selectedSeasonId
-      await runCachedFetch('matches', [activeSeason ? `season:${activeSeason}` : undefined], async () => {
-        const token = ensureToken()
-        const query = activeSeason ? `?seasonId=${activeSeason}` : ''
-        const matches = await adminGet<MatchSummary[]>(token, `/api/admin/matches${query}`)
-        set((state) => ({ data: { ...state.data, matches } }))
-      })
+      await runCachedFetch(
+        'matches',
+        [activeSeason ? `season:${activeSeason}` : undefined],
+        async () => {
+          const token = ensureToken()
+          const query = activeSeason ? `?seasonId=${activeSeason}` : ''
+          const matches = await adminGet<MatchSummary[]>(token, `/api/admin/matches${query}`)
+          set((state) => ({ data: { ...state.data, matches } }))
+        },
+        options?.force ? 0 : undefined
+      )
     },
     async fetchFriendlyMatches() {
       if (get().mode !== 'admin') return
@@ -526,7 +540,11 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         case 'matches': {
           await get().fetchSeasons()
           const season = get().selectedSeasonId
-          await Promise.all([get().fetchSeries(season), get().fetchMatches(season), get().fetchFriendlyMatches()])
+          await Promise.all([
+            get().fetchSeries(season, { force: true }),
+            get().fetchMatches(season, { force: true }),
+            get().fetchFriendlyMatches()
+          ])
           break
         }
         case 'stats': {
