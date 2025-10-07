@@ -46,8 +46,12 @@ export async function handleMatchFinalization(matchId: bigint, logger: FastifyBa
   }
 
   const seasonId = match.seasonId
+  const competitionFormat = match.season.competition.seriesFormat
+  const isBracketFormat =
+    competitionFormat === ('PLAYOFF_BRACKET' as SeriesFormat) ||
+    competitionFormat === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
   await prisma.$transaction(async (tx) => {
-    const includePlayoffRounds = match.season.competition.seriesFormat === ('PLAYOFF_BRACKET' as SeriesFormat)
+    const includePlayoffRounds = isBracketFormat
     await rebuildClubSeasonStats(seasonId, tx, { includePlayoffRounds })
     await rebuildPlayerSeasonStats(seasonId, tx)
     await rebuildPlayerCareerStats(seasonId, tx)
@@ -585,8 +589,11 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
   if (series.seriesStatus === SeriesStatus.FINISHED) return
 
   const format = series.season.competition.seriesFormat
+  const isMultiMatchSeries = format === SeriesFormat.BEST_OF_N || format === SeriesFormat.DOUBLE_ROUND_PLAYOFF
+  const isBracketFormat =
+    format === ('PLAYOFF_BRACKET' as SeriesFormat) || format === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
 
-  if (format === SeriesFormat.BEST_OF_N || format === SeriesFormat.DOUBLE_ROUND_PLAYOFF) {
+  if (isMultiMatchSeries) {
     const scheduledMatches = series.matches
     const finishedMatches = scheduledMatches.filter((m) => m.status === MatchStatus.FINISHED)
     if (finishedMatches.length === 0) return
@@ -639,7 +646,7 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
     return
   }
 
-  if (format === ('PLAYOFF_BRACKET' as SeriesFormat)) {
+  if (isBracketFormat) {
     if (match.homeScore === match.awayScore) {
       logger.warn(
         {
@@ -711,7 +718,12 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
 
   if (uniqueWinners.length < 2) return
 
-  if (context.format === SeriesFormat.BEST_OF_N || context.format === SeriesFormat.DOUBLE_ROUND_PLAYOFF) {
+  const isMultiMatchSeries =
+    context.format === SeriesFormat.BEST_OF_N || context.format === SeriesFormat.DOUBLE_ROUND_PLAYOFF
+  const isBracketFormat =
+    context.format === ('PLAYOFF_BRACKET' as SeriesFormat) || context.format === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
+
+  if (isMultiMatchSeries) {
     const stats = await tx.clubSeasonStats.findMany({ where: { seasonId: context.seasonId } })
     const statsMap = new Map<number, (typeof stats)[number]>()
     for (const stat of stats) {
@@ -839,7 +851,7 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
     return
   }
 
-  if (context.format === ('PLAYOFF_BRACKET' as SeriesFormat)) {
+  if (isBracketFormat) {
     const nextStageName = stageNameForTeams(uniqueWinners.length)
     const existingNextStage = await tx.matchSeries.count({
       where: { seasonId: context.seasonId, stageName: nextStageName }

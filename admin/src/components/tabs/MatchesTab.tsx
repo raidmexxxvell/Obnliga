@@ -959,6 +959,7 @@ export const MatchesTab = () => {
         stadiumId: form.stadiumId === '' ? undefined : Number(form.stadiumId),
         refereeId: form.refereeId === '' ? undefined : Number(form.refereeId)
       })
+      await fetchSeries(seasonId)
       await fetchMatches(seasonId)
       await loadMatchDetails(match.id)
     }, 'Матч обновлён')
