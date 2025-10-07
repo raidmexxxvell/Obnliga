@@ -398,13 +398,14 @@ export const MatchesTab = () => {
 
   const playoffSuccessBanner = useMemo(() => {
     if (!playoffResult) return null
-    const byeClubName = playoffResult.byeClubId
-      ? data.clubs.find((club) => club.id === playoffResult.byeClubId)?.name ?? `клуб #${playoffResult.byeClubId}`
-      : null
+    const byeNames = (playoffResult.byeClubIds ?? [])
+      .map((clubId) => data.clubs.find((club) => club.id === clubId)?.name ?? `клуб #${clubId}`)
+    const byeSuffix = byeNames.length > 1 ? 'получают автопроход дальше' : 'получает автопроход дальше'
+    const byeText = byeNames.length ? `, ${byeNames.join(', ')} ${byeSuffix}` : ''
     return (
       <div className="inline-feedback success">
         Серий: {playoffResult.seriesCreated}, матчей: {playoffResult.matchesCreated}
-        {byeClubName ? `, ${byeClubName} автоматически проходит дальше` : ''}
+        {byeText}
       </div>
     )
   }, [data.clubs, playoffResult])
@@ -824,15 +825,15 @@ export const MatchesTab = () => {
       const result = await createSeasonPlayoffs(
         token,
         seasonId,
-        typeof bestOfPayload === 'number' ? { bestOfLength: bestOfPayload } : undefined
+        typeof bestOfPayload === 'number' ? { bestOfLength: bestOfPayload } : {}
       )
       setPlayoffResult(result)
-      const byeClubName = result.byeClubId
-        ? data.clubs.find((club) => club.id === result.byeClubId)?.name ?? `клуб #${result.byeClubId}`
-        : null
+      const byeClubNames = (result.byeClubIds ?? [])
+        .map((clubId) => data.clubs.find((club) => club.id === clubId)?.name ?? `клуб #${clubId}`)
       const successMessage = [`Серий: ${result.seriesCreated}`, `Матчей: ${result.matchesCreated}`]
-      if (byeClubName) {
-        successMessage.push(`${byeClubName} автоматически проходит дальше`)
+      if (byeClubNames.length) {
+        const byeSuffix = byeClubNames.length > 1 ? 'получают автопроход дальше' : 'получает автопроход дальше'
+        successMessage.push(`${byeClubNames.join(', ')} ${byeSuffix}`)
       }
       handleFeedback(`Плей-офф создан (${successMessage.join(', ')})`, 'success')
       await Promise.all([fetchSeries(seasonId), fetchMatches(seasonId), fetchSeasons()])

@@ -760,14 +760,14 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
     const matchTime = latestMatch ? latestMatch.matchDateTime.toISOString().slice(11, 16) : null
     const startDate = latestMatch ? addDays(latestMatch.matchDateTime, 7) : new Date()
 
-    const { plans, byeClubId } = createInitialPlayoffPlans(
+    const { plans, byeClubIds } = createInitialPlayoffPlans(
       seededWinners,
       startDate,
       matchTime,
       context.bestOfLength
     )
 
-    if (plans.length === 0 && !byeClubId) return
+    if (plans.length === 0 && byeClubIds.length === 0) return
 
     let latestDate: Date | null = latestMatch?.matchDateTime ?? null
     let createdSeries = 0
@@ -831,7 +831,7 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
         stageName: nextStageName,
         seriesCreated: createdSeries,
         matchesCreated: createdMatches,
-        byeClubId
+        byeClubIds
       },
       'playoff stage progressed'
     )
@@ -855,12 +855,12 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
     const matchTime = latestMatch ? latestMatch.matchDateTime.toISOString().slice(11, 16) : null
     const startDate = latestMatch ? addDays(latestMatch.matchDateTime, 7) : new Date()
 
-  const bestOfLength = Math.max(1, context.bestOfLength ?? 1)
-    const { plans, byeClubId } = createRandomPlayoffPlans(uniqueWinners, startDate, matchTime, bestOfLength, {
+    const bestOfLength = Math.max(1, context.bestOfLength ?? 1)
+    const { plans, byeClubIds } = createRandomPlayoffPlans(uniqueWinners, startDate, matchTime, bestOfLength, {
       shuffle: false
     })
 
-    if (plans.length === 0 && !byeClubId) return
+    if (plans.length === 0 && byeClubIds.length === 0) return
 
     let latestDate: Date | null = latestMatch?.matchDateTime ?? null
     let createdSeries = 0
@@ -914,17 +914,19 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
       }
     }
 
-    if (byeClubId) {
-      await tx.matchSeries.create({
-        data: {
-          seasonId: context.seasonId,
-          stageName: nextStageName,
-          homeClubId: byeClubId,
-          awayClubId: byeClubId,
-          seriesStatus: SeriesStatus.FINISHED,
-          winnerClubId: byeClubId
-        }
-      })
+    if (byeClubIds.length) {
+      for (const byeClubId of byeClubIds) {
+        await tx.matchSeries.create({
+          data: {
+            seasonId: context.seasonId,
+            stageName: nextStageName,
+            homeClubId: byeClubId,
+            awayClubId: byeClubId,
+            seriesStatus: SeriesStatus.FINISHED,
+            winnerClubId: byeClubId
+          }
+        })
+      }
     }
 
     if (latestDate) {
@@ -935,11 +937,13 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
       {
         seasonId: context.seasonId,
         stageName: nextStageName,
-        seriesCreated: createdSeries + (byeClubId ? 1 : 0),
+        seriesCreated: createdSeries + byeClubIds.length,
         matchesCreated: createdMatches,
-        byeClubId
+        byeClubIds
       },
       'playoff stage progressed'
     )
+
+    return
   }
 }

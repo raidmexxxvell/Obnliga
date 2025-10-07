@@ -388,7 +388,7 @@ export const createSeasonPlayoffs = async (
   token: string | undefined,
   seasonId: number,
   payload?: PlayoffCreationPayload
-) => adminPost<PlayoffCreationResult>(token, `/api/admin/seasons/${seasonId}/playoffs`, payload)
+) => adminPost<PlayoffCreationResult>(token, `/api/admin/seasons/${seasonId}/playoffs`, payload ?? {})
 
 interface LineupLoginResponse {
   ok: boolean

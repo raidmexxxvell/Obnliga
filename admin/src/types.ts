@@ -99,7 +99,7 @@ export interface SeasonGroupSlot {
 export interface PlayoffCreationResult {
   seriesCreated: number
   matchesCreated: number
-  byeClubId?: number
+  byeClubIds?: number[]
 }
 
 export interface MatchSeries {

@@ -1412,7 +1412,7 @@
     min-width: 0;
     justify-content: center;
     padding: 6px 8px;
-    gap: 10px;
+    gap: 1px;
   }
 
   .match-stat-side-home {
@@ -1424,8 +1424,8 @@
   }
 
   .stat-adjust-button {
-    width: 26px;
-    height: 26px;
+    width: 16px;
+    height: 16px;
   }
 }
 
