@@ -226,7 +226,7 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
         primary.penaltyGoals += 1
       }
     }
-    if (ev.eventType === MatchEventType.YELLOW_CARD || ev.eventType === MatchEventType.SECOND_YELLOW_CARD) {
+    if (ev.eventType === MatchEventType.YELLOW_CARD) {
       primary.yellow += 1
     }
     if (ev.eventType === MatchEventType.RED_CARD || ev.eventType === MatchEventType.SECOND_YELLOW_CARD) {

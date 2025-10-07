@@ -118,7 +118,7 @@ type EventStatisticAdjustments = Partial<Record<MatchStatisticMetric, number>>
 const eventStatisticAdjustments: Partial<Record<MatchEventType, EventStatisticAdjustments>> = {
   YELLOW_CARD: { yellowCards: 1 },
   RED_CARD: { redCards: 1 },
-  SECOND_YELLOW_CARD: { yellowCards: 1, redCards: 1 }
+  SECOND_YELLOW_CARD: { redCards: 1 }
 }
 
 const applyStatisticDelta = async (

@@ -648,6 +648,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 18px;
+  align-items: start;
 }
 
 .match-modal .list {
@@ -1196,25 +1197,26 @@
 }
 
 .score-editor {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
+  gap: 16px;
 }
 
 .score-block {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .score-team-label {
-  font-size: 12px;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: none;
   color: var(--text-muted);
-  text-align: center;
+  text-align: left;
 }
 
 .match-stats-card {
@@ -1371,6 +1373,19 @@
 }
 
 @media (max-width: 720px) {
+  .score-editor {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .score-separator {
+    display: none;
+  }
+
+  .score-block {
+    align-items: stretch;
+  }
+
   .match-stats-teams {
     grid-template-columns: 1fr;
   }
@@ -1460,6 +1475,7 @@
   font-weight: 600;
   font-size: 18px;
   color: var(--text-primary);
+  justify-self: center;
 }
 
 .muted {

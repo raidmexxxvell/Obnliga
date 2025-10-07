@@ -396,6 +396,19 @@ export const MatchesTab = () => {
     setPlayoffResult(null)
   }, [selectedSeasonId])
 
+  const playoffSuccessBanner = useMemo(() => {
+    if (!playoffResult) return null
+    const byeClubName = playoffResult.byeClubId
+      ? data.clubs.find((club) => club.id === playoffResult.byeClubId)?.name ?? `клуб #${playoffResult.byeClubId}`
+      : null
+    return (
+      <div className="inline-feedback success">
+        Серий: {playoffResult.seriesCreated}, матчей: {playoffResult.matchesCreated}
+        {byeClubName ? `, ${byeClubName} автоматически проходит дальше` : ''}
+      </div>
+    )
+  }, [data.clubs, playoffResult])
+
   const handleFeedback = (message: string, level: FeedbackLevel) => {
     setFeedback(message)
     setFeedbackLevel(level)
@@ -787,6 +800,12 @@ export const MatchesTab = () => {
     }
   }
 
+  const handleRefreshPlayoffData = () => {
+    const seasonId = ensureSeasonSelected()
+    if (!seasonId) return
+    void Promise.all([fetchSeries(seasonId), fetchMatches(seasonId)]).catch(() => undefined)
+  }
+
   const handleCreatePlayoffs = async () => {
     const seasonId = ensureSeasonSelected()
     if (!seasonId) return
@@ -798,11 +817,15 @@ export const MatchesTab = () => {
       handleFeedback(playoffsDisabledReason, 'error')
       return
     }
+    const bestOfPayload = isBestOfFormat ? playoffBestOf : undefined
+
     try {
       setPlayoffLoading(true)
-      const result = await createSeasonPlayoffs(token, seasonId, {
-        bestOfLength: playoffBestOf
-      })
+      const result = await createSeasonPlayoffs(
+        token,
+        seasonId,
+        typeof bestOfPayload === 'number' ? { bestOfLength: bestOfPayload } : undefined
+      )
       setPlayoffResult(result)
       const byeClubName = result.byeClubId
         ? data.clubs.find((club) => club.id === result.byeClubId)?.name ?? `клуб #${result.byeClubId}`
@@ -1734,14 +1757,36 @@ export const MatchesTab = () => {
                   Серии создаются по посеву из списка участников сезонов. Каждая вторая игра проводится на площадке соперника.
                 </p>
               )}
-              {playoffResult ? (
-                <div className="inline-feedback success">
-                  Серий: {playoffResult.seriesCreated}, матчей: {playoffResult.matchesCreated}
-                  {playoffResult.byeClubId
-                    ? `, ${data.clubs.find((club) => club.id === playoffResult.byeClubId)?.name ?? `клуб #${playoffResult.byeClubId}`} проходит дальше`
-                    : ''}
-                </div>
-              ) : null}
+              {playoffSuccessBanner}
+            </div>
+          ) : isGroupPlayoffFormat ? (
+            <div className="stacked">
+              <button
+                className="button-primary"
+                type="button"
+                onClick={handleCreatePlayoffs}
+                disabled={playoffLoading || Boolean(playoffsDisabledReason)}
+                title={playoffsDisabledReason ?? undefined}
+              >
+                {playoffLoading ? 'Создаём…' : 'Сформировать плей-офф'}
+              </button>
+              {playoffsDisabledReason ? (
+                <p className="muted">{playoffsDisabledReason}</p>
+              ) : (
+                <p className="muted">
+                  После завершения матчей группового этапа нажмите кнопку, чтобы квалифицированные клубы автоматически попали в сетку.
+                </p>
+              )}
+              <button
+                className="button-ghost"
+                type="button"
+                onClick={handleRefreshPlayoffData}
+                disabled={Boolean(loading.series) || Boolean(loading.matches)}
+              >
+                {loading.series || loading.matches ? 'Обновляем…' : 'Обновить сетку'}
+              </button>
+              <p className="muted">Обновление подтянет актуальные стадии и расписание матчей.</p>
+              {playoffSuccessBanner}
             </div>
           ) : (
             <div className="stacked">
@@ -1752,11 +1797,7 @@ export const MatchesTab = () => {
               <button
                 className="button-ghost"
                 type="button"
-                onClick={() => {
-                  const seasonId = selectedSeason.id
-                  void fetchSeries(seasonId).catch(() => undefined)
-                  void fetchMatches(seasonId).catch(() => undefined)
-                }}
+                onClick={handleRefreshPlayoffData}
                 disabled={Boolean(loading.series) || Boolean(loading.matches)}
               >
                 {loading.series || loading.matches ? 'Обновляем…' : 'Обновить сетку'}
