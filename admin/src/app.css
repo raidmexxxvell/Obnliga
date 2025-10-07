@@ -135,10 +135,6 @@
   border-radius: 22px;
   padding: 28px;
   box-shadow: 0 22px 55px rgba(2, 6, 16, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
 }
 
 .shell-header {
@@ -895,31 +891,24 @@
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
-.group-card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(0, 240, 255, 0.12);
-  background: rgba(0, 240, 255, 0.04);
-}
-
 .group-card-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .group-card-header input {
-  flex: 1;
+  flex: 1 1 140px;
+  min-width: 0;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
   background: rgba(3, 8, 18, 0.68);
   color: var(--text-primary);
   padding: 8px 10px;
   font-size: 13px;
+  max-width: 100%;
 }
 
 .group-card-index {
@@ -927,6 +916,7 @@
   text-transform: uppercase;
   color: var(--text-muted);
   letter-spacing: 0.5px;
+  flex-shrink: 0;
 }
 
 .group-card ol {
@@ -965,7 +955,13 @@
 .group-standings-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 1080px) {
+  .group-standings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .group-standings-card {

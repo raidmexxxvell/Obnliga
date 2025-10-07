@@ -207,10 +207,10 @@ export const createInitialPlayoffPlans = (
 
   const sortedSeeds = [...seeds]
   const hasBye = sortedSeeds.length % 2 === 1
-  const eliminatedClubId = hasBye ? sortedSeeds.pop() : undefined
+  const byeClubId = hasBye ? sortedSeeds.shift() : undefined
   const stageTeamsCount = sortedSeeds.length
   if (stageTeamsCount < 2) {
-    return { plans: [], byeClubId: eliminatedClubId }
+    return { plans: [], byeClubId }
   }
 
   const stageName = stageNameForTeams(stageTeamsCount)
@@ -242,8 +242,8 @@ export const createInitialPlayoffPlans = (
   }
 
   const result: InitialPlayoffPlanResult = { plans }
-  if (hasBye && eliminatedClubId !== undefined) {
-    result.byeClubId = eliminatedClubId
+  if (hasBye && byeClubId !== undefined) {
+    result.byeClubId = byeClubId
   }
 
   return result
@@ -777,6 +777,238 @@ const createGroupStageSchedule = async (
   }
 }
 
+type GroupStandingRow = {
+  clubId: number
+  points: number
+  wins: number
+  draws: number
+  losses: number
+  goalsFor: number
+  goalsAgainst: number
+}
+
+type HeadToHeadRecord = {
+  points: number
+  goalsFor: number
+  goalsAgainst: number
+}
+
+const buildGroupStandings = (
+  clubIds: number[],
+  matches: Array<{
+    homeTeamId: number
+    awayTeamId: number
+    homeScore: number
+    awayScore: number
+    status: MatchStatus
+  }>
+): GroupStandingRow[] => {
+  const clubSet = new Set(clubIds)
+  const statsMap = new Map<number, GroupStandingRow>()
+  const headToHead = new Map<number, Map<number, HeadToHeadRecord>>()
+
+  const ensureRow = (clubId: number): GroupStandingRow => {
+    let row = statsMap.get(clubId)
+    if (!row) {
+      row = {
+        clubId,
+        points: 0,
+        wins: 0,
+        draws: 0,
+        losses: 0,
+        goalsFor: 0,
+        goalsAgainst: 0
+      }
+      statsMap.set(clubId, row)
+    }
+    return row
+  }
+
+  const ensureHeadToHead = (clubId: number, opponentId: number): HeadToHeadRecord => {
+    let opponents = headToHead.get(clubId)
+    if (!opponents) {
+      opponents = new Map<number, HeadToHeadRecord>()
+      headToHead.set(clubId, opponents)
+    }
+    let record = opponents.get(opponentId)
+    if (!record) {
+      record = { points: 0, goalsFor: 0, goalsAgainst: 0 }
+      opponents.set(opponentId, record)
+    }
+    return record
+  }
+
+  for (const id of clubSet) {
+    ensureRow(id)
+  }
+
+  for (const match of matches) {
+    if (match.status !== MatchStatus.FINISHED) continue
+    if (!clubSet.has(match.homeTeamId) || !clubSet.has(match.awayTeamId)) continue
+
+    const home = ensureRow(match.homeTeamId)
+    const away = ensureRow(match.awayTeamId)
+
+    home.goalsFor += match.homeScore
+    home.goalsAgainst += match.awayScore
+    away.goalsFor += match.awayScore
+    away.goalsAgainst += match.homeScore
+
+    const homeRecord = ensureHeadToHead(match.homeTeamId, match.awayTeamId)
+    const awayRecord = ensureHeadToHead(match.awayTeamId, match.homeTeamId)
+
+    homeRecord.goalsFor += match.homeScore
+    homeRecord.goalsAgainst += match.awayScore
+    awayRecord.goalsFor += match.awayScore
+    awayRecord.goalsAgainst += match.homeScore
+
+    if (match.homeScore > match.awayScore) {
+      home.points += 3
+      home.wins += 1
+      away.losses += 1
+      homeRecord.points += 3
+    } else if (match.homeScore < match.awayScore) {
+      away.points += 3
+      away.wins += 1
+      home.losses += 1
+      awayRecord.points += 3
+    } else {
+      home.points += 1
+      away.points += 1
+      home.draws += 1
+      away.draws += 1
+      homeRecord.points += 1
+      awayRecord.points += 1
+    }
+  }
+
+  const getHeadToHead = (clubId: number, opponentId: number): HeadToHeadRecord => {
+    return headToHead.get(clubId)?.get(opponentId) ?? { points: 0, goalsFor: 0, goalsAgainst: 0 }
+  }
+
+  const rows = Array.from(statsMap.values())
+  rows.sort((left, right) => {
+    if (right.points !== left.points) return right.points - left.points
+
+    const leftVsRight = getHeadToHead(left.clubId, right.clubId)
+    const rightVsLeft = getHeadToHead(right.clubId, left.clubId)
+
+    if (rightVsLeft.points !== leftVsRight.points) return rightVsLeft.points - leftVsRight.points
+
+    const leftHeadDiff = leftVsRight.goalsFor - leftVsRight.goalsAgainst
+    const rightHeadDiff = rightVsLeft.goalsFor - rightVsLeft.goalsAgainst
+    if (rightHeadDiff !== leftHeadDiff) return rightHeadDiff - leftHeadDiff
+
+    if (rightVsLeft.goalsFor - rightVsLeft.goalsAgainst !== leftVsRight.goalsFor - leftVsRight.goalsAgainst) {
+      return rightVsLeft.goalsFor - rightVsLeft.goalsAgainst - (leftVsRight.goalsFor - leftVsRight.goalsAgainst)
+    }
+    if (rightVsLeft.goalsFor !== leftVsRight.goalsFor) return rightVsLeft.goalsFor - leftVsRight.goalsFor
+    if (leftVsRight.goalsAgainst !== rightVsLeft.goalsAgainst) return leftVsRight.goalsAgainst - rightVsLeft.goalsAgainst
+
+    const leftDiff = left.goalsFor - left.goalsAgainst
+    const rightDiff = right.goalsFor - right.goalsAgainst
+    if (rightDiff !== leftDiff) return rightDiff - leftDiff
+
+    if (right.goalsFor !== left.goalsFor) return right.goalsFor - left.goalsFor
+
+    return left.clubId - right.clubId
+  })
+
+  return rows
+}
+
+type SeasonGroupWithSlots = Prisma.SeasonGroupGetPayload<{
+  include: { slots: true }
+}>
+
+type GroupMatchSummary = {
+  groupId: number | null
+  homeTeamId: number
+  awayTeamId: number
+  homeScore: number
+  awayScore: number
+  status: MatchStatus
+}
+
+const computeGroupPlayoffSeeds = (
+  groups: SeasonGroupWithSlots[],
+  matches: GroupMatchSummary[]
+): number[] => {
+  if (!groups.length) {
+    throw new Error('group_playoffs_not_configured')
+  }
+
+  const matchesByGroup = new Map<number, GroupMatchSummary[]>()
+  for (const match of matches) {
+    if (typeof match.groupId !== 'number') continue
+    if (!matchesByGroup.has(match.groupId)) {
+      matchesByGroup.set(match.groupId, [])
+    }
+    matchesByGroup.get(match.groupId)!.push(match)
+  }
+
+  type SeedEntry = {
+    clubId: number
+    groupIndex: number
+    placement: number
+    points: number
+    wins: number
+    goalDiff: number
+    goalsFor: number
+    goalsAgainst: number
+  }
+
+  const seeds: SeedEntry[] = []
+
+  for (const group of groups) {
+    if (group.qualifyCount < 1) {
+      throw new Error('group_playoffs_incomplete')
+    }
+    const filledSlots = group.slots.filter((slot) => typeof slot.clubId === 'number' && slot.clubId && slot.clubId > 0)
+    if (filledSlots.length < group.qualifyCount) {
+      throw new Error('group_playoffs_incomplete')
+    }
+
+    const clubIds = filledSlots.map((slot) => Number(slot.clubId))
+    const groupMatches = matchesByGroup.get(group.id) ?? []
+    const standings = buildGroupStandings(clubIds, groupMatches)
+
+    if (standings.length < group.qualifyCount) {
+      throw new Error('group_playoffs_results_incomplete')
+    }
+
+    for (let index = 0; index < group.qualifyCount; index += 1) {
+      const row = standings[index]
+      seeds.push({
+        clubId: row.clubId,
+        groupIndex: group.groupIndex,
+        placement: index + 1,
+        points: row.points,
+        wins: row.wins,
+        goalDiff: row.goalsFor - row.goalsAgainst,
+        goalsFor: row.goalsFor,
+        goalsAgainst: row.goalsAgainst
+      })
+    }
+  }
+
+  if (seeds.length < 2) {
+    throw new Error('not_enough_pairs')
+  }
+
+  seeds.sort((left, right) => {
+    if (left.placement !== right.placement) return left.placement - right.placement
+    if (right.points !== left.points) return right.points - left.points
+    if (right.wins !== left.wins) return right.wins - left.wins
+    if (right.goalDiff !== left.goalDiff) return right.goalDiff - left.goalDiff
+    if (right.goalsFor !== left.goalsFor) return right.goalsFor - left.goalsFor
+    if (left.groupIndex !== right.groupIndex) return left.groupIndex - right.groupIndex
+    return left.clubId - right.clubId
+  })
+
+  return seeds.map((entry) => entry.clubId)
+}
+
 export type PlayoffCreationResult = {
   seriesCreated: number
   matchesCreated: number
@@ -799,9 +1031,12 @@ export const createSeasonPlayoffs = async (
     if (!season) {
       throw new Error('season_not_found')
     }
+    const isGroupPlayoffFormat = season.competition.seriesFormat === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
+
     if (
       season.competition.seriesFormat !== SeriesFormat.BEST_OF_N &&
-      season.competition.seriesFormat !== SeriesFormat.DOUBLE_ROUND_PLAYOFF
+      season.competition.seriesFormat !== SeriesFormat.DOUBLE_ROUND_PLAYOFF &&
+      !isGroupPlayoffFormat
     ) {
       throw new Error('playoffs_not_supported')
     }
@@ -826,70 +1061,99 @@ export const createSeasonPlayoffs = async (
       throw new Error('not_enough_participants')
     }
 
-    const stats = await tx.clubSeasonStats.findMany({
-      where: { seasonId },
-      orderBy: [
-        { points: 'desc' },
-        { wins: 'desc' },
-        { goalsFor: 'desc' },
-        { goalsAgainst: 'asc' }
-      ]
-    })
+    let seededClubIds: number[] = []
+    let bestOfLength = 1
 
-    const statsMap = new Map<number, (typeof stats)[number]>()
-    for (const stat of stats) {
-      statsMap.set(stat.clubId, stat)
-    }
+    if (isGroupPlayoffFormat) {
+      const groups = await tx.seasonGroup.findMany({
+        where: { seasonId },
+        include: { slots: true }
+      })
 
-    for (const participant of participants) {
-      if (!statsMap.has(participant.clubId)) {
-        const zeroStat = await tx.clubSeasonStats.upsert({
-          where: { seasonId_clubId: { seasonId, clubId: participant.clubId } },
-          create: {
-            seasonId,
-            clubId: participant.clubId,
-            points: 0,
-            wins: 0,
-            losses: 0,
-            goalsFor: 0,
-            goalsAgainst: 0
-          },
-          update: {}
-        })
-        statsMap.set(participant.clubId, zeroStat)
+      if (!groups.length) {
+        throw new Error('group_playoffs_not_configured')
       }
-    }
 
-    const compareClubs = (left: number, right: number): number => {
-      const l = statsMap.get(left) ?? {
-        points: 0,
-        wins: 0,
-        losses: 0,
-        goalsFor: 0,
-        goalsAgainst: 0
+      const groupMatchSummaries = await tx.match.findMany({
+        where: { seasonId },
+        select: {
+          groupId: true,
+          homeTeamId: true,
+          awayTeamId: true,
+          homeScore: true,
+          awayScore: true,
+          status: true
+        }
+      })
+
+      seededClubIds = computeGroupPlayoffSeeds(groups, groupMatchSummaries)
+      bestOfLength = 1
+    } else {
+      const stats = await tx.clubSeasonStats.findMany({
+        where: { seasonId },
+        orderBy: [
+          { points: 'desc' },
+          { wins: 'desc' },
+          { goalsFor: 'desc' },
+          { goalsAgainst: 'asc' }
+        ]
+      })
+
+      const statsMap = new Map<number, (typeof stats)[number]>()
+      for (const stat of stats) {
+        statsMap.set(stat.clubId, stat)
       }
-      const r = statsMap.get(right) ?? {
-        points: 0,
-        wins: 0,
-        losses: 0,
-        goalsFor: 0,
-        goalsAgainst: 0
+
+      for (const participant of participants) {
+        if (!statsMap.has(participant.clubId)) {
+          const zeroStat = await tx.clubSeasonStats.upsert({
+            where: { seasonId_clubId: { seasonId, clubId: participant.clubId } },
+            create: {
+              seasonId,
+              clubId: participant.clubId,
+              points: 0,
+              wins: 0,
+              losses: 0,
+              goalsFor: 0,
+              goalsAgainst: 0
+            },
+            update: {}
+          })
+          statsMap.set(participant.clubId, zeroStat)
+        }
       }
-      if (l.points !== r.points) return r.points - l.points
-      if (l.wins !== r.wins) return r.wins - l.wins
-      const lDiff = l.goalsFor - l.goalsAgainst
-      const rDiff = r.goalsFor - r.goalsAgainst
-      if (lDiff !== rDiff) return rDiff - lDiff
-      if (l.goalsFor !== r.goalsFor) return r.goalsFor - l.goalsFor
-      return l.goalsAgainst - r.goalsAgainst
+
+      const compareClubs = (left: number, right: number): number => {
+        const l = statsMap.get(left) ?? {
+          points: 0,
+          wins: 0,
+          losses: 0,
+          goalsFor: 0,
+          goalsAgainst: 0
+        }
+        const r = statsMap.get(right) ?? {
+          points: 0,
+          wins: 0,
+          losses: 0,
+          goalsFor: 0,
+          goalsAgainst: 0
+        }
+        if (l.points !== r.points) return r.points - l.points
+        if (l.wins !== r.wins) return r.wins - l.wins
+        const lDiff = l.goalsFor - l.goalsAgainst
+        const rDiff = r.goalsFor - r.goalsAgainst
+        if (lDiff !== rDiff) return rDiff - lDiff
+        if (l.goalsFor !== r.goalsFor) return r.goalsFor - l.goalsFor
+        return l.goalsAgainst - r.goalsAgainst
+      }
+
+      seededClubIds = participants
+        .map((participant) => participant.clubId)
+        .sort(compareClubs)
+
+      const configuredBestOf = input.bestOfLength && input.bestOfLength >= 3 ? input.bestOfLength : 3
+      bestOfLength = toOdd(configuredBestOf)
     }
-
-    const seededClubIds = participants
-      .map((participant) => participant.clubId)
-      .sort(compareClubs)
-
-  const configuredBestOf = input.bestOfLength && input.bestOfLength >= 3 ? input.bestOfLength : 3
-    const bestOfLength = toOdd(configuredBestOf)
 
     const lastMatch = await tx.match.findFirst({
       where: { seasonId },
@@ -898,7 +1162,7 @@ export const createSeasonPlayoffs = async (
     const matchTime = lastMatch ? lastMatch.matchDateTime.toISOString().slice(11, 16) : null
     const playoffStart = addDays(season.endDate, 7)
 
-    const { plans, byeClubId } = createInitialPlayoffPlans(seededClubIds, playoffStart, matchTime, bestOfLength)
+  const { plans, byeClubId } = createInitialPlayoffPlans(seededClubIds, playoffStart, matchTime, bestOfLength)
     if (plans.length === 0) {
       throw new Error('not_enough_pairs')
     }

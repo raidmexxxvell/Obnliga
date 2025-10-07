@@ -360,7 +360,8 @@ export const MatchesTab = () => {
   const competitionFormat: SeriesFormat | undefined = selectedSeason?.competition.seriesFormat
   const isBestOfFormat = competitionFormat === 'BEST_OF_N' || competitionFormat === 'DOUBLE_ROUND_PLAYOFF'
   const isPlayoffBracketFormat = competitionFormat === 'PLAYOFF_BRACKET'
-  const supportsPlayoffSeries = isBestOfFormat || isPlayoffBracketFormat
+  const isGroupPlayoffFormat = competitionFormat === 'GROUP_SINGLE_ROUND_PLAYOFF'
+  const supportsPlayoffSeries = isBestOfFormat || isPlayoffBracketFormat || isGroupPlayoffFormat
 
   // Одноразовая инициализация словарей и сезонов
   const bootRef = useRef(false)
@@ -1214,17 +1215,36 @@ export const MatchesTab = () => {
 
   const hasUnfinishedMatches = seasonMatches.some((match) => match.status !== 'FINISHED')
   const playoffsDisabledReason = useMemo(() => {
-    if (!isBestOfFormat) return null
+    if (!isBestOfFormat && !isGroupPlayoffFormat) return null
     if (!selectedSeasonId) return 'Выберите сезон, чтобы запускать плей-офф'
     if (!selectedSeason) return 'Сезон не найден'
     if (seasonSeries.length > 0) return 'Серии уже созданы для этого сезона'
     if (seasonParticipants.length < 2) return 'Недостаточно участников для плей-офф'
-    if (seasonMatches.length === 0) return 'Нет матчей регулярного сезона'
+    if (seasonMatches.length === 0) return 'Нет матчей для расчёта посева'
     if (hasUnfinishedMatches) return 'Сначала завершите все матчи регулярного этапа'
+
+    if (isGroupPlayoffFormat) {
+      const groups = selectedSeason.groups ?? []
+      if (!groups.length) {
+        return 'Сезон не содержит настроенных группового этапа'
+      }
+
+      for (const group of groups) {
+        if (group.qualifyCount <= 0) {
+          return `Укажите количество команд, проходящих из группы «${group.label}»`
+        }
+        const filledSlots = group.slots.filter((slot) => typeof slot.clubId === 'number' && slot.clubId).length
+        if (filledSlots < group.qualifyCount) {
+          return `Заполните участников в группе «${group.label}»`
+        }
+      }
+    }
+
     return null
   }, [
     hasUnfinishedMatches,
     isBestOfFormat,
+    isGroupPlayoffFormat,
     seasonMatches.length,
     seasonParticipants.length,
     seasonSeries.length,

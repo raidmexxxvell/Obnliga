@@ -453,10 +453,10 @@ export const StatsTab = () => {
                           <tr>
                             <th>#</th>
                             <th>Клуб</th>
-                            <th>Игры</th>
-                            <th>Победы</th>
-                            <th>Ничьи</th>
-                            <th>Поражения</th>
+                            <th>И</th>
+                            <th title="Победы">В</th>
+                            <th title="Ничьи">Н</th>
+                            <th title="Поражения">П</th>
                             <th>Голы</th>
                             <th>Очки</th>
                           </tr>
@@ -504,10 +504,10 @@ export const StatsTab = () => {
                   <tr>
                     <th>#</th>
                     <th>Клуб</th>
-                    <th>Игры</th>
-                    <th>Победы</th>
-                    <th>Ничьи</th>
-                    <th>Поражения</th>
+                    <th>И</th>
+                    <th title="Победы">В</th>
+                    <th title="Ничьи">Н</th>
+                    <th title="Поражения">П</th>
                     <th>Голы</th>
                     <th>Очки</th>
                   </tr>
