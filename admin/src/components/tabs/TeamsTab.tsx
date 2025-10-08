@@ -134,7 +134,10 @@ export const TeamsTab = () => {
     }
     try {
       await fn()
-      await fetchDictionaries()
+      await Promise.all([
+        fetchDictionaries({ force: true }),
+        fetchSeasons({ force: true })
+      ])
       handleFeedback(successMessage, 'success')
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Не удалось выполнить операцию'
@@ -191,7 +194,10 @@ export const TeamsTab = () => {
 
   const handleRosterSaved = (_players: ClubPlayerLink[]) => {
     handleFeedback('Состав клуба обновлён', 'success')
-    void Promise.all([fetchDictionaries(), fetchSeasons()]).catch(() => undefined)
+    void Promise.all([
+      fetchDictionaries({ force: true }),
+      fetchSeasons({ force: true })
+    ]).catch(() => undefined)
   }
 
   const handlePersonSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -299,7 +305,12 @@ export const TeamsTab = () => {
           <h3>Справочники</h3>
           <p>Управляйте клубами, людьми, стадионами и соревнованиями. Все изменения немедленно отражаются в базе.</p>
         </div>
-        <button className="button-ghost" type="button" onClick={() => fetchDictionaries()} disabled={isLoading}>
+        <button
+          className="button-ghost"
+          type="button"
+          onClick={() => fetchDictionaries({ force: true })}
+          disabled={isLoading}
+        >
           {isLoading ? 'Обновляем…' : 'Обновить данные'}
         </button>
       </header>

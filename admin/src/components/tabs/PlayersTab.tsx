@@ -124,7 +124,7 @@ export const PlayersTab = () => {
       })
       handleFeedback('Игрок добавлен', 'success')
       setPersonForm(defaultPersonForm)
-      await fetchDictionaries()
+      await fetchDictionaries({ force: true })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Не удалось создать запись'
       handleFeedback(message, 'error')
@@ -145,7 +145,7 @@ export const PlayersTab = () => {
       })
       handleFeedback('Данные игрока обновлены', 'success')
       setEditPersonForm(defaultEditPersonForm)
-      await fetchDictionaries()
+      await fetchDictionaries({ force: true })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Не удалось обновить запись'
       handleFeedback(message, 'error')
@@ -157,7 +157,7 @@ export const PlayersTab = () => {
     try {
       await adminDelete(token, `/api/admin/persons/${person.id}`)
       handleFeedback('Игрок удалён', 'success')
-      await fetchDictionaries()
+      await fetchDictionaries({ force: true })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Не удалось удалить запись'
       handleFeedback(message, 'error')
@@ -231,7 +231,14 @@ export const PlayersTab = () => {
           <h3>Игроки и дисциплина</h3>
           <p>Создавайте игроков, обновляйте роли и отслеживайте дисквалификации.</p>
         </div>
-        <button className="button-ghost" type="button" disabled={isLoading} onClick={() => Promise.all([fetchDictionaries(), fetchDisqualifications()])}>
+        <button
+          className="button-ghost"
+          type="button"
+          disabled={isLoading}
+          onClick={() =>
+            Promise.all([fetchDictionaries({ force: true }), fetchDisqualifications()])
+          }
+        >
           {isLoading ? 'Обновляем…' : 'Обновить данные'}
         </button>
       </header>

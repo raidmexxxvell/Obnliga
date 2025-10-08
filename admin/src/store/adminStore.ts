@@ -97,8 +97,8 @@ interface AdminState {
   clearError(): void
   setSelectedCompetition(competitionId?: number): void
   setSelectedSeason(seasonId?: number): void
-  fetchDictionaries(): Promise<void>
-  fetchSeasons(): Promise<void>
+  fetchDictionaries(options?: FetchOptions): Promise<void>
+  fetchSeasons(options?: FetchOptions): Promise<void>
   fetchSeries(seasonId?: number, options?: FetchOptions): Promise<void>
   fetchMatches(seasonId?: number, options?: FetchOptions): Promise<void>
   fetchFriendlyMatches(): Promise<void>
@@ -388,9 +388,12 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         }
       })()
     },
-    async fetchDictionaries() {
+    async fetchDictionaries(options?: FetchOptions) {
       if (get().mode !== 'admin') return
-      await runCachedFetch('dictionaries', [], async () => {
+      await runCachedFetch(
+        'dictionaries',
+        [],
+        async () => {
         const token = ensureToken()
         const [clubs, persons, stadiums, competitions] = await Promise.all([
           adminGet<Club[]>(token, '/api/admin/clubs'),
@@ -398,20 +401,36 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           adminGet<Stadium[]>(token, '/api/admin/stadiums'),
           adminGet<Competition[]>(token, '/api/admin/competitions')
         ])
-        set((state) => ({
-          data: {
-            ...state.data,
-            clubs,
-            persons,
-            stadiums,
-            competitions
+        set((state) => {
+          let selectedCompetitionId = state.selectedCompetitionId
+          if (
+            selectedCompetitionId &&
+            !competitions.some((competition) => competition.id === selectedCompetitionId)
+          ) {
+            selectedCompetitionId = competitions[0]?.id
           }
-        }))
-      })
+
+          return {
+            data: {
+              ...state.data,
+              clubs,
+              persons,
+              stadiums,
+              competitions
+            },
+            selectedCompetitionId
+          }
+        })
+      },
+        options?.force ? 0 : undefined
+      )
     },
-    async fetchSeasons() {
+    async fetchSeasons(options?: FetchOptions) {
       if (get().mode !== 'admin') return
-      await runCachedFetch('seasons', [], async () => {
+      await runCachedFetch(
+        'seasons',
+        [],
+        async () => {
         const token = ensureToken()
         const seasons = await adminGet<Season[]>(token, '/api/admin/seasons')
         set((state) => {
@@ -423,7 +442,9 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
             selectedCompetitionId: nextSeason?.competitionId ?? state.selectedCompetitionId
           }
         })
-      })
+      },
+        options?.force ? 0 : undefined
+      )
     },
     async fetchSeries(seasonId?: number, options?: FetchOptions) {
       if (get().mode !== 'admin') return

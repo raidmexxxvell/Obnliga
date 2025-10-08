@@ -2617,7 +2617,7 @@ export default async function (server: FastifyInstance) {
       const users = await prisma.appUser.findMany({
         orderBy: { createdAt: 'desc' }
       })
-      return reply.send({ ok: true, data: users })
+      return sendSerialized(reply, users)
     })
 
     admin.put('/users/:userId', async (request, reply) => {
@@ -2631,7 +2631,7 @@ export default async function (server: FastifyInstance) {
           totalPredictions: body.totalPredictions ?? undefined
         }
       })
-      return reply.send({ ok: true, data: user })
+      return sendSerialized(reply, user)
     })
 
     admin.get('/predictions', async (request, reply) => {
@@ -2643,7 +2643,7 @@ export default async function (server: FastifyInstance) {
         },
         include: { user: true }
       })
-      return reply.send({ ok: true, data: predictions })
+      return sendSerialized(reply, predictions)
     })
 
     admin.put('/predictions/:predictionId', async (request, reply) => {
@@ -2656,7 +2656,7 @@ export default async function (server: FastifyInstance) {
           pointsAwarded: body.pointsAwarded ?? undefined
         }
       })
-      return reply.send({ ok: true, data: prediction })
+      return sendSerialized(reply, prediction)
     })
 
     // Achievements
