@@ -61,7 +61,6 @@ type SeasonAutomationFormState = {
   matchDayOfWeek: string
   matchTime: string
   clubIds: number[]
-  copyClubPlayersToRoster: boolean
   seriesFormat: SeriesFormat
 }
 
@@ -133,7 +132,6 @@ const defaultAutomationForm: SeasonAutomationFormState = {
   matchDayOfWeek: '0',
   matchTime: '12:00',
   clubIds: [],
-  copyClubPlayersToRoster: true,
   seriesFormat: 'SINGLE_MATCH'
 }
 
@@ -761,7 +759,6 @@ export const MatchesTab = () => {
       matchDayOfWeek: Number.isFinite(matchDay) ? matchDay : 0,
       matchTime: automationForm.matchTime || undefined,
       clubIds: payloadClubIds,
-      copyClubPlayersToRoster: automationForm.copyClubPlayersToRoster,
       seriesFormat: automationForm.seriesFormat,
       groupStage: groupStagePayload
     }
@@ -1465,16 +1462,9 @@ export const MatchesTab = () => {
                 запуске автоматизации. Если участников нечётное число, одна команда получает автоматический проход далее.
               </p>
             ) : null}
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={automationForm.copyClubPlayersToRoster}
-                onChange={(event) =>
-                  setAutomationForm((form) => ({ ...form, copyClubPlayersToRoster: event.target.checked }))
-                }
-              />
-              Перенести шаблонные составы клуба в сезонную заявку
-            </label>
+            <p className="muted">
+              Шаблонные составы клубов автоматически переносятся в сезон и синхронизируются при изменениях состава клуба.
+            </p>
             {automationGroupStage ? (
               <div className="group-stage-editor">
                 <div className="group-stage-controls">

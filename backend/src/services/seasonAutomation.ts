@@ -117,7 +117,6 @@ interface SeasonAutomationInput {
   startDateISO: string
   matchDayOfWeek: number
   matchTime?: string | null
-  copyClubPlayersToRoster?: boolean
   seriesFormat: SeriesFormat
   bestOfLength?: number
   groupStage?: GroupStageConfigInput
@@ -521,12 +520,12 @@ export const runSeasonAutomation = async (
     }
 
     let rosterEntriesCreated = 0
-    if (input.copyClubPlayersToRoster) {
-      const clubPlayers = await tx.clubPlayer.findMany({
-        where: { clubId: { in: uniqueClubIds } },
-        orderBy: [{ clubId: 'asc' }, { defaultShirtNumber: 'asc' }, { personId: 'asc' }]
-      })
+    const clubPlayers = await tx.clubPlayer.findMany({
+      where: { clubId: { in: uniqueClubIds } },
+      orderBy: [{ clubId: 'asc' }, { defaultShirtNumber: 'asc' }, { personId: 'asc' }]
+    })
 
+    if (clubPlayers.length) {
       const clubToNumbers = new Map<number, Set<number>>()
       const rosterPayload: {
         seasonId: number

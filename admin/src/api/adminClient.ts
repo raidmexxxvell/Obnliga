@@ -298,7 +298,6 @@ export interface SeasonAutomationPayload {
   matchDayOfWeek: number
   matchTime?: string
   clubIds: number[]
-  copyClubPlayersToRoster?: boolean
   seriesFormat: SeriesFormat
   groupStage?: SeasonGroupStagePayload
 }

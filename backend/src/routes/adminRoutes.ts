@@ -59,6 +59,159 @@ const parseBigIntId = (value: string | number | bigint | undefined, field: strin
   }
 }
 
+const normalizeShirtNumber = (value: number | null | undefined): number | null => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return null
+  }
+  const normalized = Math.floor(value)
+  if (normalized <= 0) {
+    return null
+  }
+  return Math.min(normalized, 999)
+}
+
+const assignSeasonShirtNumber = (preferred: number | null, taken: Set<number>): number => {
+  if (typeof preferred === 'number' && preferred > 0 && !taken.has(preferred)) {
+    taken.add(preferred)
+    return preferred
+  }
+  let candidate = typeof preferred === 'number' && preferred > 0 ? preferred : 1
+  if (candidate < 1) candidate = 1
+  for (let offset = 0; offset < 999; offset += 1) {
+    const value = ((candidate - 1 + offset) % 999) + 1
+    if (!taken.has(value)) {
+      taken.add(value)
+      return value
+    }
+  }
+  let fallback = 1
+  while (taken.has(fallback)) {
+    fallback += 1
+  }
+  taken.add(fallback)
+  return fallback
+}
+
+const shouldSyncSeasonRoster = (season: { endDate: Date }): boolean => {
+  const now = new Date()
+  return season.endDate >= now
+}
+
+const syncClubSeasonRosters = async (
+  tx: Prisma.TransactionClient,
+  clubId: number
+): Promise<number[]> => {
+  const clubPlayers = await tx.clubPlayer.findMany({
+    where: { clubId },
+    orderBy: [{ defaultShirtNumber: 'asc' }, { personId: 'asc' }]
+  })
+
+  const desiredNumbers = new Map<number, number | null>()
+  for (const player of clubPlayers) {
+    desiredNumbers.set(player.personId, normalizeShirtNumber(player.defaultShirtNumber))
+  }
+
+  const currentParticipants = await tx.seasonParticipant.findMany({
+    where: { clubId },
+    include: {
+      season: {
+        select: {
+          id: true,
+          endDate: true
+        }
+      }
+    }
+  })
+
+  const clubPlayerIds = new Set(clubPlayers.map((player) => player.personId))
+  const updatedSeasonIds: number[] = []
+
+  for (const participant of currentParticipants) {
+    const season = participant.season
+    if (!season || !shouldSyncSeasonRoster(season)) {
+      continue
+    }
+
+    const rosterEntries = await tx.seasonRoster.findMany({
+      where: { seasonId: season.id, clubId },
+      orderBy: [{ shirtNumber: 'asc' }]
+    })
+
+    const obsoleteEntries = rosterEntries.filter((entry) => !clubPlayerIds.has(entry.personId))
+    if (obsoleteEntries.length) {
+      await tx.seasonRoster.deleteMany({
+        where: {
+          seasonId: season.id,
+          clubId,
+          personId: { in: obsoleteEntries.map((entry) => entry.personId) }
+        }
+      })
+    }
+
+    const activeEntries = rosterEntries.filter((entry) => clubPlayerIds.has(entry.personId))
+    const entryByPerson = new Map(activeEntries.map((entry) => [entry.personId, entry]))
+    const takenNumbers = new Set<number>(activeEntries.map((entry) => entry.shirtNumber))
+
+    const updates: Array<{ personId: number; shirtNumber: number }> = []
+    const creations: Array<{ personId: number; shirtNumber: number }> = []
+
+    for (const player of clubPlayers) {
+      const preferred = desiredNumbers.get(player.personId) ?? null
+      const existing = entryByPerson.get(player.personId)
+      if (existing) {
+        if (
+          typeof preferred === 'number' &&
+          preferred > 0 &&
+          preferred !== existing.shirtNumber &&
+          !takenNumbers.has(preferred)
+        ) {
+          takenNumbers.delete(existing.shirtNumber)
+          takenNumbers.add(preferred)
+          updates.push({ personId: player.personId, shirtNumber: preferred })
+        }
+        continue
+      }
+
+      const assigned = assignSeasonShirtNumber(preferred, takenNumbers)
+      creations.push({ personId: player.personId, shirtNumber: assigned })
+    }
+
+    if (updates.length) {
+      for (const update of updates) {
+        await tx.seasonRoster.update({
+          where: {
+            seasonId_clubId_personId: {
+              seasonId: season.id,
+              clubId,
+              personId: update.personId
+            }
+          },
+          data: { shirtNumber: update.shirtNumber }
+        })
+      }
+    }
+
+    if (creations.length) {
+      await tx.seasonRoster.createMany({
+        data: creations.map((entry) => ({
+          seasonId: season.id,
+          clubId,
+          personId: entry.personId,
+          shirtNumber: entry.shirtNumber,
+          registrationDate: new Date()
+        })),
+        skipDuplicates: true
+      })
+    }
+
+    if (obsoleteEntries.length || updates.length || creations.length) {
+      updatedSeasonIds.push(season.id)
+    }
+  }
+
+  return Array.from(new Set(updatedSeasonIds))
+}
+
 const formatNameToken = (token: string): string => {
   return token
     .split('-')
@@ -1002,10 +1155,6 @@ export default async function (server: FastifyInstance) {
       }
 
       const entries = Array.isArray(body?.players) ? body.players : []
-      if (!entries.length) {
-        await prisma.clubPlayer.deleteMany({ where: { clubId } })
-        return reply.send({ ok: true, data: [] })
-      }
 
       const normalized: Array<{ personId: number; defaultShirtNumber: number | null }> = []
       const seenPersons = new Set<number>()
@@ -1025,11 +1174,20 @@ export default async function (server: FastifyInstance) {
 
       try {
         await prisma.$transaction(async (tx) => {
+          if (!normalized.length) {
+            await tx.clubPlayer.deleteMany({ where: { clubId } })
+            await tx.playerClubCareerStats.deleteMany({ where: { clubId } })
+            await syncClubSeasonRosters(tx, clubId)
+            return
+          }
+
+          const personIds = normalized.map((item) => item.personId)
+
           await tx.clubPlayer.deleteMany({
-            where: { clubId, personId: { notIn: normalized.map((item) => item.personId) } }
+            where: { clubId, personId: { notIn: personIds } }
           })
           await tx.playerClubCareerStats.deleteMany({
-            where: { clubId, personId: { notIn: normalized.map((item) => item.personId) } }
+            where: { clubId, personId: { notIn: personIds } }
           })
 
           for (const item of normalized) {
@@ -1058,6 +1216,8 @@ export default async function (server: FastifyInstance) {
               update: {}
             })
           }
+
+          await syncClubSeasonRosters(tx, clubId)
         })
       } catch (err) {
         const prismaErr = err as Prisma.PrismaClientKnownRequestError
@@ -1209,6 +1369,8 @@ export default async function (server: FastifyInstance) {
             })
             clubPersonIds.add(person.id)
           }
+
+          await syncClubSeasonRosters(tx, clubId)
         })
       } catch (err) {
         request.server.log.error({ err }, 'club players import failed')
@@ -1465,7 +1627,6 @@ export default async function (server: FastifyInstance) {
         matchDayOfWeek?: number
         matchTime?: string
         clubIds?: number[]
-        copyClubPlayersToRoster?: boolean
         seriesFormat?: string
         groupStage?: {
           groupCount?: number
@@ -1562,7 +1723,6 @@ export default async function (server: FastifyInstance) {
           startDateISO: body.startDate,
           matchDayOfWeek: normalizedMatchDay,
           matchTime: body.matchTime,
-          copyClubPlayersToRoster: body.copyClubPlayersToRoster ?? true,
           seriesFormat,
           groupStage: groupStageConfig
         })

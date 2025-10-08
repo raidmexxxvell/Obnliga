@@ -73,10 +73,11 @@ const defaultCompetitionForm: CompetitionFormState = {
 }
 
 export const TeamsTab = () => {
-  const { token, data, fetchDictionaries, loading, error } = useAdminStore((state) => ({
+  const { token, data, fetchDictionaries, fetchSeasons, loading, error } = useAdminStore((state) => ({
     token: state.token,
     data: state.data,
     fetchDictionaries: state.fetchDictionaries,
+    fetchSeasons: state.fetchSeasons,
     loading: state.loading,
     error: state.error
   }))
@@ -190,7 +191,7 @@ export const TeamsTab = () => {
 
   const handleRosterSaved = (_players: ClubPlayerLink[]) => {
     handleFeedback('Состав клуба обновлён', 'success')
-    void fetchDictionaries().catch(() => undefined)
+    void Promise.all([fetchDictionaries(), fetchSeasons()]).catch(() => undefined)
   }
 
   const handlePersonSubmit = async (event: FormEvent<HTMLFormElement>) => {
