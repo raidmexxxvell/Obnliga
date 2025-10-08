@@ -85,26 +85,25 @@ export const DashboardLayout = () => {
     <div className="dashboard-shell neo-accents">
       <div className="shell-header">
         <h2>Обнинск лига — админ</h2>
-        <div className="user-badge" role="status" aria-live="polite">
-          <span>online</span>
-          <button className="tab-button" type="button" onClick={() => logout()}>
-            Выйти
-          </button>
-        </div>
       </div>
       <div className="tabs" role="tablist" aria-label="Админские вкладки">
-        <button
-          type="button"
-          className="tab-burger"
-          aria-expanded={menuOpen}
-          aria-controls="admin-tabs"
-          onClick={toggleMenu}
-        >
-          <span className="tab-burger-line" />
-          <span className="tab-burger-line" />
-          <span className="tab-burger-line" />
-          <span className="tab-burger-label">Разделы</span>
-        </button>
+        <div className="tabs-toolbar">
+          <button
+            type="button"
+            className="tab-burger"
+            aria-expanded={menuOpen}
+            aria-controls="admin-tabs"
+            onClick={toggleMenu}
+          >
+            <span className="tab-burger-label">Разделы</span>
+          </button>
+          <div className="user-badge" role="status" aria-live="polite">
+            <span>online</span>
+            <button className="user-logout" type="button" onClick={() => logout()}>
+              Выйти
+            </button>
+          </div>
+        </div>
         <div id="admin-tabs" className={`tab-list${menuOpen ? ' open' : ''}`}>
           {tabsOrder.map((tab) => (
             <button

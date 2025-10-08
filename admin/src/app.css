@@ -138,6 +138,7 @@
   position: relative;
 }
 
+
 .shell-header {
   display: flex;
   align-items: center;
@@ -153,23 +154,59 @@
 }
 
 .user-badge {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
   background: rgba(0, 240, 255, 0.08);
   color: var(--neon-cyan);
-  padding: 10px 16px;
-  border-radius: 14px;
+  padding: 6px 10px;
+  border-radius: 999px;
   text-transform: uppercase;
-  font-size: 12px;
-  letter-spacing: 1px;
+  font-size: 11px;
+  letter-spacing: 0.8px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.user-badge span {
+  font-weight: 600;
+}
+
+.user-logout {
+  border: 1px solid rgba(0, 240, 255, 0.26);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--neon-cyan);
+  padding: 4px 10px;
+  font-size: 11px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, transform 120ms ease;
+}
+
+.user-logout:hover,
+.user-logout:focus-visible {
+  background: rgba(0, 240, 255, 0.18);
+  color: #09101f;
+  transform: translateY(-1px);
+  outline: none;
 }
 
 .tabs {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 12px;
   position: relative;
+}
+
+.tabs-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  width: 100%;
 }
 
 .tab-list {
@@ -177,29 +214,23 @@
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
+  width: 100%;
 }
 
 .tab-burger {
   display: none;
+  align-items: center;
+  justify-content: center;
   background: rgba(0, 240, 255, 0.08);
   border: 1px solid rgba(0, 240, 255, 0.22);
   border-radius: 12px;
-  padding: 10px 14px;
+  padding: 8px 16px;
   cursor: pointer;
   color: var(--neon-cyan);
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  align-items: center;
-  gap: 8px;
-}
-
-.tab-burger-line {
-  width: 18px;
-  height: 2px;
-  background: var(--neon-cyan);
-  border-radius: 2px;
-  display: block;
-  transition: transform 160ms ease, opacity 160ms ease;
+  font-size: 12px;
+  min-height: 36px;
 }
 
 .tab-burger-label {
@@ -268,10 +299,16 @@
     align-items: flex-start;
   }
 
+  .tabs-toolbar {
+    gap: 10px;
+    flex-wrap: nowrap;
+  }
+
   .tab-burger {
     display: inline-flex;
     position: relative;
     z-index: 120;
+    flex-shrink: 0;
   }
 
   .tab-list {
@@ -318,9 +355,29 @@
     font-size: 22px;
   }
 
+  .tabs-toolbar {
+    gap: 8px;
+  }
+
+  .tab-burger {
+    padding: 6px 12px;
+    font-size: 11px;
+  }
+
   .user-badge {
-    align-self: stretch;
-    justify-content: space-between;
+    gap: 4px;
+    padding: 4px 8px;
+    font-size: 10px;
+  }
+
+  .user-logout {
+    padding: 4px 8px;
+    font-size: 10px;
+    letter-spacing: 0.6px;
+  }
+
+  .match-stats-team-name {
+    font-size: 14px;
   }
 
   .tab-header {
@@ -1327,7 +1384,7 @@
 }
 
 .score-input {
-  width: 48px;
+  width: 44px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 10px;
   background: rgba(3, 8, 18, 0.68);
@@ -1356,25 +1413,29 @@
 
 .score-editor {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, auto));
   align-items: center;
-  gap: 16px;
+  justify-content: center;
+  gap: 18px;
 }
 
 .score-block {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
+  min-width: 64px;
 }
 
 .score-team-label {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
   text-transform: none;
   color: var(--text-muted);
-  text-align: left;
+  text-align: center;
+  line-height: 1.2;
+  word-break: break-word;
 }
 
 .match-stats-card {
@@ -1423,9 +1484,11 @@
 }
 
 .match-stats-teams {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
 }
 
 .match-stats-team {
@@ -1436,6 +1499,8 @@
   border-radius: 14px;
   background: rgba(3, 8, 18, 0.64);
   border: 1px solid rgba(0, 240, 255, 0.14);
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .match-stats-team-home {
@@ -1459,6 +1524,8 @@
   font-weight: 600;
   letter-spacing: 0.4px;
   color: var(--text-primary);
+  word-break: break-word;
+  text-align: inherit;
 }
 
 .match-stats-grid {
@@ -1532,25 +1599,25 @@
 
 @media (max-width: 720px) {
   .score-editor {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .score-separator {
-    display: none;
+    grid-template-columns: repeat(3, auto);
+    gap: 12px;
   }
 
   .score-block {
-    align-items: stretch;
+    min-width: 56px;
+    gap: 4px;
+  }
+
+  .score-team-label {
+    font-size: 11px;
   }
 
   .match-stats-teams {
-    grid-template-columns: 1fr;
+    gap: 8px;
   }
 
-  .match-stats-team-away {
-    align-items: flex-start;
-    text-align: left;
+  .match-stats-team {
+    padding: 8px 10px;
   }
 
   .match-stats-grid {
@@ -1630,6 +1697,11 @@
 }
 
 .score-separator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  padding: 0 4px;
   font-weight: 600;
   font-size: 18px;
   color: var(--text-primary);

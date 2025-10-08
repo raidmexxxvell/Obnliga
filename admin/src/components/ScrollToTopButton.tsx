@@ -9,13 +9,23 @@ export const ScrollToTopButton = () => {
     }
 
     const handleScroll = () => {
-      setVisible(window.scrollY > 240)
+      const { scrollHeight, clientHeight } = document.documentElement
+      const totalScrollable = scrollHeight - clientHeight
+      if (totalScrollable <= 0) {
+        setVisible(false)
+        return
+      }
+      setVisible(window.scrollY >= totalScrollable / 3)
     }
 
     handleScroll()
 
     window.addEventListener('scroll', handleScroll, { passive: true })
-    return () => window.removeEventListener('scroll', handleScroll)
+    window.addEventListener('resize', handleScroll)
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('resize', handleScroll)
+    }
   }, [])
 
   if (typeof window === 'undefined') {

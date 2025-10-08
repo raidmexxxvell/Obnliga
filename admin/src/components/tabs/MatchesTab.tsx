@@ -1151,7 +1151,8 @@ export const MatchesTab = () => {
 
   const getClubDisplayName = (club: Club | undefined, fallback: string) => {
     if (!club) return fallback
-    return club.shortName?.trim() || club.name
+    const label = club.name?.trim()
+    return label && label.length > 0 ? label : fallback
   }
 
   const canDecreaseStatistic = (clubId: number | undefined, metric: MatchStatisticMetric) => {
@@ -2305,9 +2306,9 @@ export const MatchesTab = () => {
                           </button>
                         ) : null}
                       </div>
-                      <span className="score-team-label">{homeClub ? homeClub.shortName || homeClub.name : 'Хозяева'}</span>
+                      <span className="score-team-label">{homeDisplayName}</span>
                     </div>
-                    <span className="score-separator">:</span>
+                    <span className="score-separator">-</span>
                     <div className="score-block">
                       <div className={`score-control${isSelectedMatchLive ? ' live' : ''}`}>
                         {isSelectedMatchLive && selectedMatch ? (
@@ -2351,7 +2352,7 @@ export const MatchesTab = () => {
                           </button>
                         ) : null}
                       </div>
-                      <span className="score-team-label">{awayClub ? awayClub.shortName || awayClub.name : 'Гости'}</span>
+                      <span className="score-team-label">{awayDisplayName}</span>
                     </div>
                   </div>
                 </label>
