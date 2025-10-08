@@ -890,7 +890,32 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
   }
 
   if (isBracketFormat) {
-    const nextStageName = stageNameForTeams(uniqueWinners.length)
+    type BracketAdvanceEntry = { clubId: number; seed?: number; slot: number }
+
+    const stageEntries: BracketAdvanceEntry[] = stageSeries.reduce<BracketAdvanceEntry[]>((acc, series) => {
+      if (!series.winnerClubId || typeof series.bracketSlot !== 'number') {
+        return acc
+      }
+
+      const entry: BracketAdvanceEntry = {
+        clubId: series.winnerClubId,
+        slot: series.bracketSlot
+      }
+
+      const winnerSeed = series.winnerClubId === series.homeClubId ? series.homeSeed : series.awaySeed
+      if (typeof winnerSeed === 'number') {
+        entry.seed = winnerSeed
+      }
+
+      acc.push(entry)
+      return acc
+    }, [])
+
+    stageEntries.sort((left, right) => left.slot - right.slot)
+
+    if (stageEntries.length < 2) return
+
+    const nextStageName = stageNameForTeams(stageEntries.length)
     const existingNextStage = await tx.matchSeries.count({
       where: { seasonId: context.seasonId, stageName: nextStageName }
     })
@@ -906,57 +931,100 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
     const startDate = latestMatch ? addDays(latestMatch.matchDateTime, 7) : new Date()
 
     const bestOfLength = Math.max(1, context.bestOfLength ?? 1)
-    const { plans, byeSeries } = createRandomPlayoffPlans(uniqueWinners, startDate, matchTime, bestOfLength, {
-      shuffle: false
-    })
-
-    if (plans.length === 0 && byeSeries.length === 0) return
-
     let latestDate: Date | null = latestMatch?.matchDateTime ?? null
     let createdSeries = 0
     let createdMatches = 0
 
-    for (const plan of plans) {
-      let playoffRound = await tx.seasonRound.findFirst({
-        where: { seasonId: context.seasonId, label: nextStageName }
+    let playoffRound = await tx.seasonRound.findFirst({
+      where: { seasonId: context.seasonId, label: nextStageName }
+    })
+    if (!playoffRound) {
+      playoffRound = await tx.seasonRound.create({
+        data: {
+          seasonId: context.seasonId,
+          roundType: RoundType.PLAYOFF,
+          roundNumber: null,
+          label: nextStageName
+        }
       })
-      if (!playoffRound) {
-        playoffRound = await tx.seasonRound.create({
+    }
+
+    const autoAdvance: { clubId: number; seed?: number; targetSlot: number }[] = []
+
+    const pickHomeAway = (left: BracketAdvanceEntry, right: BracketAdvanceEntry) => {
+      if (typeof left.seed === 'number' && typeof right.seed === 'number') {
+        return left.seed <= right.seed ? [left, right] : [right, left]
+      }
+      if (typeof left.seed === 'number') return [left, right]
+      if (typeof right.seed === 'number') return [right, left]
+      return left.slot <= right.slot ? [left, right] : [right, left]
+    }
+
+    const normalizeSeed = (value?: number | null) => (typeof value === 'number' ? value : null)
+
+    for (let index = 0; index < stageEntries.length; index += 2) {
+      const left = stageEntries[index]
+      if (!left) continue
+      const right = stageEntries[index + 1]
+      const targetSlot = right
+        ? Math.ceil(Math.min(left.slot, right.slot) / 2)
+        : Math.ceil(left.slot / 2)
+
+      if (!right) {
+        await tx.matchSeries.create({
           data: {
             seasonId: context.seasonId,
-            roundType: RoundType.PLAYOFF,
-            roundNumber: null,
-            label: nextStageName
+            stageName: nextStageName,
+            homeClubId: left.clubId,
+            awayClubId: left.clubId,
+            seriesStatus: SeriesStatus.FINISHED,
+            winnerClubId: left.clubId,
+            homeSeed: normalizeSeed(left.seed),
+            awaySeed: normalizeSeed(left.seed),
+            bracketSlot: targetSlot
           }
         })
+        createdSeries += 1
+        autoAdvance.push({ clubId: left.clubId, seed: left.seed, targetSlot })
+        continue
       }
+
+      const pairIndex = Math.floor(index / 2)
+      const seriesBaseDate = addDays(startDate, pairIndex * 2)
+      const matchDateTimes: Date[] = []
+      for (let game = 0; game < bestOfLength; game += 1) {
+        const scheduled = addDays(seriesBaseDate, game * 3)
+        matchDateTimes.push(applyTimeToDate(scheduled, matchTime))
+      }
+
+      const [homeEntry, awayEntry] = pickHomeAway(left, right)
 
       const series = await tx.matchSeries.create({
         data: {
           seasonId: context.seasonId,
           stageName: nextStageName,
-          homeClubId: plan.homeClubId,
-          awayClubId: plan.awayClubId,
+          homeClubId: homeEntry.clubId,
+          awayClubId: awayEntry.clubId,
           seriesStatus: SeriesStatus.IN_PROGRESS,
-          homeSeed: plan.homeSeed,
-          awaySeed: plan.awaySeed,
-          bracketSlot: plan.targetSlot
+          homeSeed: normalizeSeed(homeEntry.seed),
+          awaySeed: normalizeSeed(awayEntry.seed),
+          bracketSlot: targetSlot
         }
       })
       createdSeries += 1
 
-      const matches = plan.matchDateTimes.map((date, index) => {
+      const matches = matchDateTimes.map((date, gameIndex) => {
         if (!latestDate || date > latestDate) {
           latestDate = date
         }
         return {
           seasonId: context.seasonId,
           matchDateTime: date,
-          homeTeamId: plan.homeClubId,
-          awayTeamId: plan.awayClubId,
+          homeTeamId: gameIndex % 2 === 0 ? homeEntry.clubId : awayEntry.clubId,
+          awayTeamId: gameIndex % 2 === 0 ? awayEntry.clubId : homeEntry.clubId,
           status: MatchStatus.SCHEDULED,
           seriesId: series.id,
-          seriesMatchNumber: index + 1,
+          seriesMatchNumber: gameIndex + 1,
           roundId: playoffRound?.id ?? null
         }
       })
@@ -964,24 +1032,6 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
       if (matches.length) {
         const created = await tx.match.createMany({ data: matches })
         createdMatches += created.count
-      }
-    }
-
-    if (byeSeries.length) {
-      for (const bye of byeSeries) {
-        await tx.matchSeries.create({
-          data: {
-            seasonId: context.seasonId,
-            stageName: nextStageName,
-            homeClubId: bye.clubId,
-            awayClubId: bye.clubId,
-            seriesStatus: SeriesStatus.FINISHED,
-            winnerClubId: bye.clubId,
-            homeSeed: bye.seed,
-            awaySeed: bye.seed,
-            bracketSlot: bye.targetSlot
-          }
-        })
       }
     }
 
@@ -1007,9 +1057,9 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
       {
         seasonId: context.seasonId,
         stageName: nextStageName,
-        seriesCreated: createdSeries + byeSeries.length,
+        seriesCreated: createdSeries,
         matchesCreated: createdMatches,
-        byeClubIds: byeSeries.map((entry) => entry.clubId),
+        autoAdvance,
         thirdPlaceCreated: thirdPlaceOutcome.seriesCreated > 0
       },
       'playoff stage progressed'
