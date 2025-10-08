@@ -135,6 +135,7 @@
   border-radius: 22px;
   padding: 28px;
   box-shadow: 0 22px 55px rgba(2, 6, 16, 0.78);
+  position: relative;
 }
 
 .shell-header {
@@ -168,6 +169,50 @@
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+  position: relative;
+}
+
+.tab-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.tab-burger {
+  display: none;
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.22);
+  border-radius: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  color: var(--neon-cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  align-items: center;
+  gap: 8px;
+}
+
+.tab-burger-line {
+  width: 18px;
+  height: 2px;
+  background: var(--neon-cyan);
+  border-radius: 2px;
+  display: block;
+  transition: transform 160ms ease, opacity 160ms ease;
+}
+
+.tab-burger-label {
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+.tab-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 10, 20, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 80;
 }
 
 .tab-button {
@@ -181,6 +226,119 @@
   text-transform: uppercase;
   cursor: pointer;
   transition: background 160ms ease, transform 120ms ease;
+}
+
+.scroll-to-top {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 240, 255, 0.28);
+  background: rgba(4, 10, 20, 0.82);
+  color: var(--neon-cyan);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 12px 30px rgba(0, 240, 255, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease, transform 200ms ease;
+  z-index: 120;
+}
+
+.scroll-to-top:hover {
+  transform: translateY(-2px);
+}
+
+.scroll-to-top.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (max-width: 960px) {
+  .dashboard-shell {
+    padding: 22px 18px 60px;
+  }
+
+  .shell-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .tab-burger {
+    display: inline-flex;
+    position: relative;
+    z-index: 120;
+  }
+
+  .tab-list {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%) scale(0.98);
+    width: min(90vw, 360px);
+    background: rgba(4, 10, 20, 0.94);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 18px;
+    box-shadow: 0 24px 60px rgba(2, 8, 20, 0.72);
+    padding: 18px;
+    gap: 10px;
+    flex-direction: column;
+    align-items: stretch;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms ease, transform 220ms ease;
+    z-index: 120;
+  }
+
+  .tab-list.open {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%) scale(1);
+  }
+
+  .tab-button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 600px) {
+  .scroll-to-top {
+    right: 16px;
+    bottom: 16px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .shell-header h2 {
+    font-size: 22px;
+  }
+
+  .user-badge {
+    align-self: stretch;
+    justify-content: space-between;
+  }
+
+  .tab-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .table-scroll {
+    max-height: 260px;
+  }
+
+  .dashboard-shell {
+    border-radius: 16px;
+  }
 }
 
 .tab-button.active {

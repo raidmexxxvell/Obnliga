@@ -17,7 +17,8 @@ Store — публичные методы и селекторы (пример)
 - getState(): RootState — синхронный снимок
 - subscribe(listener: (state) => void): Unsubscribe
 - actions:
-  - fetchMatches(force?: boolean): Promise<{ ok: boolean }>
+  - fetchDictionaries(options?: { force?: boolean }): Promise<{ ok: boolean }>
+  - fetchSeasons(options?: { force?: boolean }), fetchSeries(seasonId?, options?), fetchMatches(seasonId?, options?) — синхронизируют данные выбранного сезона, поддерживают `force: true` для обхода TTL.
   - fetchMatch(id: number): Promise<{ ok: boolean }>
   - placeBet(betPayload): Promise<{ ok: boolean, id?: number }>
   - addToCart(itemId, qty): void

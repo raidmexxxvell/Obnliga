@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react'
 import { AdminTab, useAdminStore } from '../store/adminStore'
 import { TeamsTab } from './tabs/TeamsTab'
 import { MatchesTab } from './tabs/MatchesTab'
 import { StatsTab } from './tabs/StatsTab'
 import { PlayersTab } from './tabs/PlayersTab'
 import { UsersTab } from './tabs/UsersTab'
+import { ScrollToTopButton } from './ScrollToTopButton'
 
 const tabMeta: Record<AdminTab, { title: string; description: string }> = {
   teams: {
@@ -38,6 +40,29 @@ export const DashboardLayout = () => {
     activeTab: state.activeTab,
     setTab: state.setTab
   }))
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  useEffect(() => {
+    if (!menuOpen) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [menuOpen])
+
+  const handleTabClick = (tab: AdminTab) => {
+    setTab(tab)
+    setMenuOpen(false)
+  }
+
+  const toggleMenu = () => setMenuOpen((value) => !value)
+
+  const closeMenu = () => setMenuOpen(false)
 
   const renderActiveTab = () => {
     switch (activeTab) {
@@ -68,22 +93,38 @@ export const DashboardLayout = () => {
         </div>
       </div>
       <div className="tabs" role="tablist" aria-label="Админские вкладки">
-        {tabsOrder.map((tab) => (
-          <button
-            key={tab}
-            className={`tab-button${activeTab === tab ? ' active' : ''}`}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === tab}
-            onClick={() => setTab(tab)}
-          >
-            {tabMeta[tab].title}
-          </button>
-        ))}
+        <button
+          type="button"
+          className="tab-burger"
+          aria-expanded={menuOpen}
+          aria-controls="admin-tabs"
+          onClick={toggleMenu}
+        >
+          <span className="tab-burger-line" />
+          <span className="tab-burger-line" />
+          <span className="tab-burger-line" />
+          <span className="tab-burger-label">Разделы</span>
+        </button>
+        <div id="admin-tabs" className={`tab-list${menuOpen ? ' open' : ''}`}>
+          {tabsOrder.map((tab) => (
+            <button
+              key={tab}
+              className={`tab-button${activeTab === tab ? ' active' : ''}`}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab}
+              onClick={() => handleTabClick(tab)}
+            >
+              {tabMeta[tab].title}
+            </button>
+          ))}
+        </div>
+        {menuOpen ? <div className="tab-overlay" role="presentation" onClick={closeMenu} /> : null}
       </div>
       <div className="tab-panel" role="tabpanel">
         {renderActiveTab()}
       </div>
+      <ScrollToTopButton />
     </div>
   )
 }
