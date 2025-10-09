@@ -525,6 +525,18 @@ model UserAchievement {
   @@map("user_achievement")
 }
 
+model News {
+  id             BigInt   @id @default(autoincrement()) @map("news_id")
+  title          String   @db.VarChar(100)
+  content        String   @db.Text
+  coverUrl       String?  @map("cover_url")
+  sendToTelegram Boolean  @default(false) @map("send_to_telegram")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt(sort: Desc)], map: "news_created_at_desc")
+  @@map("news")
+}
+
 model Disqualification {
   id        BigInt   @id @default(autoincrement()) @map("disqualification_id")
   personId  Int      @map("person_id")

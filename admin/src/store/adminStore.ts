@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { adminGet, adminLogin, lineupLogin, translateAdminError } from '../api/adminClient'
+import { adminGet, adminLogin, adminRequestWithMeta, lineupLogin, translateAdminError } from '../api/adminClient'
+import type { NewsItem } from '@shared/types'
 import {
   AchievementType,
   AppUser,
@@ -20,7 +21,7 @@ import {
   UserAchievement
 } from '../types'
 
-export type AdminTab = 'teams' | 'matches' | 'stats' | 'players' | 'news'
+export type AdminTab = 'teams' | 'matches' | 'stats' | 'players' | 'news' | 'users'
 
 const storageKey = 'obnliga-admin-token'
 const lineupStorageKey = 'obnliga-lineup-token'
@@ -78,6 +79,7 @@ interface AdminData {
   achievementTypes: AchievementType[]
   userAchievements: UserAchievement[]
   disqualifications: Disqualification[]
+  news: NewsItem[]
 }
 
 interface AdminState {
@@ -89,6 +91,7 @@ interface AdminState {
   activeTab: AdminTab
   selectedCompetitionId?: number
   selectedSeasonId?: number
+  newsVersion?: number
   data: AdminData
   loading: Record<string, boolean>
   login(login: string, password: string): Promise<void>
@@ -107,6 +110,8 @@ interface AdminState {
   fetchPredictions(): Promise<void>
   fetchAchievements(): Promise<void>
   fetchDisqualifications(): Promise<void>
+  fetchNews(options?: FetchOptions): Promise<void>
+  prependNews(item: NewsItem): void
   refreshTab(tab?: AdminTab): Promise<void>
 }
 
@@ -124,6 +129,7 @@ type FetchKey =
   | 'predictions'
   | 'achievements'
   | 'disqualifications'
+  | 'news'
 
 type FetchOptions = {
   force?: boolean
@@ -139,7 +145,8 @@ const FETCH_TTL: Record<FetchKey, number> = {
   users: 60_000,
   predictions: 60_000,
   achievements: 120_000,
-  disqualifications: 30_000
+  disqualifications: 30_000,
+  news: 60_000
 }
 
 const createEmptyData = (): AdminData => ({
@@ -159,7 +166,8 @@ const createEmptyData = (): AdminData => ({
   predictions: [],
   achievementTypes: [],
   userAchievements: [],
-  disqualifications: []
+  disqualifications: [],
+  news: []
 })
 
 const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
@@ -254,6 +262,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     activeTab: 'teams',
     selectedCompetitionId: undefined,
     selectedSeasonId: undefined,
+  newsVersion: undefined,
     data: createEmptyData(),
     loading: {},
     async login(login: string, password: string) {
@@ -336,6 +345,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         lineupToken: undefined,
         activeTab: 'teams',
         selectedSeasonId: undefined,
+        newsVersion: undefined,
         error: undefined,
         data: createEmptyData(),
         loading: {}
@@ -550,6 +560,32 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         set((state) => ({ data: { ...state.data, disqualifications } }))
       })
     },
+    async fetchNews(options?: FetchOptions) {
+      if (get().mode !== 'admin') return
+      await runCachedFetch(
+        'news',
+        [],
+        async () => {
+          const token = ensureToken()
+          const { data: news, version } = await adminRequestWithMeta<NewsItem[]>(token, '/api/news')
+          set((state) => ({
+            data: { ...state.data, news },
+            newsVersion: version ?? state.newsVersion
+          }))
+        },
+        options?.force ? 0 : undefined
+      )
+    },
+    prependNews(item: NewsItem) {
+      const cacheKey = composeCacheKey('news', [])
+      fetchTimestamps[cacheKey] = Date.now()
+      set((state) => ({
+        data: {
+          ...state.data,
+          news: [item, ...state.data.news.filter((existing) => existing.id !== item.id)]
+        }
+      }))
+    },
     async refreshTab(tab?: AdminTab) {
       if (get().mode !== 'admin') return
       const target = tab ?? get().activeTab
@@ -580,6 +616,9 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           break
         }
         case 'news':
+          await get().fetchNews({ force: true })
+          break
+        case 'users':
           await Promise.all([get().fetchUsers(), get().fetchPredictions(), get().fetchAchievements()])
           break
         default:

@@ -20,6 +20,7 @@ import { handleMatchFinalization, rebuildCareerStatsForClubs } from '../services
 import { createSeasonPlayoffs, runSeasonAutomation } from '../services/seasonAutomation'
 import { serializePrisma } from '../utils/serialization'
 import { defaultCache } from '../cache'
+import { enqueueTelegramNewsJob } from '../queue/newsWorker'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -258,6 +259,7 @@ class RequestError extends Error {
 const SEASON_STATS_CACHE_TTL_SECONDS = Number(process.env.ADMIN_CACHE_TTL_SEASON_STATS ?? '60')
 const CAREER_STATS_CACHE_TTL_SECONDS = Number(process.env.ADMIN_CACHE_TTL_CAREER_STATS ?? '180')
 const MATCH_STATS_CACHE_TTL_SECONDS = Number(process.env.ADMIN_CACHE_TTL_MATCH_STATS ?? '5')
+const NEWS_CACHE_KEY = 'news:all'
 
 const seasonStatsCacheKey = (seasonId: number, suffix: string) => `season:${seasonId}:${suffix}`
 const competitionStatsCacheKey = (competitionId: number, suffix: string) => `competition:${competitionId}:${suffix}`
@@ -1077,6 +1079,73 @@ export default async function (server: FastifyInstance) {
     // Admin profile info
     admin.get('/me', async (request, reply) => {
       return reply.send({ ok: true, admin: request.admin })
+    })
+
+    // News management
+    admin.post('/news', async (request, reply) => {
+      const body = request.body as {
+        title?: string
+        content?: string
+        coverUrl?: string | null
+        sendToTelegram?: boolean
+      }
+
+      const title = body?.title?.trim()
+      const content = body?.content?.trim()
+  const coverUrlRaw = body?.coverUrl ?? null
+  const normalizedCoverUrl = coverUrlRaw ? String(coverUrlRaw).trim() : ''
+  const coverUrl = normalizedCoverUrl.length > 0 ? normalizedCoverUrl : null
+      const sendToTelegram = Boolean(body?.sendToTelegram)
+
+      if (!title || title.length === 0) {
+        return reply.status(400).send({ ok: false, error: 'news_title_required' })
+      }
+      if (title.length > 100) {
+        return reply.status(400).send({ ok: false, error: 'news_title_too_long' })
+      }
+      if (!content || content.length === 0) {
+        return reply.status(400).send({ ok: false, error: 'news_content_required' })
+      }
+
+      const news = await prisma.news.create({
+        data: {
+          title,
+          content,
+          coverUrl,
+          sendToTelegram
+        }
+      })
+
+      await defaultCache.invalidate(NEWS_CACHE_KEY)
+
+      if (sendToTelegram) {
+        try {
+          const enqueueResult = await enqueueTelegramNewsJob({
+            newsId: news.id.toString(),
+            title: news.title,
+            content: news.content,
+            coverUrl: news.coverUrl ?? undefined
+          })
+          if (!enqueueResult?.queued) {
+            admin.log.warn({ newsId: news.id.toString() }, 'telegram queue disabled — job skipped')
+          }
+        } catch (err) {
+          admin.log.error({ err }, 'failed to enqueue telegram news job')
+        }
+      }
+
+      try {
+        const payload = serializePrisma(news)
+        await (admin as any).publishTopic?.('home', {
+          type: 'news.full',
+          payload
+        })
+      } catch (err) {
+        admin.log.warn({ err }, 'failed to publish news websocket update')
+      }
+
+      reply.status(201)
+      return sendSerialized(reply, news)
     })
 
     // Clubs CRUD

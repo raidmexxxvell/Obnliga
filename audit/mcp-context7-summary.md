@@ -8,6 +8,7 @@
 
 - `audit/context7/` — директория отсутствует. Необходимо запросить и выгрузить артефакты через mcp context7 перед началом активной разработки новых подсистем.
 - Для ближайшей задачи (админ-дэшборд и мультилиговая статистика) критичны референсы по следующим темам: admin-logger, RBAC flow, UI-шаблоны панелей, patch-based WS интеграция.
+- 09.10.2025: перед разработкой модуля новостей просмотрена документация BullMQ (Context7 `/taskforcesh/bullmq`), выбрана стратегия on-demand воркера c limiter → адаптируем стандартную очередь под требования «0 нагрузок между публикациями».
 - Дополнительно требуются контексты по карьерной статистике и структуре турнирных туров/стадий (ожидаемые файлы: `backend/stats/player-career.ts`, `backend/schedule/rounds.ts`).
 - План: после получения доступа запросить набор файлов (пример):
   1. `frontend/admin/dashboard-layout.tsx` — шаблон раскладки и неокубистская стилистика.
@@ -32,6 +33,7 @@
 | Admin Logger / RBAC | пока отсутствует (только модель `AdminActionLog` в Prisma) | **Rewrite** (нет текущего кода) | Планируемые файлы: `backend/src/routes/adminRoutes.ts`, `backend/src/utils/adminLogger.ts` | Нет | До появления исходных артефактов разрабатываем минимальный прототип |
 | Store Façade (Zustand) | `frontend/src` (store частично создан) | **Reuse/Rewrite** — создать фасад по контракту `docs/state.md` | `frontend/src/store/facade.ts` | Нет | Нужно получить `store-patterns.md` |
 | Admin UI Theme | `admin/src/lineup.css`, `frontend/src/app.css` | **Implemented** — реализована мобильная адаптивность и неокубистская стилистика | Общие стили: `frontend/src/app.css` + `admin/src/theme.css` | Визуальные тесты не настроены | ✅ Реализована полная система с CSS Grid и медиа-запросами |
+| News publishing (HTTP + queue) | отсутствует | **Rewrite** — опираемся на multilevel cache + BullMQ limiter | Новый модуль `backend/src/routes/newsRoutes.ts`, очередь `backend/src/queue/newsQueue.ts` | Нет | Требуется синхронизация с context7 артефактами после получения |
 | Lineup Management System | `admin/src/components/LineupPortalView.tsx`, `frontend/src/LineupPortal.tsx` | **Implemented** — полная реализация с валидацией и мобильностью | `admin/src/lineup.css`, обновленные TypeScript типы | Нет e2e → планировать | ✅ Обновлена мобильная верстка (full-width карточки, aria-checkbox паттерн, предупреждения по дисквалификациям) |
 | Playoff Bracket Aggregation | `backend/src/routes/bracketRoutes.ts`, `admin/src/components/PlayoffBracket.tsx` | **Temporary stub** — until context7 bracket templates retrieved | Планируемый адаптер: `shared/playoff/bracketAdapter.ts` (создать после синхронизации) | Нет | Требуется сверка с исходным `bracket-flow.md`, текущее API без кэша/WS |
 | Player Career Aggregation | draft в `backend/src/services/matchAggregation.ts` | **Refactor** — перенести сумматоры из context7 для career stats | Новый модуль `backend/src/services/playerCareer.ts` (после синхронизации) | Нет | Временная реализация помечается как stub, требуется сверка с исходным контрактом |

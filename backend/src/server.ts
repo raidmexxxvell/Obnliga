@@ -54,6 +54,10 @@ server.register(lineupRoutes)
 import bracketRoutes from './routes/bracketRoutes'
 server.register(bracketRoutes)
 
+// register public news routes
+import newsRoutes from './routes/newsRoutes'
+server.register(newsRoutes)
+
 // register fastify websocket & cookie plugins and realtime
 // websocket & cookie plugins and realtime will be registered in start() to avoid top-level await
 import websocketPlugin from '@fastify/websocket'
@@ -64,12 +68,20 @@ import registerRealtime from './realtime'
 import etagPlugin from './plugins/etag'
 server.register(etagPlugin)
 
+// news worker supervisor (BullMQ)
+import { startNewsWorkerSupervisor, shutdownNewsWorker } from './queue/newsWorker'
+
+server.addHook('onClose', async () => {
+  await shutdownNewsWorker(server.log)
+})
+
 const start = async () => {
   try {
     // register cookie & websocket plugins and realtime module
     await server.register(cookiePlugin)
     await server.register(websocketPlugin)
     await registerRealtime(server)
+    await startNewsWorkerSupervisor(server.log)
     await server.listen({ port: 3000, host: '0.0.0.0' })
     server.log.info('Server listening on 0.0.0.0:3000')
   } catch (err) {

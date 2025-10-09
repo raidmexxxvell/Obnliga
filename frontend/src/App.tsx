@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import './app.css'
 import Profile from './Profile'
 import { wsClient } from './wsClient'
+import { NewsSection } from './components/NewsSection'
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true)
@@ -63,11 +64,14 @@ export default function App() {
     <div className="app-root main">
       <div className="content-wrapper">
         {currentTab === 'home' && (
-          <div className="card">
-            <h1 style={{marginTop:0}}>Привет!</h1>
-            <p>Добро пожаловать в мини-приложение Футбольной Лиги.</p>
-            <p>Откройте бота в Telegram и отправьте /start, чтобы получить ссылку на WebApp.</p>
-          </div>
+          <>
+            <div className="card home-card">
+              <h1 style={{marginTop:0}}>Привет!</h1>
+              <p>Добро пожаловать в мини-приложение Футбольной Лиги.</p>
+              <p>Откройте бота в Telegram и отправьте /start, чтобы получить ссылку на WebApp.</p>
+            </div>
+            <NewsSection />
+          </>
         )}
 
         {currentTab === 'profile' ? (

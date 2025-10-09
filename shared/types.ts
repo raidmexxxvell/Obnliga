@@ -22,3 +22,12 @@ export interface DbUser {
   createdAt?: string
   updatedAt?: string
 }
+
+export interface NewsItem {
+  id: string
+  title: string
+  content: string
+  coverUrl?: string | null
+  sendToTelegram?: boolean
+  createdAt: string
+}
