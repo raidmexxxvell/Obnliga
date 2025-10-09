@@ -24,6 +24,30 @@ const formatKickoff = (iso: string) =>
     minute: '2-digit'
   })
 
+const formatMatchesRemaining = (count: number) => {
+  const absCount = Math.max(0, count)
+  const remainder10 = absCount % 10
+  const remainder100 = absCount % 100
+  if (remainder10 === 1 && remainder100 !== 11) return `${absCount} матч`
+  if (remainder10 >= 2 && remainder10 <= 4 && (remainder100 < 10 || remainder100 >= 20)) return `${absCount} матча`
+  return `${absCount} матчей`
+}
+
+const getDisqualificationReasonLabel = (
+  info: LineupPortalRosterEntry['disqualification']
+) => {
+  if (!info) return null
+  switch (info.reason) {
+    case 'RED_CARD':
+      return 'Красная карточка'
+    case 'ACCUMULATED_CARDS':
+      return 'Накопление карточек'
+    case 'OTHER':
+    default:
+      return 'Санкция'
+  }
+}
+
 const mapError = (code: string) => {
   switch (code) {
     case 'persons_not_in_roster':
@@ -34,6 +58,8 @@ const mapError = (code: string) => {
       return 'Матч не найден или удалён.'
     case 'payload_invalid':
       return 'Неверный формат данных. Попробуйте обновить страницу.'
+    case 'player_disqualified':
+      return 'Один или несколько игроков пропускают матч. Уберите их из заявки и попробуйте снова.'
     default:
       if (code.toLowerCase().includes('fetch')) {
         return 'Не удалось связаться с сервером. Проверьте подключение.'
@@ -66,7 +92,7 @@ export const LineupPortalView = () => {
     () =>
       roster.reduce<number>(
         (count: number, entry: LineupPortalRosterEntry) =>
-          selectedPlayers[entry.personId] ? count + 1 : count,
+          entry.disqualification || !selectedPlayers[entry.personId] ? count : count + 1,
         0
       ),
     [roster, selectedPlayers]
@@ -144,7 +170,7 @@ export const LineupPortalView = () => {
         const selected: Record<number, boolean> = {}
         const numbers: Record<number, string> = {}
         data.forEach((entry) => {
-          selected[entry.personId] = entry.selected
+          selected[entry.personId] = entry.disqualification ? false : entry.selected
           numbers[entry.personId] = entry.shirtNumber ? String(entry.shirtNumber) : ''
         })
         setSelectedPlayers(selected)
@@ -165,7 +191,24 @@ export const LineupPortalView = () => {
     void loadRoster()
   }, [modalOpen, lineupToken, activeMatch, activeClubId])
 
-  const togglePlayer = (personId: number) => {
+  const handlePlayerToggle = (personId: number) => {
+    if (saving) return
+    const entry = roster.find((item) => item.personId === personId)
+    if (!entry) return
+
+    if (entry.disqualification) {
+      const surname = `${entry.person.lastName} ${entry.person.firstName}`.trim()
+      const reasonLabel = getDisqualificationReasonLabel(entry.disqualification)
+      const matchesNote = entry.disqualification
+        ? ` Осталось ${formatMatchesRemaining(entry.disqualification.matchesRemaining)}.`
+        : ''
+      setModalError(
+        `${surname} пропускает матч${reasonLabel ? ` (${reasonLabel})` : ''}. Уберите его из заявки.${matchesNote}`
+      )
+      return
+    }
+
+    setModalError((previous) => (previous && previous.includes('пропускает матч') ? null : previous))
     setSelectedPlayers((prev: Record<number, boolean>) => ({ ...prev, [personId]: !prev[personId] }))
   }
 
@@ -343,36 +386,50 @@ export const LineupPortalView = () => {
               {roster.map((entry) => {
                 const checked = Boolean(selectedPlayers[entry.personId])
                 const surname = `${entry.person.lastName} ${entry.person.firstName}`.trim()
+                const disqualified = Boolean(entry.disqualification)
+                const reasonLabel = getDisqualificationReasonLabel(entry.disqualification)
+
                 return (
-                  <label key={entry.personId} className={`roster-card${checked ? ' selected' : ''}`}>
-                    <span className="player-info">
+                  <div
+                    key={entry.personId}
+                    className={`roster-card${checked ? ' selected' : ''}${disqualified ? ' disqualified' : ''}`}
+                  >
+                    <div className="player-number">
                       <input
                         type="number"
                         className="player-number-input"
                         value={shirtNumbers[entry.personId] ?? ''}
                         onChange={(event) => updateShirtNumber(entry.personId, event.target.value)}
-                        onClick={(event) => event.stopPropagation()}
-                        onFocus={(event) => event.stopPropagation()}
                         min={1}
                         max={999}
                         inputMode="numeric"
                         pattern="[0-9]*"
-                        disabled={saving}
+                        disabled={saving || disqualified}
                         aria-label={`Номер для ${surname}`}
                         placeholder="№"
                       />
-                      <span className="player-name">{surname}</span>
-                    </span>
-                    <span className="player-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => togglePlayer(entry.personId)}
-                        aria-label={`Игрок ${surname}`}
-                        disabled={saving}
-                      />
-                    </span>
-                  </label>
+                    </div>
+                    <button
+                      type="button"
+                      className="player-toggle"
+                      role="checkbox"
+                      aria-checked={checked}
+                      aria-label={`Игрок ${surname}`}
+                      aria-disabled={disqualified || saving}
+                      onClick={() => handlePlayerToggle(entry.personId)}
+                      data-disqualified={disqualified ? 'true' : undefined}
+                    >
+                      <span className="checkbox-visual" aria-hidden="true" />
+                      <span className="player-text">
+                        <span className="player-name">{surname}</span>
+                        {disqualified && reasonLabel ? (
+                          <span className="player-badge">
+                            {reasonLabel} · осталось {formatMatchesRemaining(entry.disqualification!.matchesRemaining)}
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                  </div>
                 )
               })}
             </div>
