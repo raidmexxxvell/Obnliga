@@ -234,24 +234,53 @@ export const StatsTab = () => {
     () => sortStandings(data.clubStats, data.matches),
     [data.clubStats, data.matches]
   )
-  const teams = useMemo(() => sortTeams(data.clubCareerTotals), [data.clubCareerTotals])
+  const teams = useMemo(() => {
+    const totalsByClub = new Map<number, ClubCareerTotals>()
+    for (const entry of data.clubCareerTotals) {
+      totalsByClub.set(entry.clubId, entry)
+    }
+
+    const fullList: ClubCareerTotals[] = data.clubs.map((club) => {
+      const totals = totalsByClub.get(club.id)
+      if (totals) {
+        return totals
+      }
+      return {
+        clubId: club.id,
+        club,
+        tournaments: 0,
+        matchesPlayed: 0,
+        goalsFor: 0,
+        goalsAgainst: 0,
+        yellowCards: 0,
+        redCards: 0,
+        cleanSheets: 0
+      }
+    })
+
+    return sortTeams(fullList)
+  }, [data.clubs, data.clubCareerTotals])
   const scorers = useMemo(() => sortScorers(data.playerStats), [data.playerStats])
   const assistsTop = useMemo(() => sortAssists(data.playerStats).slice(0, 10), [data.playerStats])
   const goalContributions = useMemo(() => sortGoalContributions(data.playerStats), [data.playerStats])
   const discipline = useMemo(() => sortDiscipline(data.playerStats), [data.playerStats])
   const careerSorted = useMemo(() => sortCareer(data.careerStats), [data.careerStats])
   const career = useMemo(
-    () => (careerClubId ? careerSorted.filter((row) => row.clubId === careerClubId) : careerSorted),
+    () => (careerClubId ? careerSorted.filter((row) => row.clubId === careerClubId) : []),
     [careerSorted, careerClubId]
   )
 
   const careerClubOptions = useMemo(() => {
-    const map = new Map<number, string>()
-    for (const row of data.careerStats) {
-      map.set(row.clubId, row.club.name)
+    const options = data.clubs.map((club) => [club.id, club.name] as const)
+    if (options.length) {
+      return options.sort((left, right) => left[1].localeCompare(right[1], 'ru'))
     }
-    return Array.from(map.entries()).sort((left, right) => left[1].localeCompare(right[1], 'ru'))
-  }, [data.careerStats])
+    const fallback = new Map<number, string>()
+    for (const row of data.careerStats) {
+      fallback.set(row.clubId, row.club.name)
+    }
+    return Array.from(fallback.entries()).sort((left, right) => left[1].localeCompare(right[1], 'ru'))
+  }, [data.clubs, data.careerStats])
 
   const finishedMatchesByClub = useMemo(() => {
     const map = new Map<string, number>()
@@ -388,6 +417,11 @@ export const StatsTab = () => {
       return `${goals}(${penaltyGoals})`
     }
     return String(goals)
+  }
+
+  const formatEfficiency = (goals: number, matches: number) => {
+    if (!matches) return '0.00'
+    return (goals / matches).toFixed(2)
   }
 
   return (
@@ -662,6 +696,7 @@ export const StatsTab = () => {
                 <th>Игрок</th>
                 <th>Клуб</th>
                 <th>Матчи</th>
+                <th>Кф.эфф</th>
                 <th>Голы</th>
               </tr>
             </thead>
@@ -672,6 +707,7 @@ export const StatsTab = () => {
                   <td>{row.person.lastName} {row.person.firstName}</td>
                   <td>{row.club.name}</td>
                   <td>{row.matchesPlayed}</td>
+                  <td>{formatEfficiency(row.goals, row.matchesPlayed)}</td>
                   <td>{formatGoals(row.goals, row.penaltyGoals)}</td>
                 </tr>
               ))}
@@ -796,7 +832,7 @@ export const StatsTab = () => {
               value={careerClubId ?? ''}
               onChange={(event) => setCareerClubId(event.target.value ? Number(event.target.value) : undefined)}
             >
-              <option value="">Все клубы</option>
+              <option value="">Выберите клуб</option>
               {careerClubOptions.map(([id, name]) => (
                 <option key={id} value={id}>
                   {name}
@@ -804,35 +840,41 @@ export const StatsTab = () => {
               ))}
             </select>
           </label>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Игрок</th>
-                <th>Клуб</th>
-                <th>Матчи</th>
-                <th>ЖК</th>
-                <th>КК</th>
-                <th>Пасы</th>
-                <th>Голы</th>
-              </tr>
-            </thead>
-            <tbody>
-              {career.map((row, index) => (
-                <tr key={`${row.personId}-${row.clubId}`}>
-                  <td>{index + 1}</td>
-                  <td>{row.person.lastName} {row.person.firstName}</td>
-                  <td>{row.club.name}</td>
-                  <td>{row.totalMatches}</td>
-                  <td>{row.yellowCards}</td>
-                  <td>{row.redCards}</td>
-                  <td>{row.totalAssists}</td>
-                  <td>{formatGoals(row.totalGoals, row.penaltyGoals)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {!career.length ? <p className="muted">Карьерная статистика отсутсвует.</p> : null}
+          {careerClubId ? (
+            <>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Игрок</th>
+                    <th>Клуб</th>
+                    <th>Матчи</th>
+                    <th>ЖК</th>
+                    <th>КК</th>
+                    <th>Пасы</th>
+                    <th>Голы</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {career.map((row, index) => (
+                    <tr key={`${row.personId}-${row.clubId}`}>
+                      <td>{index + 1}</td>
+                      <td>{row.person.lastName} {row.person.firstName}</td>
+                      <td>{row.club.name}</td>
+                      <td>{row.totalMatches}</td>
+                      <td>{row.yellowCards}</td>
+                      <td>{row.redCards}</td>
+                      <td>{row.totalAssists}</td>
+                      <td>{formatGoals(row.totalGoals, row.penaltyGoals)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!career.length ? <p className="muted">Для выбранного клуба нет карьерной статистики.</p> : null}
+            </>
+          ) : (
+            <p className="muted">Выберите клуб, чтобы увидеть карьерную статистику игроков.</p>
+          )}
         </section>
       ) : null}
     </div>

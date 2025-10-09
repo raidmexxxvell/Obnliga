@@ -54,6 +54,19 @@ const formatMatchesRemaining = (count: number) => {
   return `${absCount} матчей`
 }
 
+const getDisqualificationReasonLabel = (info: DisqualificationInfo | null) => {
+  if (!info) return null
+  switch (info.reason) {
+    case 'RED_CARD':
+      return 'Красная карточка'
+    case 'ACCUMULATED_CARDS':
+      return 'Накопление карточек'
+    case 'OTHER':
+    default:
+      return 'Санкция'
+  }
+}
+
 const mapError = (code: string) => {
   switch (code) {
     case 'invalid_credentials':
@@ -71,7 +84,7 @@ const mapError = (code: string) => {
     case 'duplicate_shirt_numbers':
       return 'Номера игроков внутри клуба должны быть уникальными.'
     case 'player_disqualified':
-      return 'Некоторые игроки находятся под дисквалификацией и не могут быть заявлены.'
+      return 'Один или несколько игроков пропускают матч. Уберите их из заявки и попробуйте снова.'
     default:
       return 'Не удалось выполнить запрос. Повторите попытку.'
   }
@@ -274,9 +287,24 @@ const LineupPortal: React.FC = () => {
     void loadRoster()
   }, [modalOpen, token, activeMatch, activeClubId])
 
-  const togglePlayer = (personId: number) => {
+  const handlePlayerToggle = (personId: number) => {
+    if (saving) return
     const entry = roster.find((item) => item.personId === personId)
-    if (!entry || entry.disqualification) return
+    if (!entry) return
+
+    if (entry.disqualification) {
+      const surname = `${entry.person.lastName} ${entry.person.firstName}`.trim()
+      const reasonLabel = getDisqualificationReasonLabel(entry.disqualification)
+      const matchesNote = entry.disqualification
+        ? ` Осталось ${formatMatchesRemaining(entry.disqualification.matchesRemaining)}.`
+        : ''
+      setModalError(
+        `${surname} пропускает матч${reasonLabel ? ` (${reasonLabel})` : ''}. Уберите его из заявки.${matchesNote}`
+      )
+      return
+    }
+
+    setModalError((previous) => (previous && previous.includes('пропускает матч') ? null : previous))
     setSelectedPlayers((prev: Record<number, boolean>) => ({ ...prev, [personId]: !prev[personId] }))
   }
 
@@ -467,26 +495,19 @@ const LineupPortal: React.FC = () => {
                 const checked = Boolean(selectedPlayers[entry.personId])
                 const surname = `${entry.person.lastName} ${entry.person.firstName}`.trim()
                 const disqualified = Boolean(entry.disqualification)
-                const reasonLabel = entry.disqualification
-                  ? entry.disqualification.reason === 'RED_CARD'
-                    ? 'Красная карточка'
-                    : entry.disqualification.reason === 'ACCUMULATED_CARDS'
-                      ? 'Накопление карточек'
-                      : 'Санкция'
-                  : null
+                const reasonLabel = getDisqualificationReasonLabel(entry.disqualification)
+
                 return (
-                  <label
+                  <div
                     key={entry.personId}
                     className={`roster-card${checked ? ' selected' : ''}${disqualified ? ' disqualified' : ''}`}
                   >
-                    <span className="player-info">
+                    <div className="player-number">
                       <input
                         type="number"
                         className="player-number-input"
                         value={shirtNumbers[entry.personId] ?? ''}
                         onChange={(event) => updateShirtNumber(entry.personId, event.target.value)}
-                        onClick={(event) => event.stopPropagation()}
-                        onFocus={(event) => event.stopPropagation()}
                         min={1}
                         max={999}
                         inputMode="numeric"
@@ -495,23 +516,28 @@ const LineupPortal: React.FC = () => {
                         aria-label={`Номер для ${surname}`}
                         placeholder="№"
                       />
-                      <span className="player-name">{surname}</span>
-                      {disqualified && reasonLabel ? (
-                        <span className="player-badge">
-                          {reasonLabel} · осталось {formatMatchesRemaining(entry.disqualification!.matchesRemaining)}
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="player-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => togglePlayer(entry.personId)}
-                        aria-label={`Игрок ${surname}`}
-                        disabled={saving || disqualified}
-                      />
-                    </span>
-                  </label>
+                    </div>
+                    <button
+                      type="button"
+                      className="player-toggle"
+                      role="checkbox"
+                      aria-checked={checked}
+                      aria-label={`Игрок ${surname}`}
+                      aria-disabled={disqualified || saving}
+                      onClick={() => handlePlayerToggle(entry.personId)}
+                      data-disqualified={disqualified ? 'true' : undefined}
+                    >
+                      <span className="checkbox-visual" aria-hidden="true" />
+                      <span className="player-text">
+                        <span className="player-name">{surname}</span>
+                        {disqualified && reasonLabel ? (
+                          <span className="player-badge">
+                            {reasonLabel} · осталось {formatMatchesRemaining(entry.disqualification!.matchesRemaining)}
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                  </div>
                 )
               })}
             </div>

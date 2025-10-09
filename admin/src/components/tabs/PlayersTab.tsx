@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { adminDelete, adminPost, adminPut } from '../../api/adminClient'
+import { adminDelete, adminPost, adminPut, fetchClubPlayers } from '../../api/adminClient'
 import { useAdminStore } from '../../store/adminStore'
 import { Disqualification, Person } from '../../types'
 
@@ -81,17 +81,64 @@ export const PlayersTab = () => {
   const [feedbackLevel, setFeedbackLevel] = useState<FeedbackLevel>('info')
   const [filter, setFilter] = useState('')
   const [showPlayersOnly, setShowPlayersOnly] = useState<boolean>(true)
+  const [clubPlayers, setClubPlayers] = useState<Person[]>([])
+  const [clubPlayersLoading, setClubPlayersLoading] = useState(false)
 
   const isLoading = Boolean(loading.dictionaries || loading.disqualifications)
 
   // Одноразовая инициализация словарей и дисквалификаций
   const bootRef = useRef(false)
+  const clubPlayersCacheRef = useRef<Map<number, Person[]>>(new Map())
   useEffect(() => {
     if (!token || bootRef.current) return
     bootRef.current = true
     void fetchDictionaries().catch(() => undefined)
     void fetchDisqualifications().catch(() => undefined)
   }, [token, fetchDictionaries, fetchDisqualifications])
+
+  useEffect(() => {
+    const clubId = typeof disqualificationForm.clubId === 'number' ? disqualificationForm.clubId : undefined
+    if (!clubId) {
+      setClubPlayers([])
+      setClubPlayersLoading(false)
+      return
+    }
+
+    const cached = clubPlayersCacheRef.current.get(clubId)
+    if (cached) {
+      setClubPlayers(cached)
+      setClubPlayersLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setClubPlayersLoading(true)
+    setClubPlayers([])
+
+    const load = async () => {
+      try {
+        const data = await fetchClubPlayers(token, clubId)
+        if (cancelled) return
+        const players = data.map((entry) => entry.person).filter((person) => person.isPlayer)
+        clubPlayersCacheRef.current.set(clubId, players)
+        setClubPlayers(players)
+      } catch (err) {
+        if (cancelled) return
+        const message = err instanceof Error ? err.message : 'Не удалось загрузить список игроков'
+        handleFeedback(message, 'error')
+      } finally {
+        if (!cancelled) {
+          setClubPlayersLoading(false)
+        }
+      }
+    }
+
+    void load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [disqualificationForm.clubId, token])
 
   const handleFeedback = (message: string, level: FeedbackLevel = 'info') => {
     setFeedback(message)
@@ -177,14 +224,15 @@ export const PlayersTab = () => {
 
   const handleDisqualificationSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!disqualificationForm.personId || !disqualificationForm.banDurationMatches) {
-      handleFeedback('Укажите игрока и срок дисквалификации', 'error')
+    const clubId = typeof disqualificationForm.clubId === 'number' ? disqualificationForm.clubId : undefined
+    if (!clubId || !disqualificationForm.personId || !disqualificationForm.banDurationMatches) {
+      handleFeedback('Выберите клуб, игрока и срок дисквалификации', 'error')
       return
     }
     try {
       await adminPost(token, '/api/admin/disqualifications', {
         personId: disqualificationForm.personId,
-        clubId: disqualificationForm.clubId || undefined,
+        clubId,
         reason: disqualificationForm.reason,
         banDurationMatches: Number(disqualificationForm.banDurationMatches),
         sanctionDate: disqualificationForm.sanctionDate
@@ -343,33 +391,17 @@ export const PlayersTab = () => {
           </header>
           <form className="stacked" onSubmit={handleDisqualificationSubmit}>
             <label>
-              Игрок
-              <select
-                value={disqualificationForm.personId}
-                onChange={(event) =>
-                  setDisqualificationForm((form) => ({ ...form, personId: event.target.value ? Number(event.target.value) : '' }))
-                }
-                required
-              >
-                <option value="">—</option>
-                {data.persons
-                  .filter((person) => person.isPlayer)
-                  .map((person) => (
-                    <option key={person.id} value={person.id}>
-                      {person.lastName} {person.firstName}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label>
-              Клуб (опционально)
+              Клуб
               <select
                 value={disqualificationForm.clubId}
-                onChange={(event) =>
-                  setDisqualificationForm((form) => ({ ...form, clubId: event.target.value ? Number(event.target.value) : '' }))
-                }
+                onChange={(event) => {
+                  const value = event.target.value ? Number(event.target.value) : ''
+                  setFeedback(null)
+                  setDisqualificationForm((form) => ({ ...form, clubId: value, personId: '' }))
+                }}
+                required
               >
-                <option value="">—</option>
+                <option value="">Выберите клуб</option>
                 {data.clubs.map((club) => (
                   <option key={club.id} value={club.id}>
                     {club.shortName}
@@ -377,6 +409,29 @@ export const PlayersTab = () => {
                 ))}
               </select>
             </label>
+            <label>
+              Игрок
+              <select
+                value={disqualificationForm.personId}
+                onChange={(event) =>
+                  setDisqualificationForm((form) => ({ ...form, personId: event.target.value ? Number(event.target.value) : '' }))
+                }
+                disabled={clubPlayersLoading || !disqualificationForm.clubId}
+                required
+              >
+                <option value="">
+                  {clubPlayersLoading ? 'Загружаем…' : disqualificationForm.clubId ? 'Выберите игрока' : 'Сначала выберите клуб'}
+                </option>
+                {clubPlayers.map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.lastName} {person.firstName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {!clubPlayersLoading && disqualificationForm.clubId && !clubPlayers.length ? (
+              <p className="muted">В выбранном клубе пока нет заявленных игроков.</p>
+            ) : null}
             <label>
               Причина
               <select

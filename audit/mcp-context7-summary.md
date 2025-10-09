@@ -1,6 +1,6 @@
 # MCP Context7 — Summary Audit
 
-Дата обновления: 05-10-2025
+Дата обновления: 09-10-2025
 
 Назначение файла: зафиксировать наличие/отсутствие артефактов из предыдущего проекта и определить стратегию их переноса на текущий стек (Node.js + Fastify + Prisma + Vite + React). На момент последнего обновления был реализован comprehensive lineup management system с мобильной адаптивностью и UX синхронизацией между порталами. Ниже приведён консолидированный список паттернов и модулей, на которые мы опираемся при разработке.
 
@@ -32,7 +32,7 @@
 | Admin Logger / RBAC | пока отсутствует (только модель `AdminActionLog` в Prisma) | **Rewrite** (нет текущего кода) | Планируемые файлы: `backend/src/routes/adminRoutes.ts`, `backend/src/utils/adminLogger.ts` | Нет | До появления исходных артефактов разрабатываем минимальный прототип |
 | Store Façade (Zustand) | `frontend/src` (store частично создан) | **Reuse/Rewrite** — создать фасад по контракту `docs/state.md` | `frontend/src/store/facade.ts` | Нет | Нужно получить `store-patterns.md` |
 | Admin UI Theme | `admin/src/lineup.css`, `frontend/src/app.css` | **Implemented** — реализована мобильная адаптивность и неокубистская стилистика | Общие стили: `frontend/src/app.css` + `admin/src/theme.css` | Визуальные тесты не настроены | ✅ Реализована полная система с CSS Grid и медиа-запросами |
-| Lineup Management System | `admin/src/components/LineupPortalView.tsx`, `frontend/src/LineupPortal.tsx` | **Implemented** — полная реализация с валидацией и мобильностью | `admin/src/lineup.css`, обновленные TypeScript типы | Нет e2e → планировать | ✅ Завершена синхронизация UX между порталами |
+| Lineup Management System | `admin/src/components/LineupPortalView.tsx`, `frontend/src/LineupPortal.tsx` | **Implemented** — полная реализация с валидацией и мобильностью | `admin/src/lineup.css`, обновленные TypeScript типы | Нет e2e → планировать | ✅ Обновлена мобильная верстка (full-width карточки, aria-checkbox паттерн, предупреждения по дисквалификациям) |
 | Playoff Bracket Aggregation | `backend/src/routes/bracketRoutes.ts`, `admin/src/components/PlayoffBracket.tsx` | **Temporary stub** — until context7 bracket templates retrieved | Планируемый адаптер: `shared/playoff/bracketAdapter.ts` (создать после синхронизации) | Нет | Требуется сверка с исходным `bracket-flow.md`, текущее API без кэша/WS |
 | Player Career Aggregation | draft в `backend/src/services/matchAggregation.ts` | **Refactor** — перенести сумматоры из context7 для career stats | Новый модуль `backend/src/services/playerCareer.ts` (после синхронизации) | Нет | Временная реализация помечается как stub, требуется сверка с исходным контрактом |
 | Season Rounds/Stages | временно отсутствует | **Rewrite** — добавить справочник туров и стадий плей-офф | `backend/src/services/seasonAutomation.ts` + общий adapter | Нет | Ожидаем контекст `schedule-rounds.md`, текущее решение временное |
