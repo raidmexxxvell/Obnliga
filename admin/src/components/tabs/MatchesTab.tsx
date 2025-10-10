@@ -89,6 +89,9 @@ type MatchUpdateFormState = {
   stadiumId: number | ''
   refereeId: number | ''
   matchDateTime: string
+  hasPenaltyShootout: boolean
+  penaltyHomeScore: number
+  penaltyAwayScore: number
 }
 
 const playoffBestOfOptions = [3, 5, 7]
@@ -179,7 +182,10 @@ const buildMatchUpdateForm = (match: MatchSummary): MatchUpdateFormState => ({
   status: match.status,
   stadiumId: match.stadiumId ?? '',
   refereeId: match.refereeId ?? '',
-  matchDateTime: match.matchDateTime.slice(0, 16)
+  matchDateTime: match.matchDateTime.slice(0, 16),
+  hasPenaltyShootout: match.hasPenaltyShootout ?? false,
+  penaltyHomeScore: match.penaltyHomeScore ?? 0,
+  penaltyAwayScore: match.penaltyAwayScore ?? 0
 })
 
 const seriesFormatNames: Record<SeriesFormat, string> = {
@@ -955,7 +961,7 @@ export const MatchesTab = () => {
   const handleMatchUpdate = async (match: MatchSummary, form: MatchUpdateFormState) => {
     const seasonId = ensureSeasonSelected()
     if (!seasonId) return
-    const allowScoreUpdate = form.status === 'LIVE'
+  const allowScoreUpdate = form.status === 'LIVE' || form.status === 'FINISHED'
     const homeScorePayload =
       allowScoreUpdate && form.homeScore !== '' ? Math.max(0, Number(form.homeScore)) : undefined
     const awayScorePayload =
@@ -967,7 +973,10 @@ export const MatchesTab = () => {
         awayScore: awayScorePayload,
         status: form.status,
         stadiumId: form.stadiumId === '' ? undefined : Number(form.stadiumId),
-        refereeId: form.refereeId === '' ? undefined : Number(form.refereeId)
+        refereeId: form.refereeId === '' ? undefined : Number(form.refereeId),
+        hasPenaltyShootout: form.hasPenaltyShootout,
+        penaltyHomeScore: Math.max(0, Math.trunc(form.penaltyHomeScore)),
+        penaltyAwayScore: Math.max(0, Math.trunc(form.penaltyAwayScore))
       })
       await fetchSeries(seasonId, { force: true })
       await fetchMatches(seasonId, { force: true })
@@ -981,12 +990,25 @@ export const MatchesTab = () => {
       const fallback = key === 'homeScore' ? match.homeScore : match.awayScore
       const currentValue = typeof current[key] === 'number' ? current[key] : fallback
       const nextValue = Math.max(0, (currentValue ?? 0) + delta)
+      const nextForm: MatchUpdateFormState = {
+        ...current,
+        [key]: nextValue
+      }
+
+      if (nextForm.hasPenaltyShootout) {
+        const normalizedHome = typeof nextForm.homeScore === 'number' ? nextForm.homeScore : match.homeScore
+        const normalizedAway = typeof nextForm.awayScore === 'number' ? nextForm.awayScore : match.awayScore
+        if (normalizedHome !== normalizedAway) {
+          nextForm.hasPenaltyShootout = false
+          nextForm.penaltyHomeScore = 0
+          nextForm.penaltyAwayScore = 0
+          setFeedbackLevel('info')
+          setFeedback('Серия пенальти отключена: счёт перестал быть ничейным.')
+        }
+      }
       return {
         ...forms,
-        [match.id]: {
-          ...current,
-          [key]: nextValue
-        }
+        [match.id]: nextForm
       }
     })
   }
@@ -994,12 +1016,79 @@ export const MatchesTab = () => {
   const setMatchScore = (match: MatchSummary, key: 'homeScore' | 'awayScore', value: number | '') => {
     setMatchUpdateForms((forms) => {
       const current = forms[match.id] ?? buildMatchUpdateForm(match)
+      const nextForm: MatchUpdateFormState = {
+        ...current,
+        [key]: value === '' ? '' : Math.max(0, value)
+      }
+
+      if (nextForm.hasPenaltyShootout) {
+        const normalizedHome = typeof nextForm.homeScore === 'number' ? nextForm.homeScore : match.homeScore
+        const normalizedAway = typeof nextForm.awayScore === 'number' ? nextForm.awayScore : match.awayScore
+        if (normalizedHome !== normalizedAway) {
+          nextForm.hasPenaltyShootout = false
+          nextForm.penaltyHomeScore = 0
+          nextForm.penaltyAwayScore = 0
+          setFeedbackLevel('info')
+          setFeedback('Серия пенальти отключена: счёт перестал быть ничейным.')
+        }
+      }
+
       return {
         ...forms,
-        [match.id]: {
-          ...current,
-          [key]: value === '' ? '' : Math.max(0, value)
-        }
+        [match.id]: nextForm
+      }
+    })
+  }
+
+  const adjustPenaltyScore = (
+    match: MatchSummary,
+    key: 'penaltyHomeScore' | 'penaltyAwayScore',
+    delta: -1 | 1
+  ) => {
+    setMatchUpdateForms((forms) => {
+      const current = forms[match.id] ?? buildMatchUpdateForm(match)
+      const currentValue = current[key] ?? 0
+      const nextValue = Math.max(0, currentValue + delta)
+      const nextForm: MatchUpdateFormState = {
+        ...current,
+        [key]: nextValue
+      }
+      return {
+        ...forms,
+        [match.id]: nextForm
+      }
+    })
+  }
+
+  const togglePenaltyShootout = (match: MatchSummary, enabled: boolean) => {
+    setMatchUpdateForms((forms) => {
+      const current = forms[match.id] ?? buildMatchUpdateForm(match)
+      const normalizedHome =
+        typeof current.homeScore === 'number' ? current.homeScore : match.homeScore
+      const normalizedAway =
+        typeof current.awayScore === 'number' ? current.awayScore : match.awayScore
+
+      if (enabled && normalizedHome !== normalizedAway) {
+        setFeedbackLevel('error')
+        setFeedback('Серия пенальти доступна только при ничейном счёте.')
+        return forms
+      }
+
+      const nextForm: MatchUpdateFormState = {
+        ...current,
+        hasPenaltyShootout: enabled,
+        penaltyHomeScore: enabled ? current.penaltyHomeScore ?? 0 : 0,
+        penaltyAwayScore: enabled ? current.penaltyAwayScore ?? 0 : 0
+      }
+
+      if (!enabled) {
+        nextForm.penaltyHomeScore = 0
+        nextForm.penaltyAwayScore = 0
+      }
+
+      return {
+        ...forms,
+        [match.id]: nextForm
       }
     })
   }
@@ -1346,6 +1435,19 @@ export const MatchesTab = () => {
       ? selectedMatch.awayScore
       : ''
   const scoreInputsDisabled = !isSelectedMatchLive
+  const penaltyEnabled =
+    selectedMatchForm?.hasPenaltyShootout ?? selectedMatch?.hasPenaltyShootout ?? false
+  const penaltyHomeScore =
+    selectedMatchForm?.penaltyHomeScore ?? selectedMatch?.penaltyHomeScore ?? 0
+  const penaltyAwayScore =
+    selectedMatchForm?.penaltyAwayScore ?? selectedMatch?.penaltyAwayScore ?? 0
+  const competitionType = selectedSeason?.competition?.type
+  const competitionSeriesFormat = selectedSeason?.competition?.seriesFormat
+  const isPenaltyEligible =
+    Boolean(selectedMatch?.seriesId) &&
+    competitionType === 'LEAGUE' &&
+    (competitionSeriesFormat === 'BEST_OF_N' || competitionSeriesFormat === 'DOUBLE_ROUND_PLAYOFF')
+  const isRegulationDraw = homeScoreForControls === awayScoreForControls
 
   return (
     <>
@@ -2271,6 +2373,23 @@ export const MatchesTab = () => {
                   {!isSelectedMatchLive ? (
                     <p className="muted">Изменение счёта доступно только в статусе «Идёт».</p>
                   ) : null}
+                  {isPenaltyEligible && selectedMatch ? (
+                    <div className="penalty-toggle" role="group" aria-label="Серия пенальти">
+                      <label className="penalty-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={penaltyEnabled}
+                          onChange={(event) => togglePenaltyShootout(selectedMatch, event.target.checked)}
+                        />
+                        <span>Серия пенальти</span>
+                      </label>
+                      {penaltyEnabled ? (
+                        <span className="penalty-hint">Победитель определяется по серии пенальти.</span>
+                      ) : !isRegulationDraw ? (
+                        <span className="penalty-hint muted">Включится при ничейном счёте.</span>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="score-editor">
                     <div className="score-block">
                       <div className={`score-control${isSelectedMatchLive ? ' live' : ''}`}>
@@ -2366,6 +2485,57 @@ export const MatchesTab = () => {
                       <span className="score-team-label">{awayDisplayName}</span>
                     </div>
                   </div>
+                  {penaltyEnabled && selectedMatch ? (
+                    <div className="penalty-score-editor" role="group" aria-label="Серия пенальти: счёт">
+                      <div className="penalty-score-block">
+                        <div className="penalty-score-control">
+                          <button
+                            type="button"
+                            className="score-button penalty"
+                            onClick={() => adjustPenaltyScore(selectedMatch, 'penaltyHomeScore', -1)}
+                            disabled={penaltyHomeScore <= 0}
+                            aria-label="Уменьшить пенальти хозяев"
+                          >
+                            −
+                          </button>
+                          <span className="penalty-score-value">{penaltyHomeScore}</span>
+                          <button
+                            type="button"
+                            className="score-button penalty"
+                            onClick={() => adjustPenaltyScore(selectedMatch, 'penaltyHomeScore', 1)}
+                            aria-label="Увеличить пенальти хозяев"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <span className="score-team-label">{homeDisplayName}</span>
+                      </div>
+                      <span className="score-separator">-</span>
+                      <div className="penalty-score-block">
+                        <div className="penalty-score-control">
+                          <button
+                            type="button"
+                            className="score-button penalty"
+                            onClick={() => adjustPenaltyScore(selectedMatch, 'penaltyAwayScore', -1)}
+                            disabled={penaltyAwayScore <= 0}
+                            aria-label="Уменьшить пенальти гостей"
+                          >
+                            −
+                          </button>
+                          <span className="penalty-score-value">{penaltyAwayScore}</span>
+                          <button
+                            type="button"
+                            className="score-button penalty"
+                            onClick={() => adjustPenaltyScore(selectedMatch, 'penaltyAwayScore', 1)}
+                            aria-label="Увеличить пенальти гостей"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <span className="score-team-label">{awayDisplayName}</span>
+                      </div>
+                    </div>
+                  ) : null}
                 </label>
 
                 <button className="button-secondary" type="submit">

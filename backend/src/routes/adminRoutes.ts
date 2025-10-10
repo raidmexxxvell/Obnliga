@@ -2620,18 +2620,33 @@ export default async function (server: FastifyInstance) {
         refereeId: number | null
         roundId: number | null
         isArchived: boolean
+        hasPenaltyShootout: boolean
+        penaltyHomeScore: number
+        penaltyAwayScore: number
       }>
 
-      const existing = await prisma.match.findUnique({ where: { id: matchId } })
+      const existing = await prisma.match.findUnique({
+        where: { id: matchId },
+        include: {
+          season: {
+            include: {
+              competition: true
+            }
+          }
+        }
+      })
       if (!existing) {
         return reply.status(404).send({ ok: false, error: 'match_not_found' })
       }
 
       const nextStatus = body.status ?? existing.status
       const scoreUpdateRequested = body.homeScore !== undefined || body.awayScore !== undefined
+      const scoreUpdateAllowed = nextStatus === MatchStatus.LIVE || nextStatus === MatchStatus.FINISHED
 
-      if (scoreUpdateRequested && nextStatus !== MatchStatus.LIVE) {
-        return reply.status(409).send({ ok: false, error: 'Изменение счёта доступно только при статусе «Идёт»' })
+      if (scoreUpdateRequested && !scoreUpdateAllowed) {
+        return reply
+          .status(409)
+          .send({ ok: false, error: 'Изменение счёта доступно только при статусах «Идёт» или «Завершён»' })
       }
 
       const data: Prisma.MatchUncheckedUpdateInput = {
@@ -2650,10 +2665,69 @@ export default async function (server: FastifyInstance) {
         return Math.max(0, Math.trunc(value))
       }
 
-      if (nextStatus === MatchStatus.LIVE) {
-        data.homeScore = normalizeScore(body.homeScore, existing.homeScore)
-        data.awayScore = normalizeScore(body.awayScore, existing.awayScore)
+      const shouldApplyScore = scoreUpdateRequested && scoreUpdateAllowed
+      const appliedHomeScore = shouldApplyScore
+        ? normalizeScore(body.homeScore, existing.homeScore)
+        : existing.homeScore
+      const appliedAwayScore = shouldApplyScore
+        ? normalizeScore(body.awayScore, existing.awayScore)
+        : existing.awayScore
+
+      if (shouldApplyScore) {
+        data.homeScore = appliedHomeScore
+        data.awayScore = appliedAwayScore
       }
+
+      const parsePenaltyScore = (value: unknown, fallback: number): number => {
+        if (value === undefined || value === null || value === '') {
+          return Math.max(0, fallback)
+        }
+        const numeric = typeof value === 'number' ? value : Number(value)
+        if (!Number.isFinite(numeric) || numeric < 0) {
+          throw new Error('penalty_scores_invalid')
+        }
+        return Math.max(0, Math.trunc(numeric))
+      }
+
+      const competition = existing.season?.competition
+      const isBestOfSeries =
+        competition?.type === CompetitionType.LEAGUE &&
+        (competition.seriesFormat === SeriesFormat.BEST_OF_N || competition.seriesFormat === SeriesFormat.DOUBLE_ROUND_PLAYOFF)
+
+      const penaltyToggleRequested = body.hasPenaltyShootout !== undefined
+      const penaltyScoreProvided = body.penaltyHomeScore !== undefined || body.penaltyAwayScore !== undefined
+      const targetHasPenaltyShootout = penaltyToggleRequested ? Boolean(body.hasPenaltyShootout) : existing.hasPenaltyShootout
+
+      let penaltyHomeScore = existing.penaltyHomeScore
+      let penaltyAwayScore = existing.penaltyAwayScore
+
+      if (targetHasPenaltyShootout) {
+        if (!existing.seriesId || !isBestOfSeries) {
+          return reply.status(409).send({ ok: false, error: 'penalty_shootout_not_available' })
+        }
+
+        if (appliedHomeScore !== appliedAwayScore) {
+          return reply.status(409).send({ ok: false, error: 'penalty_requires_draw' })
+        }
+
+        try {
+          penaltyHomeScore = parsePenaltyScore(body.penaltyHomeScore, penaltyHomeScore)
+          penaltyAwayScore = parsePenaltyScore(body.penaltyAwayScore, penaltyAwayScore)
+        } catch (err) {
+          return reply.status(400).send({ ok: false, error: 'penalty_scores_invalid' })
+        }
+
+        if (penaltyHomeScore === penaltyAwayScore) {
+          return reply.status(409).send({ ok: false, error: 'penalty_scores_required' })
+        }
+      } else if (penaltyToggleRequested || existing.hasPenaltyShootout || penaltyScoreProvided) {
+        penaltyHomeScore = 0
+        penaltyAwayScore = 0
+      }
+
+      data.hasPenaltyShootout = targetHasPenaltyShootout
+      data.penaltyHomeScore = targetHasPenaltyShootout ? penaltyHomeScore : 0
+      data.penaltyAwayScore = targetHasPenaltyShootout ? penaltyAwayScore : 0
 
       const updated = await prisma.match.update({
         where: { id: matchId },

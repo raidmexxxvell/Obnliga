@@ -237,6 +237,9 @@ model Match {
   roundId     Int?     @map("round_id")
   groupId     Int?     @map("group_id")
   isArchived  Boolean  @default(false) @map("is_archived")
+  hasPenaltyShootout Boolean @default(false) @map("has_penalty_shootout")
+  penaltyHomeScore  Int      @default(0) @map("penalty_home_score")
+  penaltyAwayScore  Int      @default(0) @map("penalty_away_score")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

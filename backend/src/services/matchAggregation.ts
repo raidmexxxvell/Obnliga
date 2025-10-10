@@ -29,6 +29,21 @@ const YELLOW_CARD_LIMIT = 4
 const RED_CARD_BAN_MATCHES = 2
 const SECOND_YELLOW_BAN_MATCHES = 1
 
+type MatchOutcomeSource = Pick<
+  Match,
+  'homeTeamId' | 'awayTeamId' | 'homeScore' | 'awayScore' | 'hasPenaltyShootout' | 'penaltyHomeScore' | 'penaltyAwayScore'
+>
+
+const determineMatchWinnerClubId = (match: MatchOutcomeSource): number | null => {
+  if (match.homeScore > match.awayScore) return match.homeTeamId
+  if (match.homeScore < match.awayScore) return match.awayTeamId
+  if (match.hasPenaltyShootout) {
+    if (match.penaltyHomeScore > match.penaltyAwayScore) return match.homeTeamId
+    if (match.penaltyHomeScore < match.penaltyAwayScore) return match.awayTeamId
+  }
+  return null
+}
+
 export async function handleMatchFinalization(matchId: bigint, logger: FastifyBaseLogger) {
   const match = await prisma.match.findUnique({
     where: { id: matchId },
@@ -110,12 +125,6 @@ async function rebuildClubSeasonStats(
         : {
             OR: [{ roundId: null }, { round: { roundType: RoundType.REGULAR } }]
           })
-    },
-    select: {
-      homeTeamId: true,
-      awayTeamId: true,
-      homeScore: true,
-      awayScore: true
     }
   })
 
@@ -130,11 +139,13 @@ async function rebuildClubSeasonStats(
     awayEntry.goalsFor += m.awayScore
     awayEntry.goalsAgainst += m.homeScore
 
-    if (m.homeScore > m.awayScore) {
+  const winnerClubId = determineMatchWinnerClubId(m as unknown as MatchOutcomeSource)
+
+    if (winnerClubId === m.homeTeamId) {
       homeEntry.points += 3
       homeEntry.wins += 1
       awayEntry.losses += 1
-    } else if (m.homeScore < m.awayScore) {
+    } else if (winnerClubId === m.awayTeamId) {
       awayEntry.points += 3
       awayEntry.wins += 1
       homeEntry.losses += 1
@@ -568,8 +579,9 @@ async function updatePredictions(match: MatchWithPredictions, tx: PrismaTx) {
 }
 
 function resolveMatchResult(match: Match): PredictionResult | null {
-  if (match.homeScore > match.awayScore) return PredictionResult.ONE
-  if (match.homeScore < match.awayScore) return PredictionResult.TWO
+  const winnerClubId = determineMatchWinnerClubId(match as unknown as MatchOutcomeSource)
+  if (winnerClubId === match.homeTeamId) return PredictionResult.ONE
+  if (winnerClubId === match.awayTeamId) return PredictionResult.TWO
   return PredictionResult.DRAW
 }
 
@@ -610,13 +622,10 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
       let homeWins = 0
       let awayWins = 0
       for (const m of finishedMatches) {
-        if (m.homeScore > m.awayScore) {
-          if (m.homeTeamId === series.homeClubId) homeWins += 1
-          else awayWins += 1
-        } else if (m.homeScore < m.awayScore) {
-          if (m.awayTeamId === series.homeClubId) homeWins += 1
-          else awayWins += 1
-        }
+        const winner = determineMatchWinnerClubId(m as unknown as MatchOutcomeSource)
+        if (!winner) continue
+        if (winner === series.homeClubId) homeWins += 1
+        else if (winner === series.awayClubId) awayWins += 1
       }
       const requiredWins = Math.floor(totalPlannedMatches / 2) + 1
       if (homeWins >= requiredWins) winnerClubId = series.homeClubId
@@ -653,7 +662,8 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
   }
 
   if (isBracketFormat) {
-    if (match.homeScore === match.awayScore) {
+    const winnerClubId = determineMatchWinnerClubId(match as unknown as MatchOutcomeSource)
+    if (!winnerClubId) {
       logger.warn(
         {
           matchId: match.id.toString(),
@@ -664,8 +674,6 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
       )
       return
     }
-
-    const winnerClubId = match.homeScore > match.awayScore ? match.homeTeamId : match.awayTeamId
 
     await tx.matchSeries.update({
       where: { id: series.id },

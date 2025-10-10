@@ -72,6 +72,9 @@
 |  | away\_team\_id | INT (FK) | Клуб-гость. | \-\> Клуб |
 |  | home\_score | INT | Счет хозяев. | \- |
 |  | away\_score | INT | Счет гостей. | \- |
+|  | has_penalty_shootout | BOOLEAN | Флаг: серия пенальти сыграна (для матчей плей-офф до двух побед). | \- |
+|  | penalty_home_score | INT | Счёт серии пенальти для хозяев (не добавляется в общую статистику). | \- |
+|  | penalty_away_score | INT | Счёт серии пенальти для гостей (не добавляется в общую статистику). | \- |
 |  | status | ENUM | Статус ('SCHEDULED', 'LIVE', 'FINISHED', 'POSTPONED'). | \- |
 |  | stadium\_id | INT (FK) | Место проведения. | \-\> Стадион |
 |  | referee\_id | INT (FK) | Главный судья. | \-\> Персона |

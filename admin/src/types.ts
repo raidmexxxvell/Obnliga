@@ -132,6 +132,9 @@ export interface MatchSummary {
   awayTeamId: number
   homeScore: number
   awayScore: number
+  hasPenaltyShootout: boolean
+  penaltyHomeScore: number
+  penaltyAwayScore: number
   status: 'SCHEDULED' | 'LIVE' | 'FINISHED' | 'POSTPONED'
   stadiumId?: number | null
   refereeId?: number | null

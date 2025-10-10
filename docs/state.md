@@ -63,7 +63,7 @@ setTab(tab: UITab): void
 - Успешное сохранение: показывается уведомление на 3 секунды с сохранением при закрытии модального окна.
 
 Типы и shape (коротко)
-- Match { id: number, homeTeamId: number, awayTeamId: number, matchDate: string, homeScore: number, awayScore: number, status: 'scheduled'|'live'|'finished' }
+- Match { id: number, homeTeamId: number, awayTeamId: number, matchDate: string, homeScore: number, awayScore: number, hasPenaltyShootout?: boolean, penaltyHomeScore?: number, penaltyAwayScore?: number, status: 'scheduled'|'live'|'finished' }
 - MatchLineupEntry { id: number, matchId: number, playerId: number, shirtNumber?: number | null, confirmed: boolean }
 - ValidationError { field: string, message: string, playerId?: number }
 - ShopItem { id: number, title: string, price: number }
@@ -146,6 +146,7 @@ Edge cases / Notes
   - `fetchFriendlyMatches()` — загружает список товарищеских игр через `/api/admin/friendly-matches`.
   - Кэширование данных без фонового воркера: все fetch-* действия используют локальный TTL (SWR) поверх Zustand. TTL (мс): `dictionaries = 60000`, `seasons = 30000`, `series = 15000`, `matches = 10000`, `friendlyMatches = 45000`, `stats = 20000`, `users/predictions = 60000`, `achievements = 120000`, `disqualifications = 30000`. Ключи параметризуются сезон/турнир; сброс кеша происходит при `login/logout` и выборах, которые меняют параметры (сезон/турнир).
   - Версии ответов: сервер возвращает заголовок `X-Resource-Version` и `meta.version` для всех `/api/admin/stats/*`. Store планирует сохранять версии в `fetchTimestamps` для будущей сверки с WS-патчами.
+  - Для серий плей-офф до двух побед (LEAGUE + BEST_OF_N / DOUBLE_ROUND_PLAYOFF) редактор матча поддерживает флаг серии пенальти: переключатель доступен только при ничейном счёте, результаты пенальти сохраняются отдельно и не затрагивают основную статистику голов.
 - TBD (после интеграции портала): `fetchBracket(seasonId?)` планируется как фасад поверх `/api/bracket`, сейчас данные подгружаются отдельным запросом в компоненте.
 - Вкладка «Матчи» использует эти действия для комплексного управления: автоматическое создание сезона, ручное добавление серий, live-редактирование матчей регулярки, а теперь и форму для товарищеских встреч с отдельной таблицей под основным расписанием.
 - Редактор статистики матча синхронизирован с событиями: нажатие `+/-` по метрике вызывает `POST /matches/:id/statistics/adjust`,
