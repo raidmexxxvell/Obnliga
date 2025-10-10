@@ -645,6 +645,11 @@
   background: rgba(6, 12, 24, 0.68);
 }
 
+.news-preview-item.editing {
+  border-color: rgba(0, 240, 255, 0.32);
+  box-shadow: 0 0 0 1px rgba(0, 240, 255, 0.18);
+}
+
 .news-preview-header {
   display: flex;
   align-items: baseline;
@@ -676,6 +681,45 @@
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.news-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.news-preview-actions .news-link {
+  font-size: 11px;
+}
+
+.news-preview-actions button {
+  border: 1px solid rgba(0, 240, 255, 0.28);
+  background: rgba(0, 240, 255, 0.08);
+  color: rgba(183, 247, 255, 0.88);
+  border-radius: 12px;
+  padding: 6px 12px;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.news-preview-actions button:hover {
+  background: rgba(0, 240, 255, 0.18);
+}
+
+.news-preview-actions button.danger {
+  border-color: rgba(255, 77, 130, 0.42);
+  background: rgba(255, 77, 130, 0.16);
+  color: #ffc3d4;
+}
+
+.news-preview-actions button:disabled {
+  opacity: 0.6;
+  cursor: progress;
 }
 
 .news-chip {

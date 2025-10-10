@@ -112,6 +112,8 @@ interface AdminState {
   fetchDisqualifications(): Promise<void>
   fetchNews(options?: FetchOptions): Promise<void>
   prependNews(item: NewsItem): void
+  updateNews(item: NewsItem): void
+  removeNews(id: string): void
   refreshTab(tab?: AdminTab): Promise<void>
 }
 
@@ -593,6 +595,26 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         data: {
           ...state.data,
           news: [item, ...state.data.news.filter((existing) => existing.id !== item.id)]
+        }
+      }))
+    },
+    updateNews(item: NewsItem) {
+      const cacheKey = composeCacheKey('news', [])
+      fetchTimestamps[cacheKey] = Date.now()
+      set((state) => ({
+        data: {
+          ...state.data,
+          news: state.data.news.map((existing) => (existing.id === item.id ? item : existing))
+        }
+      }))
+    },
+    removeNews(id: string) {
+      const cacheKey = composeCacheKey('news', [])
+      fetchTimestamps[cacheKey] = Date.now()
+      set((state) => ({
+        data: {
+          ...state.data,
+          news: state.data.news.filter((existing) => existing.id !== id)
         }
       }))
     },

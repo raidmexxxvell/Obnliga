@@ -20,6 +20,12 @@ const ERROR_DICTIONARY: Record<string, string> = {
   missing_token: 'Сессия администратора истекла. Авторизуйтесь снова.',
   missing_lineup_token: 'Сеанс капитана истёк. Авторизуйтесь снова.',
   forbidden: 'Недостаточно прав для выполнения операции.',
+  news_id_invalid: 'Некорректный идентификатор новости.',
+  news_not_found: 'Новость не найдена.',
+  news_title_required: 'Введите заголовок новости.',
+  news_title_too_long: 'Заголовок не должен превышать 100 символов.',
+  news_content_required: 'Введите текст новости.',
+  news_update_payload_empty: 'Изменений не обнаружено — сохранение не требуется.',
   login_and_password_required: 'Введите логин и пароль.',
   invalid_credentials: 'Неверный логин или пароль.',
   admin_auth_unavailable: 'Сервис авторизации временно недоступен.',
@@ -281,6 +287,12 @@ export const adminPost = async <T>(token: string | undefined, path: string, body
 export const adminPut = async <T>(token: string | undefined, path: string, body?: unknown): Promise<T> =>
   adminRequest<T>(token, path, {
     method: 'PUT',
+    body: body === undefined ? undefined : JSON.stringify(body)
+  })
+
+export const adminPatch = async <T>(token: string | undefined, path: string, body?: unknown): Promise<T> =>
+  adminRequest<T>(token, path, {
+    method: 'PATCH',
     body: body === undefined ? undefined : JSON.stringify(body)
   })
 

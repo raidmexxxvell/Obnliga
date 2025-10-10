@@ -1090,11 +1090,11 @@ export default async function (server: FastifyInstance) {
         sendToTelegram?: boolean
       }
 
-      const title = body?.title?.trim()
-      const content = body?.content?.trim()
-  const coverUrlRaw = body?.coverUrl ?? null
-  const normalizedCoverUrl = coverUrlRaw ? String(coverUrlRaw).trim() : ''
-  const coverUrl = normalizedCoverUrl.length > 0 ? normalizedCoverUrl : null
+    const title = body?.title?.trim()
+    const content = body?.content?.trim()
+    const coverUrlRaw = body?.coverUrl ?? null
+    const normalizedCoverUrl = coverUrlRaw ? String(coverUrlRaw).trim() : ''
+    const coverUrl = normalizedCoverUrl.length > 0 ? normalizedCoverUrl : null
       const sendToTelegram = Boolean(body?.sendToTelegram)
 
       if (!title || title.length === 0) {
@@ -1165,6 +1165,120 @@ export default async function (server: FastifyInstance) {
 
       reply.status(201)
       return sendSerialized(reply, news)
+    })
+
+    admin.patch('/news/:newsId', async (request, reply) => {
+      let newsId: bigint
+      try {
+        newsId = parseBigIntId((request.params as any).newsId, 'newsId')
+      } catch (err) {
+        return reply.status(400).send({ ok: false, error: 'news_id_invalid' })
+      }
+
+      const body = (request.body || {}) as {
+        title?: string
+        content?: string
+        coverUrl?: string | null
+        sendToTelegram?: boolean
+      }
+
+      const existing = await prisma.news.findUnique({ where: { id: newsId } })
+      if (!existing) {
+        return reply.status(404).send({ ok: false, error: 'news_not_found' })
+      }
+
+      const updates: Record<string, unknown> = {}
+
+      if (Object.prototype.hasOwnProperty.call(body, 'title')) {
+        const raw = body.title?.trim() ?? ''
+        if (!raw) {
+          return reply.status(400).send({ ok: false, error: 'news_title_required' })
+        }
+        if (raw.length > 100) {
+          return reply.status(400).send({ ok: false, error: 'news_title_too_long' })
+        }
+        if (raw !== existing.title) {
+          updates.title = raw
+        }
+      }
+
+      if (Object.prototype.hasOwnProperty.call(body, 'content')) {
+        const raw = body.content?.trim() ?? ''
+        if (!raw) {
+          return reply.status(400).send({ ok: false, error: 'news_content_required' })
+        }
+        if (raw !== existing.content) {
+          updates.content = raw
+        }
+      }
+
+      if (Object.prototype.hasOwnProperty.call(body, 'coverUrl')) {
+        const rawValue = body.coverUrl ?? null
+        const normalized = rawValue === null ? null : String(rawValue).trim()
+        const coverUrl = normalized && normalized.length > 0 ? normalized : null
+        if (coverUrl !== (existing.coverUrl ?? null)) {
+          updates.coverUrl = coverUrl
+        }
+      }
+
+      if (Object.prototype.hasOwnProperty.call(body, 'sendToTelegram')) {
+        const next = Boolean(body.sendToTelegram)
+        if (next !== existing.sendToTelegram) {
+          updates.sendToTelegram = next
+        }
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return reply.status(400).send({ ok: false, error: 'news_update_payload_empty' })
+      }
+
+      const news = await prisma.news.update({
+        where: { id: newsId },
+        data: updates
+      })
+
+      await defaultCache.invalidate(NEWS_CACHE_KEY)
+
+      try {
+        const payload = serializePrisma(news)
+        await (admin as any).publishTopic?.('home', {
+          type: 'news.full',
+          payload
+        })
+      } catch (err) {
+        admin.log.warn({ err }, 'failed to publish news update websocket event')
+      }
+
+      return sendSerialized(reply, news)
+    })
+
+    admin.delete('/news/:newsId', async (request, reply) => {
+      let newsId: bigint
+      try {
+        newsId = parseBigIntId((request.params as any).newsId, 'newsId')
+      } catch (err) {
+        return reply.status(400).send({ ok: false, error: 'news_id_invalid' })
+      }
+
+      const existing = await prisma.news.findUnique({ where: { id: newsId } })
+      if (!existing) {
+        return reply.status(404).send({ ok: false, error: 'news_not_found' })
+      }
+
+      const deleted = await prisma.news.delete({ where: { id: newsId } })
+
+      await defaultCache.invalidate(NEWS_CACHE_KEY)
+
+      try {
+        await (admin as any).publishTopic?.('home', {
+          type: 'news.remove',
+          payload: { id: deleted.id.toString() }
+        })
+      } catch (err) {
+        admin.log.warn({ err }, 'failed to publish news remove websocket event')
+      }
+
+      return sendSerialized(reply, deleted)
     })
 
     // Clubs CRUD

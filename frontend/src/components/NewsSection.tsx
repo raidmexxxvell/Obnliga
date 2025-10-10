@@ -95,6 +95,22 @@ export const NewsSection = () => {
       setActiveIndex(0)
     }
     wsClient.on('news.full', handler)
+    const removeHandler = (message: any) => {
+      const id = message?.payload?.id
+      if (!id) return
+      setNews((current) => {
+        const filtered = current.filter((entry) => entry.id !== id)
+        if (filtered.length === current.length) {
+          return current
+        }
+        setActiveIndex((prev) => {
+          if (filtered.length === 0) return 0
+          return Math.min(prev, filtered.length - 1)
+        })
+        return filtered
+      })
+    }
+    wsClient.on('news.remove', removeHandler)
   }, [])
 
   const activeItem = useMemo(() => news[activeIndex] ?? null, [news, activeIndex])
@@ -136,9 +152,6 @@ export const NewsSection = () => {
       <section className="news-column" aria-live="polite">
         <header className="news-header">
           <h2>Новости</h2>
-          <button className="news-refresh" type="button" onClick={() => fetchNews()}>
-            Повторить
-          </button>
         </header>
         <div className="news-placeholder error">Не удалось загрузить новости ({error}).</div>
       </section>
@@ -159,13 +172,7 @@ export const NewsSection = () => {
   return (
     <section className="news-column">
       <header className="news-header">
-        <div>
-          <h2>Новости</h2>
-          <span className="news-meta">Обновляем 1–2 раза в неделю</span>
-        </div>
-        <button className="news-refresh" type="button" onClick={() => fetchNews()}>
-          Обновить
-        </button>
+        <h2>Новости</h2>
       </header>
 
       <article

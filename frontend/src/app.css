@@ -87,7 +87,7 @@
 .accent-shape.left{ left:-80px; bottom:6%; transform: rotate(-8deg) skewX(-8deg); }
 
 .app-root.main{
-  padding:28px;
+  padding:0px;
   max-width:900px;
 }
 
@@ -107,10 +107,10 @@
   background: linear-gradient(180deg, rgba(255,255,255,0.018), rgba(255,255,255,0.01));
   border:1px solid rgba(0,240,255,0.12);
   border-radius:16px;
-  padding:18px;
+  padding:14px 12px;
   display:flex;
   flex-direction:column;
-  gap:16px;
+  gap:14px;
   box-shadow:0 12px 34px rgba(2,6,23,0.58);
   overflow:hidden;
 }
@@ -128,9 +128,11 @@
 .news-header{
   position:relative;
   display:flex;
+  flex-direction:column;
   align-items:center;
-  justify-content:space-between;
-  gap:12px;
+  justify-content:center;
+  gap:6px;
+  text-align:center;
   z-index:1;
 }
 
@@ -142,7 +144,6 @@
 
 .news-meta{
   display:block;
-  margin-top:4px;
   color:#9ecbe0;
   font-size:12px;
   opacity:0.85;
@@ -188,12 +189,14 @@
   background:rgba(6,12,24,0.78);
   border:1px solid rgba(0,240,255,0.16);
   border-radius:16px;
-  padding:20px;
+  padding:18px;
   display:flex;
   flex-direction:column;
-  gap:18px;
+  gap:16px;
   box-shadow:0 16px 32px rgba(2,6,23,0.66);
   cursor:grab;
+  text-align:center;
+  align-items:center;
 }
 
 .news-card:active{
@@ -203,7 +206,9 @@
 .news-card-body{
   display:flex;
   flex-direction:column;
+  align-items:center;
   gap:10px;
+  text-align:center;
 }
 
 .news-card-body h3{
@@ -217,6 +222,7 @@
   font-size:15px;
   color:#c2e5f6;
   line-height:1.45;
+  max-width:540px;
 }
 
 .news-date{
@@ -230,13 +236,14 @@
   display:flex;
   flex-wrap:wrap;
   align-items:center;
-  justify-content:space-between;
+  justify-content:center;
   gap:12px;
 }
 
 .news-dots{
   display:flex;
   align-items:center;
+  justify-content:center;
   gap:6px;
 }
 
@@ -260,6 +267,7 @@
 .news-actions{
   display:flex;
   align-items:center;
+  justify-content:center;
   gap:12px;
 }
 
@@ -326,12 +334,15 @@
   box-shadow:0 20px 48px rgba(2,6,23,0.76);
   display:flex;
   flex-direction:column;
+  align-items:center;
   gap:18px;
+  text-align:center;
 }
 
 .news-modal-content header{
   display:flex;
   flex-direction:column;
+  align-items:center;
   gap:8px;
 }
 
@@ -354,10 +365,12 @@
   gap:12px;
   color:#d7f4ff;
   line-height:1.55;
+  text-align:left;
+  width:100%;
 }
 
 .news-close{
-  align-self:flex-end;
+  align-self:center;
   border:1px solid rgba(0,240,255,0.26);
   background:rgba(0,240,255,0.16);
   color:#b7f7ff;

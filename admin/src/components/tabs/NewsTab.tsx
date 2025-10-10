@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { adminPost } from '../../api/adminClient'
+import { adminDelete, adminPatch, adminPost } from '../../api/adminClient'
 import { useAdminStore } from '../../store/adminStore'
 import type { NewsItem } from '@shared/types'
 
@@ -45,6 +45,8 @@ export const NewsTab = () => {
     data,
     fetchNews,
     prependNews,
+    updateNews,
+    removeNews,
     loading,
     error,
     clearError,
@@ -54,6 +56,8 @@ export const NewsTab = () => {
     data: state.data,
     fetchNews: state.fetchNews,
     prependNews: state.prependNews,
+    updateNews: state.updateNews,
+    removeNews: state.removeNews,
     loading: state.loading,
     error: state.error,
     clearError: state.clearError,
@@ -63,8 +67,16 @@ export const NewsTab = () => {
   const [form, setForm] = useState(defaultFormState)
   const [feedback, setFeedback] = useState<FeedbackState>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [editTarget, setEditTarget] = useState<NewsItem | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const isLoading = Boolean(loading.news)
+  const isEditing = Boolean(editTarget)
+
+  const resetForm = () => {
+    setForm(defaultFormState)
+    setEditTarget(null)
+  }
 
   useEffect(() => {
     if (!token) return
@@ -89,24 +101,56 @@ export const NewsTab = () => {
       return
     }
 
+    const title = form.title.trim()
+    const content = form.content.trim()
+    const cover = form.coverUrl.trim()
+
+    if (editTarget) {
+      const targetCover = (editTarget.coverUrl ?? '').trim()
+      const sameTelegramFlag = Boolean(editTarget.sendToTelegram) === form.sendToTelegram
+      if (title === editTarget.title && content === editTarget.content && cover === targetCover && sameTelegramFlag) {
+        setFeedback({ kind: 'error', message: 'Изменений не обнаружено — сохранение не требуется.' })
+        return
+      }
+    }
+
     setSubmitting(true)
     setFeedback(null)
     try {
-      const payload = {
-        title: form.title.trim(),
-        content: form.content.trim(),
-        coverUrl: form.coverUrl.trim() ? form.coverUrl.trim() : undefined,
-        sendToTelegram: form.sendToTelegram
-      }
 
-      const created = await adminPost<NewsItem>(token, '/api/admin/news', payload)
-      prependNews(created)
-      setForm(defaultFormState)
-      setFeedback({
-        kind: 'success',
-        message: 'Новость опубликована',
-        meta: `ID: ${created.id}${created.sendToTelegram ? ' • Telegram задача поставлена' : ''}`
-      })
+      if (editTarget) {
+        const payload = {
+          title,
+          content,
+          coverUrl: cover ? cover : null,
+          sendToTelegram: form.sendToTelegram
+        }
+
+        const updated = await adminPatch<NewsItem>(token, `/api/admin/news/${editTarget.id}`, payload)
+        updateNews(updated)
+        resetForm()
+        setFeedback({
+          kind: 'success',
+          message: 'Новость обновлена',
+          meta: `ID: ${updated.id}`
+        })
+      } else {
+        const payload = {
+          title,
+          content,
+          coverUrl: cover ? cover : undefined,
+          sendToTelegram: form.sendToTelegram
+        }
+
+        const created = await adminPost<NewsItem>(token, '/api/admin/news', payload)
+        prependNews(created)
+        resetForm()
+        setFeedback({
+          kind: 'success',
+          message: 'Новость опубликована',
+          meta: `ID: ${created.id}${created.sendToTelegram ? ' • Telegram задача поставлена' : ''}`
+        })
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Не удалось опубликовать новость'
       setFeedback({ kind: 'error', message })
@@ -117,6 +161,51 @@ export const NewsTab = () => {
 
   const handleRefresh = () => {
     void fetchNews({ force: true }).catch(() => undefined)
+  }
+
+  const handleEdit = (item: NewsItem) => {
+    setEditTarget(item)
+    setForm({
+      title: item.title,
+      content: item.content,
+      coverUrl: item.coverUrl ?? '',
+      sendToTelegram: Boolean(item.sendToTelegram)
+    })
+    setFeedback(null)
+  }
+
+  const handleCancelEdit = () => {
+    resetForm()
+  }
+
+  const handleDelete = async (item: NewsItem) => {
+    if (!token) {
+      setFeedback({ kind: 'error', message: 'Нет токена администратора. Войдите заново.' })
+      return
+    }
+    const confirmed = typeof window !== 'undefined' ? window.confirm('Удалить новость без возможности восстановления?') : true
+    if (!confirmed) {
+      return
+    }
+    setDeletingId(item.id)
+    setFeedback(null)
+    try {
+      const deleted = await adminDelete<NewsItem>(token, `/api/admin/news/${item.id}`)
+      removeNews(deleted.id)
+      if (editTarget && editTarget.id === item.id) {
+        resetForm()
+      }
+      setFeedback({
+        kind: 'success',
+        message: 'Новость удалена',
+        meta: `ID: ${deleted.id}`
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Не удалось удалить новость'
+      setFeedback({ kind: 'error', message })
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   return (
@@ -163,8 +252,12 @@ export const NewsTab = () => {
 
       <section className="card news-form">
         <header>
-          <h4>Новая публикация</h4>
-          <p>Заполните поля и нажмите «Опубликовать». Новость появится в приложении мгновенно.</p>
+          <h4>{isEditing ? 'Редактирование новости' : 'Новая публикация'}</h4>
+          <p>
+            {isEditing
+              ? 'Обновите поля и сохраните изменения. Публикация обновится во всех клиентах сразу.'
+              : 'Заполните поля и нажмите «Опубликовать». Новость появится в приложении мгновенно.'}
+          </p>
         </header>
         <form className="stacked" onSubmit={handleSubmit}>
           <label>
@@ -209,8 +302,13 @@ export const NewsTab = () => {
           </label>
           <div className="form-actions">
             <button className="button-primary" type="submit" disabled={submitting}>
-              {submitting ? 'Публикуем…' : 'Опубликовать'}
+              {submitting ? (isEditing ? 'Сохраняем…' : 'Публикуем…') : isEditing ? 'Сохранить' : 'Опубликовать'}
             </button>
+            {isEditing ? (
+              <button className="button-secondary" type="button" onClick={handleCancelEdit} disabled={submitting}>
+                Отменить
+              </button>
+            ) : null}
           </div>
         </form>
       </section>
@@ -223,7 +321,10 @@ export const NewsTab = () => {
         {latestNews.length ? (
           <ul className="news-preview-list">
             {latestNews.map((item) => (
-              <li key={item.id} className="news-preview-item">
+              <li
+                key={item.id}
+                className={`news-preview-item${editTarget && editTarget.id === item.id ? ' editing' : ''}`}
+              >
                 <div className="news-preview-header">
                   <h5>{item.title}</h5>
                   <time dateTime={item.createdAt}>{formatDate(item.createdAt)}</time>
@@ -233,11 +334,28 @@ export const NewsTab = () => {
                   <span className={`news-chip${item.sendToTelegram ? ' sent' : ''}`}>
                     {item.sendToTelegram ? 'Telegram ✓' : 'Только лента'}
                   </span>
-                  {item.coverUrl ? (
-                    <a href={item.coverUrl} target="_blank" rel="noreferrer" className="news-link">
-                      Обложка
-                    </a>
-                  ) : null}
+                  <div className="news-preview-actions">
+                    {item.coverUrl ? (
+                      <a href={item.coverUrl} target="_blank" rel="noreferrer" className="news-link">
+                        Обложка
+                      </a>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => handleEdit(item)}
+                      disabled={submitting || deletingId === item.id}
+                    >
+                      Редактировать
+                    </button>
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={() => handleDelete(item)}
+                      disabled={deletingId === item.id || submitting}
+                    >
+                      {deletingId === item.id ? 'Удаляем…' : 'Удалить'}
+                    </button>
+                  </div>
                 </footer>
               </li>
             ))}
