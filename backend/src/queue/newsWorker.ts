@@ -56,19 +56,35 @@ const resolveFloodRetryDelay = (err: unknown): number => {
   return FLOOD_RETRY_FALLBACK_MS
 }
 
-const sendTelegramPayload = async (job: Job<TelegramNewsJobPayload>, logger: FastifyBaseLogger) => {
+type DeliveryContext = {
+  jobId?: string
+  source: 'queue' | 'direct'
+}
+
+export type DeliveryOutcome = {
+  delivered: boolean
+  reason?: 'missing_chat' | 'client_unavailable' | 'rate_limited' | 'send_failed'
+  error?: unknown
+}
+
+const performTelegramSend = async (
+  payload: TelegramNewsJobPayload,
+  logger: FastifyBaseLogger,
+  context: DeliveryContext
+): Promise<DeliveryOutcome> => {
   const chatId = getChatId()
   if (!chatId) {
-    logger.warn({ jobId: job.id }, 'news worker: chatId missing — skipping telegram broadcast')
-    return
-  }
-  const client = ensureBot(logger)
-  if (!client) {
-    logger.warn({ jobId: job.id }, 'news worker: telegram client unavailable')
-    return
+    logger.warn({ ...context }, 'news worker: chatId missing — skipping telegram broadcast')
+    return { delivered: false, reason: 'missing_chat' }
   }
 
-  const { title, content, coverUrl } = job.data
+  const client = ensureBot(logger)
+  if (!client) {
+    logger.warn({ ...context }, 'news worker: telegram client unavailable')
+    return { delivered: false, reason: 'client_unavailable' }
+  }
+
+  const { title, content, coverUrl } = payload
   const intro = `<b>${escapeHtml(title)}</b>`
   const body = escapeHtml(content).replace(/\n{2,}/g, '\n\n')
   const message = `${intro}\n\n${body}`
@@ -85,14 +101,32 @@ const sendTelegramPayload = async (job: Job<TelegramNewsJobPayload>, logger: Fas
         disable_web_page_preview: false
       })
     }
+    if (context.source === 'direct') {
+      logger.info({ newsId: payload.newsId }, 'news worker: telegram direct delivery completed')
+    }
+    return { delivered: true }
   } catch (err) {
-    if (isFloodError(err) && worker) {
-      const delay = resolveFloodRetryDelay(err)
+    const reason: DeliveryOutcome['reason'] = isFloodError(err) ? 'rate_limited' : 'send_failed'
+    if (context.source === 'direct') {
+      logger.error({ err, newsId: payload.newsId }, 'news worker: telegram direct delivery failed')
+    }
+    return { delivered: false, reason, error: err }
+  }
+}
+
+const sendTelegramPayload = async (job: Job<TelegramNewsJobPayload>, logger: FastifyBaseLogger) => {
+  const outcome = await performTelegramSend(job.data, logger, { jobId: job.id, source: 'queue' })
+  if (!outcome.delivered) {
+    if (outcome.reason === 'rate_limited' && worker) {
+      const delay = resolveFloodRetryDelay(outcome.error)
       logger.warn({ jobId: job.id, delay }, 'news worker: flood control, requeue job')
       await worker.rateLimit(delay)
       throw Worker.RateLimitError()
     }
-    throw err
+    if (outcome.error) {
+      throw outcome.error
+    }
+    throw new Error(`telegram_delivery_skipped:${outcome.reason ?? 'unknown'}`)
   }
 }
 
@@ -224,6 +258,13 @@ export async function shutdownNewsWorker(logger: FastifyBaseLogger) {
     queueEvents = null
   }
   await shutdownNewsQueue()
+}
+
+export async function deliverTelegramNewsNow(
+  payload: TelegramNewsJobPayload,
+  logger: FastifyBaseLogger
+): Promise<DeliveryOutcome> {
+  return performTelegramSend(payload, logger, { source: 'direct' })
 }
 
 export { enqueueTelegramNewsJob }

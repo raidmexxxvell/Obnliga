@@ -55,6 +55,7 @@
 - `public:matches:live` — 5 c (SWR 15 c, WS topic `matches:live`)
 - `public:club:{clubId}:summary` — 1200 c (SWR 300 c, WS topic `club:{clubId}:summary`)
 - `public:predictions:leaderboard` — 1200 c (SWR 300 c, WS topic `predictions:leaderboard`)
+- `public:news:list` — 30 c (SWR 45 c, WS topic `home`)
 
 Версия ресурса передаётся через `X-Resource-Version` и `meta.version`, обновляется воркером `stats-aggregation` после пересчётов `handleMatchFinalization`.
 

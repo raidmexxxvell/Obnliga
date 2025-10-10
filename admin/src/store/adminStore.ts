@@ -567,7 +567,17 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         [],
         async () => {
           const token = ensureToken()
-          const { data: news, version } = await adminRequestWithMeta<NewsItem[]>(token, '/api/news')
+          const { data: news, version } = await adminRequestWithMeta<NewsItem[]>(
+            token,
+            '/api/news',
+            {
+              cache: 'no-store',
+              headers: {
+                'Cache-Control': 'no-cache',
+                Pragma: 'no-cache'
+              }
+            }
+          )
           set((state) => ({
             data: { ...state.data, news },
             newsVersion: version ?? state.newsVersion

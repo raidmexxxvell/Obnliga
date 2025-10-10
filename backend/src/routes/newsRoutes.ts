@@ -4,9 +4,9 @@ import { defaultCache } from '../cache'
 import { serializePrisma } from '../utils/serialization'
 
 const NEWS_CACHE_KEY = 'news:all'
-const NEWS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7 // 7 days
-const RESPONSE_MAX_AGE_SECONDS = 60 * 60 * 24 // 1 day
-const RESPONSE_STALE_WHILE_REVALIDATE_SECONDS = 60 * 60 // 1 hour
+const NEWS_CACHE_TTL_SECONDS = 30 // seconds
+const RESPONSE_MAX_AGE_SECONDS = 15 // seconds
+const RESPONSE_STALE_WHILE_REVALIDATE_SECONDS = 45 // seconds
 
 type NewsView = {
   id: string
@@ -44,7 +44,10 @@ export default async function newsRoutes(server: FastifyInstance) {
       return reply.status(304).send()
     }
 
-    reply.header('Cache-Control', `public, max-age=${RESPONSE_MAX_AGE_SECONDS}, stale-while-revalidate=${RESPONSE_STALE_WHILE_REVALIDATE_SECONDS}`)
+    reply.header(
+      'Cache-Control',
+      `public, max-age=${RESPONSE_MAX_AGE_SECONDS}, stale-while-revalidate=${RESPONSE_STALE_WHILE_REVALIDATE_SECONDS}, must-revalidate`
+    )
     reply.header('ETag', etag)
     reply.header('X-Resource-Version', String(version))
 

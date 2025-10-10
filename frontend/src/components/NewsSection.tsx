@@ -50,8 +50,10 @@ export const NewsSection = () => {
     try {
       setLoading(true)
       const response = await fetch(buildUrl('/api/news'), {
+        cache: 'no-store',
         headers: {
-          'Cache-Control': 'max-age=86400'
+          'Cache-Control': 'no-cache',
+          Pragma: 'no-cache'
         }
       })
       if (!response.ok) {

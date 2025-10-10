@@ -1832,6 +1832,32 @@
   justify-self: center;
 }
 
+.stacked label:has(.score-editor) {
+  align-items: center;
+  text-align: center;
+}
+
+.score-button,
+.score-input {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Color Emoji";
+}
+
+.score-input {
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.score-button {
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
+}
+
 .muted {
   color: var(--text-muted);
   font-size: 13px;

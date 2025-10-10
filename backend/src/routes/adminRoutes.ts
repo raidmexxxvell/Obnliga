@@ -20,7 +20,7 @@ import { handleMatchFinalization, rebuildCareerStatsForClubs } from '../services
 import { createSeasonPlayoffs, runSeasonAutomation } from '../services/seasonAutomation'
 import { serializePrisma } from '../utils/serialization'
 import { defaultCache } from '../cache'
-import { enqueueTelegramNewsJob } from '../queue/newsWorker'
+import { deliverTelegramNewsNow, enqueueTelegramNewsJob } from '../queue/newsWorker'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -1126,11 +1126,30 @@ export default async function (server: FastifyInstance) {
             content: news.content,
             coverUrl: news.coverUrl ?? undefined
           })
+
           if (!enqueueResult?.queued) {
-            admin.log.warn({ newsId: news.id.toString() }, 'telegram queue disabled — job skipped')
+            const directResult = await deliverTelegramNewsNow(
+              {
+                newsId: news.id.toString(),
+                title: news.title,
+                content: news.content,
+                coverUrl: news.coverUrl ?? undefined
+              },
+              admin.log
+            )
+
+            if (!directResult.delivered) {
+              admin.log.warn(
+                {
+                  newsId: news.id.toString(),
+                  reason: directResult.reason
+                },
+                'telegram delivery skipped — direct fallback unavailable'
+              )
+            }
           }
         } catch (err) {
-          admin.log.error({ err }, 'failed to enqueue telegram news job')
+          admin.log.error({ err, newsId: news.id.toString() }, 'failed to deliver telegram news')
         }
       }
 
