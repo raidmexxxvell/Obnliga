@@ -63,16 +63,7 @@ export default function App() {
   return (
     <div className="app-root main">
       <div className="content-wrapper">
-        {currentTab === 'home' && (
-          <>
-            <div className="card home-card">
-              <h1 style={{marginTop:0}}>Привет!</h1>
-              <p>Добро пожаловать в мини-приложение Футбольной Лиги.</p>
-              <p>Откройте бота в Telegram и отправьте /start, чтобы получить ссылку на WebApp.</p>
-            </div>
-            <NewsSection />
-          </>
-        )}
+        {currentTab === 'home' && <NewsSection />}
 
         {currentTab === 'profile' ? (
           <Profile />
