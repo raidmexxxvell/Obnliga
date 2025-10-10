@@ -81,7 +81,7 @@ export const cleanupExpiredMatchStatistics = async (now: Date): Promise<number> 
 
 export const matchStatsCacheKey = (matchId: bigint) => `md:stats:${matchId.toString()}`
 
-const applyStatisticDelta = async (
+export const applyStatisticDelta = async (
   tx: Prisma.TransactionClient,
   matchId: bigint,
   clubId: number,

@@ -28,13 +28,16 @@ import {
   broadcastMatchStatistics,
   createMatchEvent,
   deleteMatchEvent,
+  cleanupExpiredMatchStatistics,
   eventStatisticAdjustments,
+  hasMatchStatisticsExpired,
   MatchStatisticMetric,
   getMatchStatisticsWithMeta,
   loadMatchEventsWithRoster,
   matchStatsCacheKey,
   MATCH_STATS_CACHE_TTL_SECONDS,
-  updateMatchEvent
+  updateMatchEvent,
+  applyStatisticDelta
 } from './matchModerationHelpers'
 
 declare module 'fastify' {
