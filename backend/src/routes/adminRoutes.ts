@@ -60,6 +60,31 @@ const parseBigIntId = (value: string | number | bigint | undefined, field: strin
   }
 }
 
+const parseOptionalNumericId = (value: unknown, field: string): number | null => {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+  return parseNumericId(value as number, field)
+}
+
+class TransferError extends Error {
+  constructor(code: string) {
+    super(code)
+    this.name = 'TransferError'
+  }
+}
+
+type TransferSummary = {
+  personId: number
+  person: { id: number; firstName: string; lastName: string }
+  fromClubId: number | null
+  toClubId: number | null
+  fromClub: { id: number; name: string; shortName: string } | null
+  toClub: { id: number; name: string; shortName: string } | null
+  status: 'moved' | 'skipped'
+  reason?: 'same_club'
+}
+
 const normalizeShirtNumber = (value: number | null | undefined): number | null => {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return null
@@ -1441,7 +1466,6 @@ export default async function (server: FastifyInstance) {
         await prisma.$transaction(async (tx) => {
           if (!normalized.length) {
             await tx.clubPlayer.deleteMany({ where: { clubId } })
-            await tx.playerClubCareerStats.deleteMany({ where: { clubId } })
             await syncClubSeasonRosters(tx, clubId)
             return
           }
@@ -1449,9 +1473,6 @@ export default async function (server: FastifyInstance) {
           const personIds = normalized.map((item) => item.personId)
 
           await tx.clubPlayer.deleteMany({
-            where: { clubId, personId: { notIn: personIds } }
-          })
-          await tx.playerClubCareerStats.deleteMany({
             where: { clubId, personId: { notIn: personIds } }
           })
 
@@ -1654,10 +1675,51 @@ export default async function (server: FastifyInstance) {
     // Persons CRUD
     admin.get('/persons', async (request, reply) => {
       const { isPlayer } = request.query as { isPlayer?: string }
-      const persons = await prisma.person.findMany({
+      const personsRaw = await prisma.person.findMany({
         where: typeof isPlayer === 'string' ? { isPlayer: isPlayer === 'true' } : undefined,
-        orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }]
+        orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+        include: {
+          clubAffiliations: {
+            orderBy: { createdAt: 'asc' },
+            include: {
+              club: {
+                select: {
+                  id: true,
+                  name: true,
+                  shortName: true,
+                  logoUrl: true
+                }
+              }
+            }
+          }
+        }
       })
+
+      const persons = personsRaw.map((person) => {
+        const { clubAffiliations, ...rest } = person
+        const primary = clubAffiliations[0]
+        const clubs = clubAffiliations.map((aff) => ({
+          id: aff.club.id,
+          name: aff.club.name,
+          shortName: aff.club.shortName,
+          logoUrl: aff.club.logoUrl ?? null
+        }))
+
+        return {
+          ...rest,
+          currentClubId: primary?.clubId ?? null,
+          currentClub: primary
+            ? {
+                id: primary.club.id,
+                name: primary.club.name,
+                shortName: primary.club.shortName,
+                logoUrl: primary.club.logoUrl ?? null
+              }
+            : null,
+          clubs
+        }
+      })
+
       return reply.send({ ok: true, data: persons })
     })
 
@@ -1704,6 +1766,244 @@ export default async function (server: FastifyInstance) {
       }
       await prisma.person.delete({ where: { id: personId } })
       return reply.send({ ok: true })
+    })
+
+    admin.post('/player-transfers', async (request, reply) => {
+      const body = request.body as {
+        transfers?: Array<{ personId?: number; toClubId?: number; fromClubId?: number | null }>
+      }
+
+      const entries = Array.isArray(body?.transfers) ? body.transfers : []
+      if (!entries.length) {
+        return reply.status(400).send({ ok: false, error: 'transfer_payload_empty' })
+      }
+
+      const normalized: Array<{ personId: number; toClubId: number; fromClubId: number | null }> = []
+      const seenPersons = new Set<number>()
+
+      try {
+        for (const entry of entries) {
+          const rawPersonId = entry?.personId
+          const rawToClubId = entry?.toClubId
+          const rawFromClubId = entry?.fromClubId
+
+          let personId: number
+          let toClubId: number
+          try {
+            personId = parseNumericId(rawPersonId as number, 'personId')
+          } catch (err) {
+            throw new TransferError('transfer_invalid_person')
+          }
+
+          try {
+            toClubId = parseNumericId(rawToClubId as number, 'clubId')
+          } catch (err) {
+            throw new TransferError('transfer_invalid_club')
+          }
+
+          const fromClubId = parseOptionalNumericId(rawFromClubId, 'clubId')
+
+          if (seenPersons.has(personId)) {
+            throw new TransferError('transfer_duplicate_person')
+          }
+          seenPersons.add(personId)
+
+          normalized.push({ personId, toClubId, fromClubId })
+        }
+      } catch (err) {
+        if (err instanceof TransferError) {
+          return reply.status(400).send({ ok: false, error: err.message })
+        }
+        throw err
+      }
+
+      const applied: TransferSummary[] = []
+      const skipped: TransferSummary[] = []
+      const affectedClubIds = new Set<number>()
+
+      try {
+        await prisma.$transaction(async (tx) => {
+          for (const transfer of normalized) {
+            const person = await tx.person.findUnique({
+              where: { id: transfer.personId },
+              include: {
+                clubAffiliations: {
+                  include: {
+                    club: {
+                      select: {
+                        id: true,
+                        name: true,
+                        shortName: true
+                      }
+                    }
+                  },
+                  orderBy: { createdAt: 'asc' }
+                }
+              }
+            })
+
+            if (!person) {
+              throw new TransferError('transfer_person_not_found')
+            }
+            if (!person.isPlayer) {
+              throw new TransferError('transfer_person_not_player')
+            }
+
+            const targetClub = await tx.club.findUnique({
+              where: { id: transfer.toClubId },
+              select: { id: true, name: true, shortName: true }
+            })
+
+            if (!targetClub) {
+              throw new TransferError('transfer_club_not_found')
+            }
+
+            const affiliations = person.clubAffiliations || []
+            let fromClubId = transfer.fromClubId
+            let fromClub =
+              fromClubId !== null
+                ? affiliations.find((aff) => aff.clubId === fromClubId)?.club ?? null
+                : null
+
+            if (fromClubId !== null && !fromClub) {
+              throw new TransferError('transfer_from_club_mismatch')
+            }
+
+            if (fromClubId === null && affiliations.length > 0) {
+              fromClubId = affiliations[0].clubId
+              fromClub = affiliations[0].club
+            }
+
+            if (fromClubId === targetClub.id) {
+              skipped.push({
+                personId: person.id,
+                person: { id: person.id, firstName: person.firstName, lastName: person.lastName },
+                fromClubId,
+                toClubId: targetClub.id,
+                fromClub: fromClub
+                  ? { id: fromClub.id, name: fromClub.name, shortName: fromClub.shortName }
+                  : null,
+                toClub: { id: targetClub.id, name: targetClub.name, shortName: targetClub.shortName },
+                status: 'skipped',
+                reason: 'same_club'
+              })
+              continue
+            }
+
+            if (fromClubId !== null) {
+              await tx.clubPlayer.deleteMany({ where: { clubId: fromClubId, personId: person.id } })
+              affectedClubIds.add(fromClubId)
+            }
+
+            await tx.clubPlayer.upsert({
+              where: { clubId_personId: { clubId: targetClub.id, personId: person.id } },
+              create: {
+                clubId: targetClub.id,
+                personId: person.id,
+                defaultShirtNumber: null
+              },
+              update: {
+                defaultShirtNumber: null
+              }
+            })
+
+            await tx.playerClubCareerStats.upsert({
+              where: { personId_clubId: { personId: person.id, clubId: targetClub.id } },
+              create: {
+                personId: person.id,
+                clubId: targetClub.id,
+                totalGoals: 0,
+                totalMatches: 0,
+                totalAssists: 0,
+                yellowCards: 0,
+                redCards: 0
+              },
+              update: {}
+            })
+
+            affectedClubIds.add(targetClub.id)
+
+            applied.push({
+              personId: person.id,
+              person: { id: person.id, firstName: person.firstName, lastName: person.lastName },
+              fromClubId,
+              toClubId: targetClub.id,
+              fromClub: fromClub
+                ? { id: fromClub.id, name: fromClub.name, shortName: fromClub.shortName }
+                : null,
+              toClub: { id: targetClub.id, name: targetClub.name, shortName: targetClub.shortName },
+              status: 'moved'
+            })
+          }
+
+          for (const clubId of affectedClubIds) {
+            await syncClubSeasonRosters(tx, clubId)
+          }
+        })
+      } catch (err) {
+        if (err instanceof TransferError) {
+          return reply.status(400).send({ ok: false, error: err.message })
+        }
+        request.server.log.error({ err }, 'player transfers failed')
+        return reply.status(500).send({ ok: false, error: 'transfer_failed' })
+      }
+
+      let newsPayload: unknown = null
+      if (applied.length) {
+        try {
+          const dateLabel = new Date().toLocaleDateString('ru-RU')
+          const lines = applied
+            .map((entry) => {
+              const fromLabel = entry.fromClub ? entry.fromClub.shortName : 'свободного статуса'
+              const toLabel = entry.toClub ? entry.toClub.shortName : 'без клуба'
+              return `• ${entry.person.lastName} ${entry.person.firstName}: ${fromLabel} → ${toLabel}`
+            })
+            .join('\n')
+
+          const first = applied[0]
+          const targetLabel = first.toClub ? first.toClub.shortName : 'новый клуб'
+          const title = applied.length === 1
+            ? `Трансфер: ${first.person.lastName} ${first.person.firstName} → ${targetLabel}`
+            : `Трансферы (${dateLabel})`
+          const content = `Завершены трансферные изменения:\n\n${lines}`
+
+          const news = await prisma.news.create({
+            data: {
+              title,
+              content,
+              coverUrl: null,
+              sendToTelegram: false
+            }
+          })
+
+          await defaultCache.invalidate(NEWS_CACHE_KEY)
+
+          try {
+            const payload = serializePrisma(news)
+            await (admin as any).publishTopic?.('home', {
+              type: 'news.full',
+              payload
+            })
+            newsPayload = payload
+          } catch (publishErr) {
+            admin.log.warn({ err: publishErr }, 'failed to publish transfer news websocket update')
+            newsPayload = serializePrisma(news)
+          }
+        } catch (newsErr) {
+          admin.log.error({ err: newsErr }, 'failed to create transfer news')
+        }
+      }
+
+      return reply.send({
+        ok: true,
+        data: {
+          results: [...applied, ...skipped],
+          movedCount: applied.length,
+          skippedCount: skipped.length,
+          affectedClubIds: Array.from(affectedClubIds),
+          news: newsPayload
+        }
+      })
     })
 
     // Stadiums

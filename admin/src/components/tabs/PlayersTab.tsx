@@ -1,15 +1,22 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { adminDelete, adminPost, adminPut, fetchClubPlayers } from '../../api/adminClient'
+import {
+  adminDelete,
+  adminPost,
+  adminPut,
+  applyPlayerTransfers,
+  fetchClubPlayers,
+  PlayerTransferInput
+} from '../../api/adminClient'
 import { useAdminStore } from '../../store/adminStore'
-import { Disqualification, Person } from '../../types'
+import { Club, Disqualification, Person } from '../../types'
 
-type PersonFormState = {
+type EditPersonFormState = {
+  id: number | ''
   firstName: string
   lastName: string
   isPlayer: boolean
+  transferClubId: number | ''
 }
-
-type EditPersonFormState = PersonFormState & { id: number | '' }
 
 type DisqualificationFormState = {
   personId: number | ''
@@ -21,17 +28,20 @@ type DisqualificationFormState = {
 
 type FeedbackLevel = 'success' | 'error' | 'info'
 
-const defaultPersonForm: PersonFormState = {
-  firstName: '',
-  lastName: '',
-  isPlayer: true
+type TransferDraft = {
+  id: string
+  payload: PlayerTransferInput
+  person: Person
+  fromClub: Club | null
+  toClub: Club
 }
 
 const defaultEditPersonForm: EditPersonFormState = {
   id: '',
   firstName: '',
   lastName: '',
-  isPlayer: true
+  isPlayer: true,
+  transferClubId: ''
 }
 
 const defaultDisqualificationForm: DisqualificationFormState = {
@@ -72,7 +82,6 @@ export const PlayersTab = () => {
     error: state.error
   }))
 
-  const [personForm, setPersonForm] = useState<PersonFormState>(defaultPersonForm)
   const [editPersonForm, setEditPersonForm] = useState<EditPersonFormState>(defaultEditPersonForm)
   const [disqualificationForm, setDisqualificationForm] = useState<DisqualificationFormState>(
     defaultDisqualificationForm
@@ -83,6 +92,9 @@ export const PlayersTab = () => {
   const [showPlayersOnly, setShowPlayersOnly] = useState<boolean>(true)
   const [clubPlayers, setClubPlayers] = useState<Person[]>([])
   const [clubPlayersLoading, setClubPlayersLoading] = useState(false)
+  const [transferDrafts, setTransferDrafts] = useState<TransferDraft[]>([])
+  const transferCounterRef = useRef(0)
+  const [transferProcessing, setTransferProcessing] = useState(false)
 
   const isLoading = Boolean(loading.dictionaries || loading.disqualifications)
 
@@ -145,6 +157,94 @@ export const PlayersTab = () => {
     setFeedbackLevel(level)
   }
 
+  const handleAddTransferDraft = () => {
+    if (!editPersonForm.id) {
+      handleFeedback('Выберите игрока для перехода', 'error')
+      return
+    }
+    const targetClubId = typeof editPersonForm.transferClubId === 'number' ? editPersonForm.transferClubId : null
+    if (!targetClubId) {
+      handleFeedback('Выберите клуб для перехода', 'error')
+      return
+    }
+
+    const person = data.persons.find((item) => item.id === editPersonForm.id)
+    if (!person) {
+      handleFeedback('Выбранный игрок не найден', 'error')
+      return
+    }
+
+    const toClub = data.clubs.find((club) => club.id === targetClubId)
+    if (!toClub) {
+      handleFeedback('Клуб для перехода не найден', 'error')
+      return
+    }
+
+    const fromClub = person.currentClub ?? null
+    if (fromClub && fromClub.id === toClub.id) {
+      handleFeedback('Игрок уже закреплён за выбранным клубом', 'error')
+      return
+    }
+
+    const payload: PlayerTransferInput = {
+      personId: person.id,
+      toClubId: toClub.id,
+      fromClubId: fromClub?.id ?? null
+    }
+
+    setTransferDrafts((previous) => {
+      const filtered = previous.filter((draft) => draft.payload.personId !== person.id)
+      transferCounterRef.current += 1
+      const draftId = `transfer-${transferCounterRef.current}-${person.id}`
+      return [
+        ...filtered,
+        {
+          id: draftId,
+          payload,
+          person,
+          fromClub,
+          toClub
+        }
+      ]
+    })
+    setEditPersonForm((form) => ({ ...form, transferClubId: '' }))
+    handleFeedback('Переход добавлен в список', 'success')
+  }
+
+  const handleRemoveDraft = (draftId: string) => {
+    setTransferDrafts((previous) => previous.filter((draft) => draft.id !== draftId))
+  }
+
+  const handleApplyTransfers = async () => {
+    if (!transferDrafts.length) {
+      handleFeedback('Список переходов пуст', 'info')
+      return
+    }
+    setTransferProcessing(true)
+    try {
+      const payload = { transfers: transferDrafts.map((draft) => draft.payload) }
+      const result = await applyPlayerTransfers(token, payload)
+      let message: string
+      if (result.movedCount) {
+        const base = `Трансферы зафиксированы: ${result.movedCount}`
+        message = result.news?.title ? `${base}. Новость: «${result.news.title}».` : base
+      } else {
+        message = 'Изменений не обнаружено'
+      }
+      handleFeedback(message, result.movedCount ? 'success' : 'info')
+      setTransferDrafts([])
+      transferCounterRef.current = 0
+      clubPlayersCacheRef.current.clear()
+      setClubPlayers([])
+      await Promise.all([fetchDictionaries({ force: true }), fetchDisqualifications()])
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Не удалось зафиксировать трансферы'
+      handleFeedback(message, 'error')
+    } finally {
+      setTransferProcessing(false)
+    }
+  }
+
   const filteredPersons = useMemo(() => {
     return data.persons.filter((person) => {
       if (showPlayersOnly && !person.isPlayer) return false
@@ -156,27 +256,10 @@ export const PlayersTab = () => {
 
   const limitedPersons = useMemo(() => filteredPersons.slice(0, 5), [filteredPersons])
   const hasMorePersons = filteredPersons.length > limitedPersons.length
-
-  const handlePersonSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!personForm.firstName.trim() || !personForm.lastName.trim()) {
-      handleFeedback('Имя и фамилия обязательны', 'error')
-      return
-    }
-    try {
-      await adminPost(token, '/api/admin/persons', {
-        firstName: personForm.firstName.trim(),
-        lastName: personForm.lastName.trim(),
-        isPlayer: personForm.isPlayer
-      })
-      handleFeedback('Игрок добавлен', 'success')
-      setPersonForm(defaultPersonForm)
-      await fetchDictionaries({ force: true })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Не удалось создать запись'
-      handleFeedback(message, 'error')
-    }
-  }
+  const selectedPerson = useMemo(
+    () => (typeof editPersonForm.id === 'number' ? data.persons.find((item) => item.id === editPersonForm.id) : undefined),
+    [data.persons, editPersonForm.id]
+  )
 
   const handlePersonEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -218,7 +301,8 @@ export const PlayersTab = () => {
       id: person.id,
       firstName: person.firstName,
       lastName: person.lastName,
-      isPlayer: person.isPlayer
+      isPlayer: person.isPlayer,
+      transferClubId: ''
     })
   }
 
@@ -296,30 +380,57 @@ export const PlayersTab = () => {
       <section className="card-grid">
         <article className="card">
           <header>
-            <h4>Новый игрок</h4>
-            <p>Добавьте человека в базу, указав роль.</p>
+            <h4>Список переходов</h4>
+            <p>Добавляйте игроков через форму редактирования и фиксируйте изменения разом.</p>
           </header>
-          <form className="stacked" onSubmit={handlePersonSubmit}>
-            <label>
-              Фамилия
-              <input value={personForm.lastName} onChange={(event) => setPersonForm((form) => ({ ...form, lastName: event.target.value }))} required />
-            </label>
-            <label>
-              Имя
-              <input value={personForm.firstName} onChange={(event) => setPersonForm((form) => ({ ...form, firstName: event.target.value }))} required />
-            </label>
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={personForm.isPlayer}
-                onChange={(event) => setPersonForm((form) => ({ ...form, isPlayer: event.target.checked }))}
-              />
-              Игрок (если снято — персонал/судья)
-            </label>
-            <button className="button-primary" type="submit">
-              Создать
+          {transferDrafts.length ? (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Игрок</th>
+                  <th>Было</th>
+                  <th>Станет</th>
+                  <th aria-label="Действия" />
+                </tr>
+              </thead>
+              <tbody>
+                {transferDrafts.map((draft) => (
+                  <tr key={draft.id}>
+                    <td>
+                      {draft.person.lastName} {draft.person.firstName}
+                    </td>
+                    <td>{draft.fromClub ? draft.fromClub.shortName : 'Свободный агент'}</td>
+                    <td>{draft.toClub.shortName}</td>
+                    <td className="table-actions">
+                      <button type="button" onClick={() => handleRemoveDraft(draft.id)} disabled={transferProcessing}>
+                        Удалить
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="muted">Список пуст. Выберите игрока, задайте клуб перехода и добавьте запись.</p>
+          )}
+          <div className="form-actions">
+            <button
+              className="button-primary"
+              type="button"
+              onClick={handleApplyTransfers}
+              disabled={!transferDrafts.length || transferProcessing}
+            >
+              {transferProcessing ? 'Фиксируем…' : 'Зафиксировать трансферы'}
             </button>
-          </form>
+            <button
+              className="button-secondary"
+              type="button"
+              onClick={() => setTransferDrafts([])}
+              disabled={!transferDrafts.length || transferProcessing}
+            >
+              Очистить список
+            </button>
+          </div>
         </article>
 
         <article className="card">
@@ -342,6 +453,28 @@ export const PlayersTab = () => {
                 {data.persons.map((person) => (
                   <option key={person.id} value={person.id}>
                     {person.lastName} {person.firstName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {selectedPerson ? (
+              <p className="muted">
+                Текущий клуб: {selectedPerson.currentClub ? selectedPerson.currentClub.shortName : 'Свободный агент'}
+              </p>
+            ) : null}
+            <label>
+              Клуб перехода
+              <select
+                value={editPersonForm.transferClubId}
+                onChange={(event) => {
+                  const value = event.target.value ? Number(event.target.value) : ''
+                  setEditPersonForm((form) => ({ ...form, transferClubId: value }))
+                }}
+              >
+                <option value="">—</option>
+                {data.clubs.map((club) => (
+                  <option key={club.id} value={club.id}>
+                    {club.shortName}
                   </option>
                 ))}
               </select>
@@ -369,11 +502,19 @@ export const PlayersTab = () => {
               Игрок
             </label>
             <div className="form-actions">
-              <button className="button-primary" type="submit" disabled={!editPersonForm.id}>
-                Сохранить
+              <button
+                className="button-primary"
+                type="button"
+                onClick={handleAddTransferDraft}
+                disabled={!editPersonForm.id || !editPersonForm.transferClubId || transferProcessing}
+              >
+                Добавить в список
+              </button>
+              <button className="button-secondary" type="submit" disabled={!editPersonForm.id}>
+                Сохранить профиль
               </button>
               <button
-                className="button-secondary"
+                className="button-ghost"
                 type="button"
                 onClick={() => setEditPersonForm(defaultEditPersonForm)}
                 disabled={!editPersonForm.id}
@@ -498,6 +639,7 @@ export const PlayersTab = () => {
               <th>Фамилия</th>
               <th>Имя</th>
               <th>Роль</th>
+              <th>Клуб</th>
               <th aria-label="Действия" />
             </tr>
           </thead>
@@ -507,6 +649,7 @@ export const PlayersTab = () => {
                 <td>{person.lastName}</td>
                 <td>{person.firstName}</td>
                 <td>{person.isPlayer ? 'Игрок' : 'Персонал'}</td>
+                <td>{person.currentClub ? person.currentClub.shortName : 'Свободный агент'}</td>
                 <td className="table-actions">
                   <button type="button" onClick={() => handleSelectPersonToEdit(person.id)}>
                     Изм.

@@ -127,6 +127,7 @@ Edge cases / Notes
   - `activeTab: 'teams' | 'matches' | 'stats' | 'players' | 'news'`
   - `error?: string`
   - `data`: сезоны, серии, матчи и отдельный список `friendlyMatches` (товарищеские встречи вне сезона), а также справочники (клубы, стадионы, люди).
+  - `data.persons` дополнен полями `currentClubId` / `currentClub` (короткая информация о текущем клубе) и массивом `clubs` с историей привязок — используется вкладкой «Игроки и дисциплина» для отображения переходов.
   - `data.clubCareerTotals`: агрегированные показатели клубов за все турниры лиги (`tournaments`, `matchesPlayed`, `goalsFor`, `goalsAgainst`, `yellowCards`, `redCards`, `cleanSheets`).
   - `matchStats`: `Record<clubId, MatchStatisticEntry>` + `matchStatsVersion?: number` — загруженные показатели матча; обновляются через HTTP (`GET /matches/:id/statistics`) и patch-публикации `match:{id}:stats`.
   - `matchStatsLoading` / `matchStatsUpdating`: индикаторы загрузки и оптимистичных апдейтов; используются для дизейбла контролов

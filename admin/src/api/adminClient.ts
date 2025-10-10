@@ -1,4 +1,5 @@
 import type {
+  Club,
   ClubPlayerLink,
   LineupPortalMatch,
   LineupPortalRosterEntry,
@@ -6,8 +7,10 @@ import type {
   MatchStatisticMetric,
   PlayoffCreationResult,
   SeasonAutomationResult,
-  SeriesFormat
+  SeriesFormat,
+  Person
 } from '../types'
+import type { NewsItem } from '@shared/types'
 
 const API_BASE = import.meta.env.VITE_ADMIN_API_BASE || 'http://localhost:3000'
 
@@ -100,6 +103,15 @@ const ERROR_DICTIONARY: Record<string, string> = {
   person_has_history: 'У игрока есть история матчей — удаление невозможно.',
   person_is_not_player: 'Выбранная персона не является игроком.',
   personid_required: 'Выберите игрока.',
+  transfer_payload_empty: 'Добавьте переходы в список.',
+  transfer_invalid_person: 'Выберите корректного игрока.',
+  transfer_invalid_club: 'Выберите корректный клуб.',
+  transfer_duplicate_person: 'Игрок уже добавлен в список переходов.',
+  transfer_person_not_found: 'Игрок не найден в базе.',
+  transfer_person_not_player: 'Указанная персона не является игроком.',
+  transfer_club_not_found: 'Клуб не найден.',
+  transfer_from_club_mismatch: 'Текущий клуб не совпадает с фактическим.',
+  transfer_failed: 'Не удалось зафиксировать трансферы. Попробуйте ещё раз.',
   playoffs_already_exists: 'Плей-офф уже создан.',
   playoffs_creation_failed: 'Не удалось создать плей-офф.',
   playoffs_not_supported: 'Этот формат турнира не поддерживает плей-офф.',
@@ -341,6 +353,31 @@ export interface PlayoffCreationPayload {
   bestOfLength?: number
 }
 
+export interface PlayerTransferInput {
+  personId: number
+  toClubId: number
+  fromClubId?: number | null
+}
+
+export interface PlayerTransferSummary {
+  personId: number
+  person: Person
+  fromClubId: number | null
+  toClubId: number | null
+  fromClub?: Club | null
+  toClub?: Club | null
+  status: 'moved' | 'skipped'
+  reason?: 'same_club'
+}
+
+export interface PlayerTransfersResult {
+  results: PlayerTransferSummary[]
+  movedCount: number
+  skippedCount: number
+  affectedClubIds: number[]
+  news?: NewsItem | null
+}
+
 export const fetchClubPlayers = async (token: string | undefined, clubId: number): Promise<ClubPlayerLink[]> =>
   adminGet<ClubPlayerLink[]>(token, `/api/admin/clubs/${clubId}/players`)
 
@@ -389,6 +426,11 @@ export const importClubPlayers = async (
   clubId: number,
   payload: ImportClubPlayersPayload
 ) => adminPost<ClubPlayerLink[]>(token, `/api/admin/clubs/${clubId}/players/import`, payload)
+
+export const applyPlayerTransfers = async (
+  token: string | undefined,
+  payload: { transfers: PlayerTransferInput[] }
+) => adminPost<PlayerTransfersResult>(token, '/api/admin/player-transfers', payload)
 
 export const createSeasonAutomation = async (
   token: string | undefined,

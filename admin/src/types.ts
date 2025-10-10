@@ -18,6 +18,9 @@ export interface Person {
   lastName: string
   isPlayer: boolean
   shirtNumber?: number | null
+  currentClubId?: number | null
+  currentClub?: Club | null
+  clubs?: Club[]
 }
 
 export interface Stadium {
