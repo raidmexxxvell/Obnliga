@@ -2641,12 +2641,14 @@ export default async function (server: FastifyInstance) {
 
       const nextStatus = body.status ?? existing.status
       const scoreUpdateRequested = body.homeScore !== undefined || body.awayScore !== undefined
-      const scoreUpdateAllowed = nextStatus === MatchStatus.LIVE || nextStatus === MatchStatus.FINISHED
+      const existingFinished = existing.status === MatchStatus.FINISHED
+      const finishingNow = nextStatus === MatchStatus.FINISHED && !existingFinished
+      const scoreUpdateAllowed = nextStatus === MatchStatus.LIVE || finishingNow
 
       if (scoreUpdateRequested && !scoreUpdateAllowed) {
         return reply
           .status(409)
-          .send({ ok: false, error: 'Изменение счёта доступно только при статусах «Идёт» или «Завершён»' })
+          .send({ ok: false, error: 'Изменение счёта доступно только при статусе «Идёт» до финального сохранения' })
       }
 
       const data: Prisma.MatchUncheckedUpdateInput = {

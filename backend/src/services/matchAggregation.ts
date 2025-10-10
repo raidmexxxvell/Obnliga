@@ -139,7 +139,7 @@ async function rebuildClubSeasonStats(
     awayEntry.goalsFor += m.awayScore
     awayEntry.goalsAgainst += m.homeScore
 
-  const winnerClubId = determineMatchWinnerClubId(m as unknown as MatchOutcomeSource)
+    const winnerClubId = determineMatchWinnerClubId(m)
 
     if (winnerClubId === m.homeTeamId) {
       homeEntry.points += 3
