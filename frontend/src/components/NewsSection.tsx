@@ -6,6 +6,8 @@ import { wsClient } from '../wsClient'
 const API_BASE = ((import.meta as ImportMeta & { env?: { VITE_BACKEND_URL?: string } }).env?.VITE_BACKEND_URL) || ''
 const ROTATION_INTERVAL_MS = 7_000
 const SWIPE_THRESHOLD = 40
+const NEWS_CACHE_KEY = 'obnliga_news_cache'
+const NEWS_CACHE_TTL = 1000 * 60 * 30 // 30 минут локального кеша
 
 const buildUrl = (path: string) => (API_BASE ? `${API_BASE}${path}` : path)
 
@@ -30,6 +32,17 @@ export const NewsSection = () => {
   const [activeIndex, setActiveIndex] = useState(0)
   const [modalState, setModalState] = useState<NewsModalState>(null)
   const touchStartX = useRef<number | null>(null)
+  const etagRef = useRef<string | null>(null)
+  const canSendConditionalHeader = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    if (!API_BASE) return true
+    try {
+      const target = new URL(API_BASE, window.location.href)
+      return target.origin === window.location.origin
+    } catch {
+      return false
+    }
+  }, [])
 
   const next = useCallback(() => {
     setActiveIndex((current) => {
@@ -46,21 +59,53 @@ export const NewsSection = () => {
     })
   }, [news.length])
 
-  const fetchNews = useCallback(async () => {
+  const readCache = useCallback(() => {
+    if (typeof window === 'undefined') return null
     try {
-      setLoading(true)
-      const response = await fetch(buildUrl('/api/news'), {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache',
-          Pragma: 'no-cache'
-        }
-      })
+      const raw = window.localStorage.getItem(NEWS_CACHE_KEY)
+      if (!raw) return null
+      const entry = JSON.parse(raw) as { items: NewsItem[]; etag?: string | null; timestamp: number }
+      if (!Array.isArray(entry.items)) return null
+      if (Date.now() - entry.timestamp > NEWS_CACHE_TTL) {
+        window.localStorage.removeItem(NEWS_CACHE_KEY)
+        return null
+      }
+      return entry
+    } catch {
+      return null
+    }
+  }, [])
+
+  const writeCache = useCallback((items: NewsItem[], etag?: string | null) => {
+    if (typeof window === 'undefined') return
+    try {
+      const payload = JSON.stringify({ items, etag: etag ?? null, timestamp: Date.now() })
+      window.localStorage.setItem(NEWS_CACHE_KEY, payload)
+    } catch {
+      // ignore storage issues (private mode и т.п.)
+    }
+  }, [])
+
+  const fetchNews = useCallback(async (opts?: { background?: boolean }) => {
+    try {
+      if (!opts?.background) setLoading(true)
+      const headers: HeadersInit | undefined = etagRef.current && canSendConditionalHeader
+        ? { 'If-None-Match': etagRef.current }
+        : undefined
+      const response = await fetch(buildUrl('/api/news'), headers ? { headers } : undefined)
+      if (response.status === 304) {
+        setError(null)
+        setLoading(false)
+        return
+      }
       if (!response.ok) {
         throw new Error(`news_fetch_failed_${response.status}`)
       }
       const payload = await response.json()
       const items = (payload?.data ?? []) as NewsItem[]
+      const etag = response.headers.get('ETag')
+      etagRef.current = etag
+      writeCache(items, etag)
       setNews(items)
       setError(null)
       setActiveIndex(0)
@@ -70,11 +115,21 @@ export const NewsSection = () => {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [writeCache])
 
   useEffect(() => {
-    void fetchNews()
-  }, [fetchNews])
+    const cached = readCache()
+    if (cached?.items?.length) {
+      etagRef.current = cached.etag ?? null
+      setNews(cached.items)
+      setActiveIndex(0)
+      setLoading(false)
+      setError(null)
+      void fetchNews({ background: true })
+    } else {
+      void fetchNews()
+    }
+  }, [fetchNews, readCache])
 
   useEffect(() => {
     if (news.length <= 1) return
@@ -90,11 +145,13 @@ export const NewsSection = () => {
       const item = message.payload as NewsItem
       setNews((current) => {
         const deduped = current.filter((entry) => entry.id !== item.id)
-        return [item, ...deduped]
+        const nextItems = [item, ...deduped]
+        writeCache(nextItems, etagRef.current)
+        return nextItems
       })
       setActiveIndex(0)
     }
-    wsClient.on('news.full', handler)
+    const detachFull = wsClient.on('news.full', handler)
     const removeHandler = (message: any) => {
       const id = message?.payload?.id
       if (!id) return
@@ -103,6 +160,7 @@ export const NewsSection = () => {
         if (filtered.length === current.length) {
           return current
         }
+        writeCache(filtered, etagRef.current)
         setActiveIndex((prev) => {
           if (filtered.length === 0) return 0
           return Math.min(prev, filtered.length - 1)
@@ -110,8 +168,12 @@ export const NewsSection = () => {
         return filtered
       })
     }
-    wsClient.on('news.remove', removeHandler)
-  }, [])
+    const detachRemove = wsClient.on('news.remove', removeHandler)
+    return () => {
+      detachFull()
+      detachRemove()
+    }
+  }, [writeCache])
 
   const activeItem = useMemo(() => news[activeIndex] ?? null, [news, activeIndex])
 

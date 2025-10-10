@@ -1,75 +1,206 @@
 type Handler = (msg: any) => void
 
+const HEARTBEAT_INTERVAL_MS = 25_000
+const HEARTBEAT_STALE_MS = 60_000
+const RECONNECT_BASE_DELAY_MS = 1_000
+const RECONNECT_MAX_DELAY_MS = 15_000
+
 export class WSClient {
-  ws: WebSocket | null = null
-  url: string
-  topic: string | null = null
-  handlers: Map<string, Handler[]> = new Map()
-  queuedActions: Array<() => void> = []
+  private ws: WebSocket | null = null
+  private readonly url: string
+  private token?: string
+  private readonly handlers: Map<string, Handler[]> = new Map()
+  private readonly desiredTopics: Set<string> = new Set()
+  private reconnectAttempts = 0
+  private reconnectTimer: number | null = null
+  private heartbeatTimer: number | null = null
+  private lastMessageAt = Date.now()
+  private manualClose = false
 
   constructor(url: string) {
     this.url = url
   }
 
   connect(token?: string) {
-    if (this.ws) this.ws.close()
+    if (token) this.token = token
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      return
+    }
+    this.manualClose = false
     const sep = this.url.includes('?') ? '&' : '?'
-    const u = token ? `${this.url}${sep}token=${encodeURIComponent(token)}` : this.url
+    const authToken = this.token || token
+    const u = authToken ? `${this.url}${sep}token=${encodeURIComponent(authToken)}` : this.url
+    this.cleanupSocket()
     this.ws = new WebSocket(u)
-    this.ws.onmessage = (ev) => {
-      try { const m = JSON.parse(ev.data); this.dispatch(m) } catch(e) {}
-    }
-    this.ws.onopen = () => {
-      // flush queued subscribe/unsubscribe actions
-      for (const fn of this.queuedActions) {
-        try { fn() } catch (e) {}
-      }
-      this.queuedActions = []
-    }
-    this.ws.onclose = () => { this.ws = null }
+    this.ws.addEventListener('open', this.handleOpen)
+    this.ws.addEventListener('message', this.handleMessage)
+    this.ws.addEventListener('close', this.handleClose)
+    this.ws.addEventListener('error', this.handleError)
   }
 
-  dispatch(msg: any) {
-    const type = msg.type || 'message'
-    const list = this.handlers.get(type) || []
-    for (const h of list) h(msg)
+  disconnect() {
+    this.manualClose = true
+    this.reconnectAttempts = 0
+    this.clearReconnect()
+    this.stopHeartbeat()
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      this.ws.close()
+    }
+    this.cleanupSocket()
+  }
+
+  subscribe(topic: string) {
+    if (!topic) return
+    if (this.desiredTopics.has(topic)) return
+    this.desiredTopics.add(topic)
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.send({ action: 'subscribe', topic })
+    } else {
+      this.ensureConnection()
+    }
+  }
+
+  unsubscribe(topic: string) {
+    if (!this.desiredTopics.has(topic)) return
+    this.desiredTopics.delete(topic)
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.send({ action: 'unsubscribe', topic })
+    }
   }
 
   on(type: string, cb: Handler) {
     const list = this.handlers.get(type) || []
     list.push(cb)
     this.handlers.set(type, list)
+    return () => this.off(type, cb)
   }
 
-  subscribe(topic: string) {
-    const doSubscribe = () => {
-      if (!this.ws) return
-      if (this.topic === topic) return
-      if (this.topic) this.unsubscribe(this.topic)
-      this.topic = topic
-      try { this.ws!.send(JSON.stringify({ action: 'subscribe', topic })) } catch (e) {}
+  off(type: string, cb: Handler) {
+    const list = this.handlers.get(type)
+    if (!list) return
+    const next = list.filter((handler) => handler !== cb)
+    if (next.length === 0) {
+      this.handlers.delete(type)
+    } else {
+      this.handlers.set(type, next)
     }
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      this.queuedActions.push(doSubscribe)
-      // ensure connect is called
-      if (!this.ws) this.connect()
-      return
-    }
-    doSubscribe()
   }
 
-  unsubscribe(topic: string) {
-    const doUnsub = () => {
-      if (!this.ws) return
-      try { this.ws!.send(JSON.stringify({ action: 'unsubscribe', topic })) } catch (e) {}
-      if (this.topic === topic) this.topic = null
+  private dispatch(msg: any) {
+    const type = msg?.type || 'message'
+    const list = this.handlers.get(type) || []
+    for (const h of list) {
+      try {
+        h(msg)
+      } catch (err) {
+        // глушим обработчик, чтобы один слушатель не ломал остальных
+      }
     }
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      this.queuedActions.push(doUnsub)
-      if (!this.ws) this.connect()
+  }
+
+  private send(payload: Record<string, unknown>) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    try {
+      this.ws.send(JSON.stringify(payload))
+    } catch (e) {
+      // noop
+    }
+  }
+
+  private ensureConnection() {
+    if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
+      this.connect()
+    }
+  }
+
+  private handleOpen = () => {
+    this.reconnectAttempts = 0
+    this.clearReconnect()
+    this.lastMessageAt = Date.now()
+    this.startHeartbeat()
+    for (const topic of this.desiredTopics) {
+      this.send({ action: 'subscribe', topic })
+    }
+  }
+
+  private handleMessage = (event: MessageEvent) => {
+    this.lastMessageAt = Date.now()
+    try {
+      const parsed = JSON.parse(event.data)
+      this.dispatch(parsed)
+    } catch {
+      // ignore malformed payloads
+    }
+  }
+
+  private handleClose = (event: CloseEvent) => {
+    this.cleanupSocket()
+    if (this.manualClose) return
+    if (event.code === 4001) {
+      // неверный токен — не пытаемся переподключаться бесконечно
       return
     }
-    doUnsub()
+    this.scheduleReconnect()
+  }
+
+  private handleError = () => {
+    if (!this.manualClose) {
+      this.scheduleReconnect()
+    }
+  }
+
+  private scheduleReconnect() {
+    if (this.reconnectTimer !== null) return
+    const attempt = this.reconnectAttempts + 1
+    const delay = Math.min(
+      RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt - 1),
+      RECONNECT_MAX_DELAY_MS
+    )
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null
+      this.reconnectAttempts = attempt
+      this.connect()
+    }, delay)
+  }
+
+  private clearReconnect() {
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+  }
+
+  private startHeartbeat() {
+    this.stopHeartbeat()
+    this.heartbeatTimer = window.setInterval(() => {
+      const now = Date.now()
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        this.stopHeartbeat()
+        return
+      }
+      if (now - this.lastMessageAt > HEARTBEAT_STALE_MS) {
+        this.ws.close()
+        return
+      }
+      this.send({ action: 'ping', ts: now })
+    }, HEARTBEAT_INTERVAL_MS)
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatTimer !== null) {
+      clearInterval(this.heartbeatTimer)
+      this.heartbeatTimer = null
+    }
+  }
+
+  private cleanupSocket() {
+    if (!this.ws) return
+    this.ws.removeEventListener('open', this.handleOpen)
+    this.ws.removeEventListener('message', this.handleMessage)
+    this.ws.removeEventListener('close', this.handleClose)
+    this.ws.removeEventListener('error', this.handleError)
+    this.ws = null
+    this.stopHeartbeat()
   }
 }
 

@@ -62,18 +62,13 @@ export default function Profile() {
       }
     }
 
-    wsClient.on('patch', handlePatch)
+    const detach = wsClient.on('patch', handlePatch)
 
     // Cleanup при размонтировании или смене пользователя
     return () => {
       wsClient.unsubscribe(userTopic)
       wsClient.unsubscribe(profileTopic)
-      // Удаляем обработчик
-      const handlers = (wsClient as any).handlers.get('patch') || []
-      const index = handlers.indexOf(handlePatch)
-      if (index > -1) {
-        handlers.splice(index, 1)
-      }
+      detach()
     }
   }, [user?.telegramId])
 
