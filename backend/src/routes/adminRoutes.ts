@@ -1,7 +1,6 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import prisma from '../db'
 import jwt from 'jsonwebtoken'
-import { timingSafeEqual } from 'crypto'
 import {
   AchievementMetric,
   CompetitionType,
@@ -21,6 +20,22 @@ import { createSeasonPlayoffs, runSeasonAutomation } from '../services/seasonAut
 import { serializePrisma } from '../utils/serialization'
 import { defaultCache } from '../cache'
 import { deliverTelegramNewsNow, enqueueTelegramNewsJob } from '../queue/newsWorker'
+import { secureEquals } from '../utils/secureEquals'
+import { parseBigIntId, parseNumericId, parseOptionalNumericId } from '../utils/parsers'
+import {
+  RequestError,
+  applyStatisticAdjustments,
+  broadcastMatchStatistics,
+  createMatchEvent,
+  deleteMatchEvent,
+  eventStatisticAdjustments,
+  MatchStatisticMetric,
+  getMatchStatisticsWithMeta,
+  loadMatchEventsWithRoster,
+  matchStatsCacheKey,
+  MATCH_STATS_CACHE_TTL_SECONDS,
+  updateMatchEvent
+} from './matchModerationHelpers'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -31,41 +46,7 @@ declare module 'fastify' {
   }
 }
 
-const secureEquals = (left: string, right: string) => {
-  const leftBuf = Buffer.from(left)
-  const rightBuf = Buffer.from(right)
-  if (leftBuf.length !== rightBuf.length) {
-    return false
-  }
-  return timingSafeEqual(leftBuf, rightBuf)
-}
-
 const getJwtSecret = () => process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'admin-dev-secret'
-
-const parseNumericId = (value: string | number | undefined, field: string): number => {
-  const numeric = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(numeric) || numeric <= 0) {
-    throw new Error(`${field}_invalid`)
-  }
-  return numeric
-}
-
-const parseBigIntId = (value: string | number | bigint | undefined, field: string): bigint => {
-  try {
-    if (typeof value === 'bigint') return value
-    if (typeof value === 'number') return BigInt(value)
-    return BigInt(value ?? '')
-  } catch (err) {
-    throw new Error(`${field}_invalid`)
-  }
-}
-
-const parseOptionalNumericId = (value: unknown, field: string): number | null => {
-  if (value === null || value === undefined || value === '') {
-    return null
-  }
-  return parseNumericId(value as number, field)
-}
 
 class TransferError extends Error {
   constructor(code: string) {
@@ -271,293 +252,16 @@ const parseFullNameLine = (line: string): { firstName: string; lastName: string 
 
 const sendSerialized = <T>(reply: FastifyReply, data: T) => reply.send({ ok: true, data: serializePrisma(data) })
 
-class RequestError extends Error {
-  statusCode: number
-
-  constructor(statusCode: number, code: string) {
-    super(code)
-    this.statusCode = statusCode
-    this.name = 'RequestError'
-  }
-}
-
 const SEASON_STATS_CACHE_TTL_SECONDS = Number(process.env.ADMIN_CACHE_TTL_SEASON_STATS ?? '60')
 const CAREER_STATS_CACHE_TTL_SECONDS = Number(process.env.ADMIN_CACHE_TTL_CAREER_STATS ?? '180')
-const MATCH_STATS_CACHE_TTL_SECONDS = Number(process.env.ADMIN_CACHE_TTL_MATCH_STATS ?? '5')
 const NEWS_CACHE_KEY = 'news:all'
 
 const seasonStatsCacheKey = (seasonId: number, suffix: string) => `season:${seasonId}:${suffix}`
 const competitionStatsCacheKey = (competitionId: number, suffix: string) => `competition:${competitionId}:${suffix}`
-const matchStatsCacheKey = (matchId: bigint) => `md:stats:${matchId.toString()}`
 
-const MATCH_STATS_RETENTION_HOURS = Number(process.env.MATCH_STATS_RETENTION_HOURS ?? '3')
-const MATCH_STATS_RETENTION_MS = MATCH_STATS_RETENTION_HOURS > 0 ? MATCH_STATS_RETENTION_HOURS * 60 * 60 * 1000 : 0
-const MATCH_STATS_CLEANUP_INTERVAL_MS = Number(process.env.MATCH_STATS_CLEANUP_INTERVAL_MS ?? '300000')
-
-let lastMatchStatsCleanupAt = 0
-
-const hasMatchStatisticsExpired = (matchDateTime: Date, reference: Date): boolean => {
-  if (MATCH_STATS_RETENTION_MS <= 0) {
-    return false
-  }
-  return matchDateTime.getTime() + MATCH_STATS_RETENTION_MS <= reference.getTime()
-}
-
-const cleanupExpiredMatchStatistics = async (now: Date): Promise<number> => {
-  if (MATCH_STATS_RETENTION_MS <= 0) {
-    return 0
-  }
-  if (now.getTime() - lastMatchStatsCleanupAt < MATCH_STATS_CLEANUP_INTERVAL_MS) {
-    return 0
-  }
-  lastMatchStatsCleanupAt = now.getTime()
-  const cutoff = new Date(now.getTime() - MATCH_STATS_RETENTION_MS)
-  const expired = await prisma.matchStatistic.findMany({
-    where: { match: { matchDateTime: { lt: cutoff } } },
-    select: { matchId: true },
-    distinct: ['matchId']
-  })
-  if (!expired.length) {
-    return 0
-  }
-  await prisma.matchStatistic.deleteMany({
-    where: { matchId: { in: expired.map((entry) => entry.matchId) } }
-  })
-  await Promise.all(
-    expired.map((entry) => defaultCache.invalidate(matchStatsCacheKey(entry.matchId)).catch(() => undefined))
-  )
-  return expired.length
-}
-
-type MatchStatisticMetric = 'totalShots' | 'shotsOnTarget' | 'corners' | 'yellowCards' | 'redCards'
 const matchStatisticMetrics: MatchStatisticMetric[] = ['totalShots', 'shotsOnTarget', 'corners', 'yellowCards', 'redCards']
 
 type EventStatisticAdjustments = Partial<Record<MatchStatisticMetric, number>>
-
-const eventStatisticAdjustments: Partial<Record<MatchEventType, EventStatisticAdjustments>> = {
-  YELLOW_CARD: { yellowCards: 1 },
-  RED_CARD: { redCards: 1 },
-  SECOND_YELLOW_CARD: { redCards: 1 }
-}
-
-const applyStatisticDelta = async (
-  tx: Prisma.TransactionClient,
-  matchId: bigint,
-  clubId: number,
-  metric: MatchStatisticMetric,
-  delta: number
-): Promise<boolean> => {
-  if (!delta) return false
-
-  let entry = await tx.matchStatistic.findUnique({
-    where: { matchId_clubId: { matchId, clubId } }
-  })
-
-  if (!entry) {
-    if (delta < 0) {
-      return false
-    }
-    entry = await tx.matchStatistic.create({
-      data: {
-        matchId,
-        clubId
-      }
-    })
-  }
-
-  const current: Record<MatchStatisticMetric, number> = {
-    totalShots: entry.totalShots,
-    shotsOnTarget: entry.shotsOnTarget,
-    corners: entry.corners,
-    yellowCards: entry.yellowCards,
-    redCards: entry.redCards
-  }
-
-  const updates: Prisma.MatchStatisticUncheckedUpdateInput = {}
-
-  if (metric === 'shotsOnTarget') {
-    const nextShotsOnTarget = Math.max(0, current.shotsOnTarget + delta)
-    const appliedDelta = nextShotsOnTarget - current.shotsOnTarget
-    if (appliedDelta === 0) {
-      return false
-    }
-    const nextTotalShots = Math.max(nextShotsOnTarget, current.totalShots + appliedDelta)
-    updates.shotsOnTarget = nextShotsOnTarget
-    if (nextTotalShots !== current.totalShots) {
-      updates.totalShots = nextTotalShots
-    }
-  } else if (metric === 'totalShots') {
-    const nextTotalShots = Math.max(current.shotsOnTarget, current.totalShots + delta)
-    if (nextTotalShots === current.totalShots) {
-      return false
-    }
-    updates.totalShots = nextTotalShots
-  } else {
-    const nextValue = Math.max(0, current[metric] + delta)
-    if (nextValue === current[metric]) {
-      return false
-    }
-    updates[metric] = nextValue
-  }
-
-  await tx.matchStatistic.update({
-    where: { matchId_clubId: { matchId, clubId } },
-    data: updates
-  })
-
-  return true
-}
-
-const applyStatisticAdjustments = async (
-  tx: Prisma.TransactionClient,
-  matchId: bigint,
-  clubId: number,
-  adjustments: EventStatisticAdjustments | undefined,
-  direction: 1 | -1
-): Promise<boolean> => {
-  if (!adjustments || !clubId) {
-    return false
-  }
-  let changed = false
-  for (const [metric, amount] of Object.entries(adjustments) as Array<[MatchStatisticMetric, number]>) {
-    if (!amount) continue
-    const delta = amount * direction
-    if (!delta) continue
-    const applied = await applyStatisticDelta(tx, matchId, clubId, metric, delta)
-    changed = changed || applied
-  }
-  return changed
-}
-
-type MatchWithRelations = Prisma.MatchGetPayload<{
-  include: {
-    homeClub: { select: { id: true; name: true; shortName: true } }
-    awayClub: { select: { id: true; name: true; shortName: true } }
-    statistics: {
-      include: {
-        club: {
-          select: { id: true; name: true; shortName: true }
-        }
-      }
-    }
-  }
-}>
-
-type MatchStatisticView = {
-  matchId: string
-  clubId: number
-  totalShots: number
-  shotsOnTarget: number
-  corners: number
-  yellowCards: number
-  redCards: number
-  createdAt: Date
-  updatedAt: Date
-  club: { id: number; name: string; shortName: string | null }
-}
-
-const fetchMatchStatisticPayload = async (matchId: bigint): Promise<MatchStatisticView[]> => {
-  const match = await prisma.match.findUnique({
-    where: { id: matchId },
-    include: {
-      homeClub: { select: { id: true, name: true, shortName: true } },
-      awayClub: { select: { id: true, name: true, shortName: true } },
-      statistics: {
-        include: {
-          club: { select: { id: true, name: true, shortName: true } }
-        }
-      }
-    }
-  })
-
-  if (!match) {
-    throw new RequestError(404, 'match_not_found')
-  }
-
-  const now = new Date()
-  await cleanupExpiredMatchStatistics(now).catch(() => undefined)
-
-  let statistics = match.statistics
-  if (hasMatchStatisticsExpired(match.matchDateTime, now)) {
-    if (statistics.length) {
-      await prisma.matchStatistic.deleteMany({ where: { matchId } })
-    }
-    statistics = []
-  }
-
-  let homeClub = match.homeClub
-  if (!homeClub) {
-    const fallback = await prisma.club.findUnique({
-      where: { id: match.homeTeamId },
-      select: { id: true, name: true, shortName: true }
-    })
-    if (!fallback) {
-      throw new RequestError(404, 'match_club_not_found')
-    }
-    homeClub = fallback
-  }
-
-  let awayClub = match.awayClub
-  if (!awayClub) {
-    const fallback = await prisma.club.findUnique({
-      where: { id: match.awayTeamId },
-      select: { id: true, name: true, shortName: true }
-    })
-    if (!fallback) {
-      throw new RequestError(404, 'match_club_not_found')
-    }
-    awayClub = fallback
-  }
-
-  if (!homeClub || !awayClub) {
-    throw new RequestError(404, 'match_club_not_found')
-  }
-
-  const statsByClub = new Map<number, MatchWithRelations['statistics'][number]>()
-  for (const entry of statistics) {
-    statsByClub.set(entry.clubId, entry)
-  }
-
-  const base = [
-    { clubId: homeClub.id, club: homeClub },
-    { clubId: awayClub.id, club: awayClub }
-  ]
-
-  return base.map(({ clubId, club }) => {
-    const stat = statsByClub.get(clubId)
-    return {
-      matchId: match.id.toString(),
-      clubId,
-      totalShots: stat?.totalShots ?? 0,
-      shotsOnTarget: stat?.shotsOnTarget ?? 0,
-      corners: stat?.corners ?? 0,
-      yellowCards: stat?.yellowCards ?? 0,
-      redCards: stat?.redCards ?? 0,
-      createdAt: stat?.createdAt ?? match.createdAt,
-      updatedAt: stat?.updatedAt ?? match.updatedAt,
-      club: {
-        id: club.id,
-        name: club.name,
-        shortName: club.shortName
-      }
-    }
-  })
-}
-
-const getMatchStatisticsWithMeta = (matchId: bigint) =>
-  defaultCache.getWithMeta(matchStatsCacheKey(matchId), () => fetchMatchStatisticPayload(matchId), MATCH_STATS_CACHE_TTL_SECONDS)
-
-const broadcastMatchStatistics = async (server: FastifyInstance, matchId: bigint) => {
-  await defaultCache.invalidate(matchStatsCacheKey(matchId)).catch(() => undefined)
-  const { value, version } = await getMatchStatisticsWithMeta(matchId)
-  const serialized = serializePrisma(value)
-  const topic = `match:${matchId.toString()}:stats`
-  const publish = (server as any).publishTopic
-  if (typeof publish === 'function') {
-    await publish(topic, { type: 'full', version, data: serialized })
-  }
-  return { serialized, version }
-}
 
 async function loadSeasonClubStats(seasonId: number) {
   const season = await prisma.season.findUnique({
@@ -3014,25 +2718,20 @@ export default async function (server: FastifyInstance) {
       if (!body?.playerId || !body?.teamId || !body?.minute || !body?.eventType) {
         return reply.status(400).send({ ok: false, error: 'event_fields_required' })
       }
-  let created: { event: MatchEvent; statAdjusted: boolean }
-      try {
-        created = await prisma.$transaction(async (tx) => {
-          const event = await tx.matchEvent.create({
-            data: {
-              matchId,
-              playerId: body.playerId!,
-              teamId: body.teamId!,
-              minute: body.minute!,
-              eventType: body.eventType!,
-              relatedPlayerId: body.relatedPlayerId ?? null
-            }
-          })
 
-          const adjustments = eventStatisticAdjustments[event.eventType]
-          const statAdjusted = await applyStatisticAdjustments(tx, matchId, event.teamId, adjustments, 1)
-          return { event, statAdjusted }
+      let created: { event: MatchEvent; statAdjusted: boolean }
+      try {
+        created = await createMatchEvent(matchId, {
+          playerId: body.playerId,
+          teamId: body.teamId,
+          minute: body.minute,
+          eventType: body.eventType,
+          relatedPlayerId: body.relatedPlayerId ?? null
         })
       } catch (err) {
+        if (err instanceof RequestError) {
+          return reply.status(err.statusCode).send({ ok: false, error: err.message })
+        }
         request.server.log.error({ err, matchId: matchId.toString() }, 'match event create failed')
         return reply.status(500).send({ ok: false, error: 'event_create_failed' })
       }
@@ -3061,42 +2760,15 @@ export default async function (server: FastifyInstance) {
         playerId: number
         relatedPlayerId: number | null
       }>
-  let updated: { event: MatchEvent; statAdjusted: boolean }
+
+      let updated: { event: MatchEvent; statAdjusted: boolean }
       try {
-        updated = await prisma.$transaction(async (tx) => {
-          const before = await tx.matchEvent.findUnique({ where: { id: eventId } })
-          if (!before) {
-            throw new RequestError(404, 'event_not_found')
-          }
-
-          const event = await tx.matchEvent.update({
-            where: { id: eventId },
-            data: {
-              minute: body.minute ?? undefined,
-              eventType: body.eventType ?? undefined,
-              teamId: body.teamId ?? undefined,
-              playerId: body.playerId ?? undefined,
-              relatedPlayerId: body.relatedPlayerId ?? undefined
-            }
-          })
-
-          let statAdjusted = false
-          const beforeAdjustments = eventStatisticAdjustments[before.eventType]
-          const afterAdjustments = eventStatisticAdjustments[event.eventType]
-
-          if (before.teamId !== event.teamId || before.eventType !== event.eventType) {
-            if (beforeAdjustments) {
-              const changed = await applyStatisticAdjustments(tx, matchId, before.teamId, beforeAdjustments, -1)
-              statAdjusted = statAdjusted || changed
-            }
-
-            if (afterAdjustments) {
-              const changed = await applyStatisticAdjustments(tx, matchId, event.teamId, afterAdjustments, 1)
-              statAdjusted = statAdjusted || changed
-            }
-          }
-
-          return { event, statAdjusted }
+        updated = await updateMatchEvent(matchId, eventId, {
+          minute: body.minute,
+          eventType: body.eventType,
+          teamId: body.teamId,
+          playerId: body.playerId,
+          relatedPlayerId: body.relatedPlayerId
         })
       } catch (err) {
         if (err instanceof RequestError) {
@@ -3123,22 +2795,9 @@ export default async function (server: FastifyInstance) {
     admin.delete('/matches/:matchId/events/:eventId', async (request, reply) => {
       const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
       const eventId = parseBigIntId((request.params as any).eventId, 'eventId')
-      let statAdjusted = false
+      let result: { statAdjusted: boolean; deleted: true }
       try {
-        await prisma.$transaction(async (tx) => {
-          const existing = await tx.matchEvent.findUnique({ where: { id: eventId } })
-          if (!existing) {
-            throw new RequestError(404, 'event_not_found')
-          }
-
-          await tx.matchEvent.delete({ where: { id: eventId } })
-
-          const adjustments = eventStatisticAdjustments[existing.eventType]
-          if (adjustments) {
-            const changed = await applyStatisticAdjustments(tx, matchId, existing.teamId, adjustments, -1)
-            statAdjusted = statAdjusted || changed
-          }
-        })
+        result = await deleteMatchEvent(matchId, eventId)
       } catch (err) {
         if (err instanceof RequestError) {
           return reply.status(err.statusCode).send({ ok: false, error: err.message })
@@ -3147,7 +2806,7 @@ export default async function (server: FastifyInstance) {
         return reply.status(500).send({ ok: false, error: 'event_delete_failed' })
       }
 
-      if (statAdjusted) {
+      if (result.statAdjusted) {
         await broadcastMatchStatistics(request.server, matchId).catch((err) => {
           request.server.log.error({ err, matchId: matchId.toString() }, 'match statistics broadcast failed')
         })

@@ -4,6 +4,7 @@ import { useAdminStore } from './store/adminStore'
 import { LoginForm } from './components/LoginForm'
 import { DashboardLayout } from './components/DashboardLayout'
 import { LineupPortalView } from './components/LineupPortalView'
+import { JudgePanel } from './components/JudgePanel'
 
 export const App = () => {
   type StoreState = ReturnType<typeof useAdminStore.getState>
@@ -15,6 +16,8 @@ export const App = () => {
   if (isAuthenticated) {
     if (mode === 'lineup') {
       content = <LineupPortalView />
+    } else if (mode === 'judge') {
+      content = <JudgePanel />
     } else {
       content = <DashboardLayout />
     }

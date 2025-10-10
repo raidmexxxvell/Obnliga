@@ -164,4 +164,10 @@ Edge cases / Notes
   - При создании дисквалификации сначала выбирается клуб; список игроков подгружается из `/api/admin/clubs/:id/players` и включает только игроков выбранного клуба.
   - Поле «Игрок» отключено до выбора клуба, что исключает ошибочные привязки.
 - Влияние на realtime/кэш: пока отсутствует, но данные матча подтягиваются по запросу; интеграция ETag/WS остаётся в планах.
+- **Judge Store (temporary stub до синхронизации с Context7)**
+  - Расположение: `admin/src/store/judgeStore.ts`, используется в компоненте `JudgePanel` для судейского входа.
+  - Состояние: `status`, `matches`, `events`, `selectedMatchId`, `loading`, `error`.
+  - Действия: `loadMatches`, `refreshMatches`, `selectMatch`, `updateScore`, `createEvent`, `updateEvent`, `deleteEvent`, `reset`, `clearError`.
+  - Хранение токена: `adminStore` сохраняет `obnliga-judge-token`; логика входа добавлена в `adminStore.login` с fallback-порядком admin → judge → lineup.
+  - Ограничение: создание событий требует ручного ввода ID игроков. После получения артефактов Context7 планируется интеграция выпадающих списков на основе заявки клуба и текущей заявки матча.
 

@@ -50,6 +50,10 @@ server.register(adminRoutes)
 import lineupRoutes from './routes/lineupRoutes'
 server.register(lineupRoutes)
 
+// register judge portal routes
+import judgeRoutes from './routes/judgeRoutes'
+server.register(judgeRoutes)
+
 // register public bracket routes
 import bracketRoutes from './routes/bracketRoutes'
 server.register(bracketRoutes)

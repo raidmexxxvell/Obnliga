@@ -151,6 +151,27 @@ export interface MatchSummary {
   }
 }
 
+export interface JudgeMatchSummary {
+  id: string
+  seasonId: number
+  matchDateTime: string
+  status: 'LIVE' | 'FINISHED'
+  homeScore: number
+  awayScore: number
+  hasPenaltyShootout: boolean
+  penaltyHomeScore: number
+  penaltyAwayScore: number
+  season?: { id: number; name: string } | null
+  round?: {
+    id: number
+    roundType: 'REGULAR' | 'PLAYOFF'
+    roundNumber?: number | null
+    label: string
+  } | null
+  homeClub: Club
+  awayClub: Club
+}
+
 export interface FriendlyMatch {
   id: string
   matchDateTime: string

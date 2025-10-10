@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { adminGet, adminLogin, adminRequestWithMeta, lineupLogin, translateAdminError } from '../api/adminClient'
+import { judgeLogin } from '../api/judgeClient'
 import type { NewsItem } from '@shared/types'
 import {
   AchievementType,
@@ -25,6 +26,7 @@ export type AdminTab = 'teams' | 'matches' | 'stats' | 'players' | 'news' | 'use
 
 const storageKey = 'obnliga-admin-token'
 const lineupStorageKey = 'obnliga-lineup-token'
+const judgeStorageKey = 'obnliga-judge-token'
 
 const readPersistedToken = () => {
   if (typeof window === 'undefined') return undefined
@@ -48,13 +50,27 @@ const readPersistedLineupToken = () => {
   }
 }
 
+const readPersistedJudgeToken = () => {
+  if (typeof window === 'undefined') return undefined
+  try {
+    const stored = window.localStorage.getItem(judgeStorageKey)
+    return stored ?? undefined
+  } catch (err) {
+    console.warn('admin store: failed to read judge token', err)
+    return undefined
+  }
+}
+
 const initialAdminToken = readPersistedToken()
 const initialLineupToken = readPersistedLineupToken()
+const initialJudgeToken = readPersistedJudgeToken()
 
-type AuthMode = 'admin' | 'lineup'
+type AuthMode = 'admin' | 'lineup' | 'judge'
 
 const initialMode: AuthMode | undefined = initialAdminToken
   ? 'admin'
+  : initialJudgeToken
+    ? 'judge'
   : initialLineupToken
     ? 'lineup'
     : undefined
@@ -87,6 +103,7 @@ interface AdminState {
   mode?: AuthMode
   token?: string
   lineupToken?: string
+  judgeToken?: string
   error?: string
   activeTab: AdminTab
   selectedCompetitionId?: number
@@ -260,6 +277,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     mode: initialMode,
     token: initialMode === 'admin' ? initialAdminToken : undefined,
     lineupToken: initialMode === 'lineup' ? initialLineupToken : undefined,
+    judgeToken: initialMode === 'judge' ? initialJudgeToken : undefined,
     error: undefined,
     activeTab: 'teams',
     selectedCompetitionId: undefined,
@@ -276,6 +294,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           if (typeof window !== 'undefined') {
             window.localStorage.setItem(storageKey, adminResult.token)
             window.localStorage.removeItem(lineupStorageKey)
+            window.localStorage.removeItem(judgeStorageKey)
           }
           resetFetchCache()
           set({
@@ -283,6 +302,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
             mode: 'admin',
             token: adminResult.token,
             lineupToken: undefined,
+            judgeToken: undefined,
             error: undefined
           })
           try {
@@ -298,6 +318,33 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           throw new Error(adminResult.error ?? translateAdminError(adminErrorCode))
         }
 
+        const judgeResult = await judgeLogin(login, password)
+        if (judgeResult.ok && judgeResult.token) {
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem(judgeStorageKey, judgeResult.token)
+            window.localStorage.removeItem(storageKey)
+            window.localStorage.removeItem(lineupStorageKey)
+          }
+
+          resetFetchCache()
+          set({
+            status: 'authenticated',
+            mode: 'judge',
+            token: undefined,
+            lineupToken: undefined,
+            judgeToken: judgeResult.token,
+            error: undefined,
+            data: createEmptyData(),
+            loading: {}
+          })
+          return
+        }
+
+        const judgeErrorCode = judgeResult.errorCode ?? 'invalid_credentials'
+        if (judgeErrorCode !== 'invalid_credentials') {
+          throw new Error(judgeResult.error ?? translateAdminError(judgeErrorCode))
+        }
+
         const lineupResult = await lineupLogin(login, password)
         if (!lineupResult.ok || !lineupResult.token) {
           const lineupErrorCode = lineupResult.errorCode ?? 'invalid_credentials'
@@ -308,6 +355,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         if (typeof window !== 'undefined') {
           window.localStorage.setItem(lineupStorageKey, lineupResult.token)
           window.localStorage.removeItem(storageKey)
+          window.localStorage.removeItem(judgeStorageKey)
         }
 
         resetFetchCache()
@@ -316,6 +364,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           mode: 'lineup',
           token: undefined,
           lineupToken: lineupResult.token,
+          judgeToken: undefined,
           error: undefined,
           data: createEmptyData(),
           loading: {}
@@ -339,12 +388,14 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(storageKey)
         window.localStorage.removeItem(lineupStorageKey)
+        window.localStorage.removeItem(judgeStorageKey)
       }
       set({
         status: 'idle',
         mode: undefined,
         token: undefined,
         lineupToken: undefined,
+        judgeToken: undefined,
         activeTab: 'teams',
         selectedSeasonId: undefined,
         newsVersion: undefined,
@@ -362,7 +413,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     },
     clearError() {
       if (get().error) {
-        const hasToken = Boolean(get().token || get().lineupToken)
+        const hasToken = Boolean(get().token || get().lineupToken || get().judgeToken)
         set({ error: undefined, status: hasToken ? 'authenticated' : 'idle' })
       }
     },
