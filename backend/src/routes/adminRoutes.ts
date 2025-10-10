@@ -265,6 +265,45 @@ const seasonStatsCacheKey = (seasonId: number, suffix: string) => `season:${seas
 const competitionStatsCacheKey = (competitionId: number, suffix: string) => `competition:${competitionId}:${suffix}`
 const matchStatsCacheKey = (matchId: bigint) => `md:stats:${matchId.toString()}`
 
+const MATCH_STATS_RETENTION_HOURS = Number(process.env.MATCH_STATS_RETENTION_HOURS ?? '3')
+const MATCH_STATS_RETENTION_MS = MATCH_STATS_RETENTION_HOURS > 0 ? MATCH_STATS_RETENTION_HOURS * 60 * 60 * 1000 : 0
+const MATCH_STATS_CLEANUP_INTERVAL_MS = Number(process.env.MATCH_STATS_CLEANUP_INTERVAL_MS ?? '300000')
+
+let lastMatchStatsCleanupAt = 0
+
+const hasMatchStatisticsExpired = (matchDateTime: Date, reference: Date): boolean => {
+  if (MATCH_STATS_RETENTION_MS <= 0) {
+    return false
+  }
+  return matchDateTime.getTime() + MATCH_STATS_RETENTION_MS <= reference.getTime()
+}
+
+const cleanupExpiredMatchStatistics = async (now: Date): Promise<number> => {
+  if (MATCH_STATS_RETENTION_MS <= 0) {
+    return 0
+  }
+  if (now.getTime() - lastMatchStatsCleanupAt < MATCH_STATS_CLEANUP_INTERVAL_MS) {
+    return 0
+  }
+  lastMatchStatsCleanupAt = now.getTime()
+  const cutoff = new Date(now.getTime() - MATCH_STATS_RETENTION_MS)
+  const expired = await prisma.matchStatistic.findMany({
+    where: { match: { matchDateTime: { lt: cutoff } } },
+    select: { matchId: true },
+    distinct: ['matchId']
+  })
+  if (!expired.length) {
+    return 0
+  }
+  await prisma.matchStatistic.deleteMany({
+    where: { matchId: { in: expired.map((entry) => entry.matchId) } }
+  })
+  await Promise.all(
+    expired.map((entry) => defaultCache.invalidate(matchStatsCacheKey(entry.matchId)).catch(() => undefined))
+  )
+  return expired.length
+}
+
 type MatchStatisticMetric = 'totalShots' | 'shotsOnTarget' | 'corners' | 'yellowCards' | 'redCards'
 const matchStatisticMetrics: MatchStatisticMetric[] = ['totalShots', 'shotsOnTarget', 'corners', 'yellowCards', 'redCards']
 
@@ -410,6 +449,17 @@ const fetchMatchStatisticPayload = async (matchId: bigint): Promise<MatchStatist
     throw new RequestError(404, 'match_not_found')
   }
 
+  const now = new Date()
+  await cleanupExpiredMatchStatistics(now).catch(() => undefined)
+
+  let statistics = match.statistics
+  if (hasMatchStatisticsExpired(match.matchDateTime, now)) {
+    if (statistics.length) {
+      await prisma.matchStatistic.deleteMany({ where: { matchId } })
+    }
+    statistics = []
+  }
+
   let homeClub = match.homeClub
   if (!homeClub) {
     const fallback = await prisma.club.findUnique({
@@ -439,7 +489,7 @@ const fetchMatchStatisticPayload = async (matchId: bigint): Promise<MatchStatist
   }
 
   const statsByClub = new Map<number, MatchWithRelations['statistics'][number]>()
-  for (const entry of match.statistics) {
+  for (const entry of statistics) {
     statsByClub.set(entry.clubId, entry)
   }
 
@@ -2277,25 +2327,32 @@ export default async function (server: FastifyInstance) {
         return reply.status(404).send({ ok: false, error: 'match_not_found' })
       }
 
-  const data: Prisma.MatchUncheckedUpdateInput = {
+      const nextStatus = body.status ?? existing.status
+      const scoreUpdateRequested = body.homeScore !== undefined || body.awayScore !== undefined
+
+      if (scoreUpdateRequested && nextStatus !== MatchStatus.LIVE) {
+        return reply.status(409).send({ ok: false, error: 'Изменение счёта доступно только при статусе «Идёт»' })
+      }
+
+      const data: Prisma.MatchUncheckedUpdateInput = {
         matchDateTime: body.matchDateTime ? new Date(body.matchDateTime) : undefined,
         status: body.status ?? undefined,
         stadiumId: body.stadiumId ?? undefined,
         refereeId: body.refereeId ?? undefined,
-    roundId: body.roundId ?? undefined,
-    isArchived: typeof body.isArchived === 'boolean' ? body.isArchived : undefined
+        roundId: body.roundId ?? undefined,
+        isArchived: typeof body.isArchived === 'boolean' ? body.isArchived : undefined
       }
 
-      if (body.homeScore !== undefined) {
-        data.homeScore = body.homeScore
-      }
-      if (body.awayScore !== undefined) {
-        data.awayScore = body.awayScore
+      const normalizeScore = (value: number | undefined, fallback: number | null): number => {
+        if (value === undefined) {
+          return Math.max(0, fallback ?? 0)
+        }
+        return Math.max(0, Math.trunc(value))
       }
 
-      if (body.status === MatchStatus.LIVE && existing.status !== MatchStatus.LIVE) {
-        if (body.homeScore === undefined) data.homeScore = 0
-        if (body.awayScore === undefined) data.awayScore = 0
+      if (nextStatus === MatchStatus.LIVE) {
+        data.homeScore = normalizeScore(body.homeScore, existing.homeScore)
+        data.awayScore = normalizeScore(body.awayScore, existing.awayScore)
       }
 
       const updated = await prisma.match.update({
@@ -2441,18 +2498,28 @@ export default async function (server: FastifyInstance) {
       }
       const delta = Math.max(-20, Math.min(20, Math.trunc(rawDelta)))
 
+      const now = new Date()
+      await cleanupExpiredMatchStatistics(now).catch(() => undefined)
+
       const match = await prisma.match.findUnique({
         where: { id: matchId },
         select: {
           id: true,
           homeTeamId: true,
           awayTeamId: true,
-          status: true
+          status: true,
+          matchDateTime: true
         }
       })
 
       if (!match) {
         return reply.status(404).send({ ok: false, error: 'match_not_found' })
+      }
+
+      if (hasMatchStatisticsExpired(match.matchDateTime, now)) {
+        await prisma.matchStatistic.deleteMany({ where: { matchId } }).catch(() => undefined)
+        await defaultCache.invalidate(matchStatsCacheKey(matchId)).catch(() => undefined)
+        return reply.status(409).send({ ok: false, error: 'Статистика матча устарела и была удалена' })
       }
 
       if (clubId !== match.homeTeamId && clubId !== match.awayTeamId) {

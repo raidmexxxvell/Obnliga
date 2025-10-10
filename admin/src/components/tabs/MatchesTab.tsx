@@ -955,11 +955,16 @@ export const MatchesTab = () => {
   const handleMatchUpdate = async (match: MatchSummary, form: MatchUpdateFormState) => {
     const seasonId = ensureSeasonSelected()
     if (!seasonId) return
+    const allowScoreUpdate = form.status === 'LIVE'
+    const homeScorePayload =
+      allowScoreUpdate && form.homeScore !== '' ? Math.max(0, Number(form.homeScore)) : undefined
+    const awayScorePayload =
+      allowScoreUpdate && form.awayScore !== '' ? Math.max(0, Number(form.awayScore)) : undefined
     await runWithMessages(async () => {
       await adminPut(token, `/api/admin/matches/${match.id}`, {
         matchDateTime: form.matchDateTime ? new Date(form.matchDateTime).toISOString() : undefined,
-        homeScore: form.homeScore === '' ? undefined : Number(form.homeScore),
-        awayScore: form.awayScore === '' ? undefined : Number(form.awayScore),
+        homeScore: homeScorePayload,
+        awayScore: awayScorePayload,
         status: form.status,
         stadiumId: form.stadiumId === '' ? undefined : Number(form.stadiumId),
         refereeId: form.refereeId === '' ? undefined : Number(form.refereeId)
@@ -1340,6 +1345,7 @@ export const MatchesTab = () => {
     : typeof selectedMatch?.awayScore === 'number'
       ? selectedMatch.awayScore
       : ''
+  const scoreInputsDisabled = !isSelectedMatchLive
 
   return (
     <>
@@ -2262,6 +2268,9 @@ export const MatchesTab = () => {
 
                 <label className="stacked">
                   Счёт
+                  {!isSelectedMatchLive ? (
+                    <p className="muted">Изменение счёта доступно только в статусе «Идёт».</p>
+                  ) : null}
                   <div className="score-editor">
                     <div className="score-block">
                       <div className={`score-control${isSelectedMatchLive ? ' live' : ''}`}>
@@ -2293,6 +2302,7 @@ export const MatchesTab = () => {
                           }}
                           className="score-input"
                           min={0}
+                          disabled={scoreInputsDisabled}
                           aria-label="Счёт хозяев"
                         />
                         {isSelectedMatchLive && selectedMatch ? (
@@ -2339,6 +2349,7 @@ export const MatchesTab = () => {
                           }}
                           className="score-input"
                           min={0}
+                          disabled={scoreInputsDisabled}
                           aria-label="Счёт гостей"
                         />
                         {isSelectedMatchLive && selectedMatch ? (
