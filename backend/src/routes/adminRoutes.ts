@@ -1139,12 +1139,25 @@ export default async function (server: FastifyInstance) {
             )
 
             if (!directResult.delivered) {
-              admin.log.warn(
+              const details = {
+                newsId: news.id.toString(),
+                reason: directResult.reason,
+                sentCount: directResult.sentCount,
+                failedCount: directResult.failedCount
+              }
+              const message =
+                directResult.reason === 'no_recipients'
+                  ? 'telegram delivery skipped — no recipients'
+                  : 'telegram delivery skipped — direct fallback unavailable'
+              admin.log.warn(details, message)
+            } else {
+              admin.log.info(
                 {
                   newsId: news.id.toString(),
-                  reason: directResult.reason
+                  sentCount: directResult.sentCount,
+                  failedCount: directResult.failedCount
                 },
-                'telegram delivery skipped — direct fallback unavailable'
+                'telegram direct delivery completed'
               )
             }
           }

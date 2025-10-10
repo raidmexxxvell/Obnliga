@@ -1,6 +1,7 @@
 import { FastifyBaseLogger } from 'fastify'
 import { Job, QueueEvents, Worker } from 'bullmq'
 import TelegramBot from 'node-telegram-bot-api'
+import prisma from '../db'
 import {
   NEWS_QUEUE_NAME,
   ensureNewsQueue,
@@ -12,6 +13,8 @@ import {
 
 const POLL_INTERVAL_MS = 60_000
 const FLOOD_RETRY_FALLBACK_MS = 5_000
+const PER_RECIPIENT_DELAY_MS = Number(process.env.TELEGRAM_BROADCAST_DELAY_MS ?? '60')
+const MAX_FLOOD_RETRIES = 3
 
 let bot: TelegramBot | null = null
 let worker: Worker<TelegramNewsJobPayload> | null = null
@@ -31,16 +34,13 @@ const escapeHtml = (value: string): string =>
 const ensureBot = (logger: FastifyBaseLogger): TelegramBot | null => {
   if (bot) return bot
   const token = process.env.TELEGRAM_BOT_TOKEN
-  const chatId = process.env.TELEGRAM_NEWS_CHAT_ID
-  if (!token || !chatId) {
-    logger.warn('news worker: telegram token or chatId missing — notifications disabled')
+  if (!token) {
+    logger.warn('news worker: telegram token missing — notifications disabled')
     return null
   }
   bot = new TelegramBot(token, { polling: false })
   return bot
 }
-
-const getChatId = () => process.env.TELEGRAM_NEWS_CHAT_ID
 
 const isFloodError = (err: unknown) => {
   const error = err as any
@@ -63,8 +63,26 @@ type DeliveryContext = {
 
 export type DeliveryOutcome = {
   delivered: boolean
-  reason?: 'missing_chat' | 'client_unavailable' | 'rate_limited' | 'send_failed'
+  sentCount: number
+  failedCount: number
+  reason?: 'missing_chat' | 'client_unavailable' | 'rate_limited' | 'send_failed' | 'no_recipients'
   error?: unknown
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const fetchRecipientChatIds = async (logger: FastifyBaseLogger): Promise<string[]> => {
+  try {
+    const users = await prisma.appUser.findMany({
+      select: { telegramId: true }
+    })
+    return users
+      .map((user) => (user.telegramId ? user.telegramId.toString() : ''))
+      .filter((value): value is string => Boolean(value && value.length))
+  } catch (err) {
+    logger.error({ err }, 'news worker: failed to load telegram recipients')
+    return []
+  }
 }
 
 const performTelegramSend = async (
@@ -72,16 +90,16 @@ const performTelegramSend = async (
   logger: FastifyBaseLogger,
   context: DeliveryContext
 ): Promise<DeliveryOutcome> => {
-  const chatId = getChatId()
-  if (!chatId) {
-    logger.warn({ ...context }, 'news worker: chatId missing — skipping telegram broadcast')
-    return { delivered: false, reason: 'missing_chat' }
-  }
-
   const client = ensureBot(logger)
   if (!client) {
     logger.warn({ ...context }, 'news worker: telegram client unavailable')
-    return { delivered: false, reason: 'client_unavailable' }
+    return { delivered: false, sentCount: 0, failedCount: 0, reason: 'client_unavailable' }
+  }
+
+  const recipients = await fetchRecipientChatIds(logger)
+  if (!recipients.length) {
+    logger.warn({ ...context }, 'news worker: no telegram recipients found')
+    return { delivered: false, sentCount: 0, failedCount: 0, reason: 'no_recipients' }
   }
 
   const { title, content, coverUrl } = payload
@@ -89,34 +107,81 @@ const performTelegramSend = async (
   const body = escapeHtml(content).replace(/\n{2,}/g, '\n\n')
   const message = `${intro}\n\n${body}`
 
-  try {
-    if (coverUrl) {
-      await client.sendPhoto(chatId, coverUrl, {
-        caption: message,
-        parse_mode: 'HTML'
-      })
-    } else {
-      await client.sendMessage(chatId, message, {
-        parse_mode: 'HTML',
-        disable_web_page_preview: false
-      })
+  let sentCount = 0
+  let failedCount = 0
+  const errors: unknown[] = []
+
+  for (const chatId of recipients) {
+    let attempt = 0
+    let delivered = false
+    while (attempt < MAX_FLOOD_RETRIES && !delivered) {
+      try {
+        if (coverUrl) {
+          await client.sendPhoto(chatId, coverUrl, {
+            caption: message,
+            parse_mode: 'HTML'
+          })
+        } else {
+          await client.sendMessage(chatId, message, {
+            parse_mode: 'HTML',
+            disable_web_page_preview: false
+          })
+        }
+        sentCount += 1
+        delivered = true
+      } catch (err) {
+        if (isFloodError(err)) {
+          attempt += 1
+          const delay = resolveFloodRetryDelay(err)
+          logger.warn({ chatId, delay, attempt }, 'news worker: flood limit reached, retrying telegram send')
+          await sleep(delay)
+          continue
+        }
+        failedCount += 1
+        errors.push({ chatId, err })
+        logger.error({ chatId, err }, 'news worker: failed to deliver telegram message')
+        break
+      }
     }
-    if (context.source === 'direct') {
-      logger.info({ newsId: payload.newsId }, 'news worker: telegram direct delivery completed')
+
+    if (!delivered) {
+      // exceeded flood retries
+      if (attempt >= MAX_FLOOD_RETRIES) {
+        failedCount += 1
+        errors.push({ chatId, error: 'max_retries_exceeded' })
+      }
     }
-    return { delivered: true }
-  } catch (err) {
-    const reason: DeliveryOutcome['reason'] = isFloodError(err) ? 'rate_limited' : 'send_failed'
-    if (context.source === 'direct') {
-      logger.error({ err, newsId: payload.newsId }, 'news worker: telegram direct delivery failed')
-    }
-    return { delivered: false, reason, error: err }
+
+    await sleep(PER_RECIPIENT_DELAY_MS)
+  }
+
+  if (context.source === 'direct') {
+    logger.info(
+      {
+        newsId: payload.newsId,
+        sentCount,
+        failedCount
+      },
+      'news worker: telegram direct delivery completed'
+    )
+  }
+
+  return {
+    delivered: sentCount > 0,
+    sentCount,
+    failedCount,
+    reason: sentCount > 0 ? undefined : 'send_failed',
+    error: errors.length ? errors : undefined
   }
 }
 
 const sendTelegramPayload = async (job: Job<TelegramNewsJobPayload>, logger: FastifyBaseLogger) => {
   const outcome = await performTelegramSend(job.data, logger, { jobId: job.id, source: 'queue' })
   if (!outcome.delivered) {
+    if (outcome.reason === 'no_recipients') {
+      logger.info({ jobId: job.id }, 'news worker: no telegram recipients to notify')
+      return
+    }
     if (outcome.reason === 'rate_limited' && worker) {
       const delay = resolveFloodRetryDelay(outcome.error)
       logger.warn({ jobId: job.id, delay }, 'news worker: flood control, requeue job')
@@ -128,6 +193,15 @@ const sendTelegramPayload = async (job: Job<TelegramNewsJobPayload>, logger: Fas
     }
     throw new Error(`telegram_delivery_skipped:${outcome.reason ?? 'unknown'}`)
   }
+
+  logger.info(
+    {
+      jobId: job.id,
+      sentCount: outcome.sentCount,
+      failedCount: outcome.failedCount
+    },
+    'news worker: telegram broadcast completed'
+  )
 }
 
 const processJob = async (job: Job<TelegramNewsJobPayload>) => {
