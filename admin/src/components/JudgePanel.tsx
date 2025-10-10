@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useAdminStore } from '../store/adminStore'
 import { useJudgeStore } from '../store/judgeStore'
-import type { JudgeMatchSummary, MatchEventEntry } from '../types'
+import type { JudgeMatchSummary, MatchEventEntry, MatchLineupEntry } from '../types'
 import './judge.css'
 
 const EVENT_OPTIONS: Array<{ value: MatchEventEntry['eventType']; label: string }> = [
@@ -64,6 +64,7 @@ export const JudgePanel = () => {
     matches,
     selectedMatchId,
     events,
+    lineup,
     loading,
     error,
     loadMatches,
@@ -80,6 +81,7 @@ export const JudgePanel = () => {
     matches: state.matches,
     selectedMatchId: state.selectedMatchId,
     events: state.events,
+    lineup: state.lineup,
     loading: state.loading,
     error: state.error,
     loadMatches: state.loadMatches,
@@ -103,6 +105,66 @@ export const JudgePanel = () => {
   const [editingEventId, setEditingEventId] = useState<string | null>(null)
   const [editingDraft, setEditingDraft] = useState<EventDraft | null>(null)
 
+  const lineupByClub = useMemo(() => {
+    const map = new Map<number, MatchLineupEntry[]>()
+    for (const entry of lineup) {
+      const existing = map.get(entry.clubId) || []
+      existing.push(entry)
+      map.set(entry.clubId, existing)
+    }
+    for (const [, entries] of map) {
+      entries.sort((left, right) => {
+        if (left.role !== right.role) {
+          return left.role === 'STARTER' ? -1 : 1
+        }
+        const leftShirt = left.shirtNumber ?? 9999
+        const rightShirt = right.shirtNumber ?? 9999
+        if (leftShirt !== rightShirt) {
+          return leftShirt - rightShirt
+        }
+        return left.personId - right.personId
+      })
+    }
+    return map
+  }, [lineup])
+
+  const formatPlayerLabel = (entry: MatchLineupEntry): string => {
+    const parts: string[] = []
+    if (entry.shirtNumber) {
+      parts.push(`#${entry.shirtNumber}`)
+    }
+    const firstName = entry.person.firstName || ''
+    const lastName = entry.person.lastName || ''
+    const name = `${lastName} ${firstName}`.trim()
+    parts.push(name || `ID ${entry.personId}`)
+    if (entry.role === 'SUBSTITUTE') {
+      parts.push('(зап)')
+    }
+    return parts.join(' ')
+  }
+
+  const homePlayers = useMemo(() => {
+    if (!selectedMatch) return []
+    return lineupByClub.get(selectedMatch.homeClub.id) || []
+  }, [lineupByClub, selectedMatch])
+
+  const awayPlayers = useMemo(() => {
+    if (!selectedMatch) return []
+    return lineupByClub.get(selectedMatch.awayClub.id) || []
+  }, [lineupByClub, selectedMatch])
+
+  const homeListId = selectedMatch ? `judge-home-${selectedMatch.id}` : 'judge-home'
+  const awayListId = selectedMatch ? `judge-away-${selectedMatch.id}` : 'judge-away'
+  const allPlayers = useMemo(() => [...homePlayers, ...awayPlayers], [homePlayers, awayPlayers])
+  const allListId = selectedMatch ? `judge-all-${selectedMatch.id}` : 'judge-all'
+
+  const resolveListId = (teamId: string) => {
+    if (!selectedMatch) return undefined
+    if (teamId === String(selectedMatch.homeClub.id)) return homeListId
+    if (teamId === String(selectedMatch.awayClub.id)) return awayListId
+    return undefined
+  }
+
   useEffect(() => {
     if (!judgeToken) {
       reset()
@@ -119,6 +181,42 @@ export const JudgePanel = () => {
     setEditingEventId(null)
     setEditingDraft(null)
   }, [selectedMatch])
+
+  useEffect(() => {
+    if (!selectedMatch) return
+    const teamId = Number(newEventForm.teamId)
+    if (!teamId) {
+      if (newEventForm.playerId) {
+        setNewEventForm((prev) => ({ ...prev, playerId: '' }))
+      }
+      return
+    }
+    const options = lineupByClub.get(teamId) || []
+    if (!options.length) return
+    if (newEventForm.playerId) return
+    setNewEventForm((prev) => {
+      if (!prev.teamId || Number(prev.teamId) !== teamId || prev.playerId) {
+        return prev
+      }
+      return { ...prev, playerId: String(options[0].personId) }
+    })
+  }, [selectedMatch, newEventForm.teamId, newEventForm.playerId, lineupByClub])
+
+  useEffect(() => {
+    if (!editingDraft || !selectedMatch) return
+    const teamId = Number(editingDraft.teamId)
+    if (!teamId) return
+    const options = lineupByClub.get(teamId) || []
+    if (!options.length) return
+    if (editingDraft.playerId) return
+    setEditingDraft((prev) => {
+      if (!prev) return prev
+      if (!prev.teamId || Number(prev.teamId) !== teamId || prev.playerId) {
+        return prev
+      }
+      return { ...prev, playerId: String(options[0].personId) }
+    })
+  }, [editingDraft, selectedMatch, lineupByClub])
 
   const handleScoreChange = (field: keyof ScoreFormState, value: string | boolean) => {
     setScoreForm((prev) => ({
@@ -204,6 +302,7 @@ export const JudgePanel = () => {
   const isLoadingMatches = Boolean(loading.matches) || status === 'loading'
   const isActionBusy = Boolean(loading.action)
   const isEventsLoading = Boolean(loading.events)
+  const isLineupLoading = Boolean(loading.lineup)
 
   return (
     <div className="judge-panel" onFocus={() => clearError()}>
@@ -328,6 +427,25 @@ export const JudgePanel = () => {
 
               <article className="judge-card">
                 <h2>События матча</h2>
+                {selectedMatch ? (
+                  <>
+                    <datalist id={homeListId}>
+                      {homePlayers.map((entry) => (
+                        <option key={`home-${entry.personId}`} value={String(entry.personId)} label={formatPlayerLabel(entry)} />
+                      ))}
+                    </datalist>
+                    <datalist id={awayListId}>
+                      {awayPlayers.map((entry) => (
+                        <option key={`away-${entry.personId}`} value={String(entry.personId)} label={formatPlayerLabel(entry)} />
+                      ))}
+                    </datalist>
+                    <datalist id={allListId}>
+                      {allPlayers.map((entry) => (
+                        <option key={`all-${entry.personId}`} value={String(entry.personId)} label={formatPlayerLabel(entry)} />
+                      ))}
+                    </datalist>
+                  </>
+                ) : null}
                 {isEventsLoading ? <p className="judge-placeholder">Загружаем события…</p> : null}
                 <form className="event-form" onSubmit={handleCreateEvent}>
                   <div className="event-grid">
@@ -367,21 +485,23 @@ export const JudgePanel = () => {
                       </select>
                     </label>
                     <label>
-                      Игрок ID
+                      Игрок
                       <input
                         type="number"
                         min={1}
                         value={newEventForm.playerId}
+                        list={resolveListId(newEventForm.teamId)}
                         onChange={(event) => setNewEventForm((prev) => ({ ...prev, playerId: event.target.value }))}
                         required
                       />
                     </label>
                     <label>
-                      Связанный ID
+                      Связанный игрок
                       <input
                         type="number"
                         min={1}
                         value={newEventForm.relatedPlayerId}
+                        list={resolveListId(newEventForm.teamId) || allListId}
                         onChange={(event) => setNewEventForm((prev) => ({ ...prev, relatedPlayerId: event.target.value }))}
                         placeholder="Опционально"
                       />
@@ -390,9 +510,7 @@ export const JudgePanel = () => {
                   <button className="button-secondary" type="submit" disabled={isActionBusy}>
                     Добавить событие
                   </button>
-                  <p className="judge-meta">
-                    Временная реализация: необходимо ввести ID игроков вручную. После синхронизации с Context7 будет добавлен выбор из заявки.
-                  </p>
+                  <p className="judge-meta">Выберите игрока из заявки или введите идентификатор вручную при необходимости.</p>
                 </form>
 
                 <ul className="event-list">
@@ -435,6 +553,7 @@ export const JudgePanel = () => {
                               type="number"
                               min={1}
                               value={editingDraft.playerId}
+                              list={resolveListId(editingDraft.teamId)}
                               onChange={(event) => setEditingDraft((prev) => (prev ? { ...prev, playerId: event.target.value } : prev))}
                               required
                             />
@@ -442,10 +561,11 @@ export const JudgePanel = () => {
                               type="number"
                               min={1}
                               value={editingDraft.relatedPlayerId}
+                              list={resolveListId(editingDraft.teamId) || allListId}
                               onChange={(event) =>
                                 setEditingDraft((prev) => (prev ? { ...prev, relatedPlayerId: event.target.value } : prev))
                               }
-                              placeholder="ID соучастника"
+                              placeholder="Опционально"
                             />
                             <div className="event-buttons">
                               <button className="button-primary" type="submit" disabled={isActionBusy}>
@@ -466,7 +586,9 @@ export const JudgePanel = () => {
                                 : selectedMatch.awayClub.shortName || selectedMatch.awayClub.name}
                             </div>
                             <div className="event-player">
-                              #{entry.player?.shirtNumber ?? '—'} {entry.player?.lastName ?? ''}
+                              {entry.player
+                                ? `${entry.player.shirtNumber ? `#${entry.player.shirtNumber}` : '—'} ${`${entry.player.lastName ?? ''} ${entry.player.firstName ?? ''}`.trim()}`.trim()
+                                : `ID ${entry.playerId}`}
                             </div>
                             <div className="event-controls">
                               <button className="button-ghost" type="button" onClick={() => beginEditEvent(entry)}>
@@ -482,6 +604,50 @@ export const JudgePanel = () => {
                     )
                   })}
                 </ul>
+              </article>
+
+              <article className="judge-card">
+                <h2>Заявки команд</h2>
+                {isLineupLoading ? <p className="judge-placeholder">Загружаем заявки…</p> : null}
+                {!isLineupLoading && lineup.length === 0 ? (
+                  <p className="judge-placeholder">Для выбранного матча заявка пока отсутствует.</p>
+                ) : null}
+                {!isLineupLoading && lineup.length > 0 ? (
+                  <div className="judge-lineup-columns">
+                    <section>
+                      <h3>{selectedMatch.homeClub.name}</h3>
+                      {homePlayers.length === 0 ? (
+                        <p className="judge-placeholder">Игроки хозяев не найдены.</p>
+                      ) : (
+                        <ul>
+                          {homePlayers.map((entry) => (
+                            <li key={`home-lineup-${entry.personId}`}>
+                              <span className="lineup-number">{entry.shirtNumber ? `#${entry.shirtNumber}` : '—'}</span>
+                              <span className="lineup-name">{`${entry.person.lastName} ${entry.person.firstName}`}</span>
+                              <span className="lineup-role">{entry.role === 'STARTER' ? 'Старт' : 'Запас'}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                    <section>
+                      <h3>{selectedMatch.awayClub.name}</h3>
+                      {awayPlayers.length === 0 ? (
+                        <p className="judge-placeholder">Игроки гостей не найдены.</p>
+                      ) : (
+                        <ul>
+                          {awayPlayers.map((entry) => (
+                            <li key={`away-lineup-${entry.personId}`}>
+                              <span className="lineup-number">{entry.shirtNumber ? `#${entry.shirtNumber}` : '—'}</span>
+                              <span className="lineup-name">{`${entry.person.lastName} ${entry.person.firstName}`}</span>
+                              <span className="lineup-role">{entry.role === 'STARTER' ? 'Старт' : 'Запас'}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                  </div>
+                ) : null}
               </article>
             </div>
           ) : (

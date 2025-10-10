@@ -1,4 +1,4 @@
-import type { JudgeMatchSummary, MatchEventEntry } from '../types'
+import type { JudgeMatchSummary, MatchEventEntry, MatchLineupEntry } from '../types'
 import { translateAdminError } from './adminClient'
 
 const API_BASE = import.meta.env.VITE_ADMIN_API_BASE || 'http://localhost:3000'
@@ -84,6 +84,12 @@ export const fetchJudgeMatches = async (token: string | undefined): Promise<Judg
 
 export const fetchJudgeEvents = async (token: string | undefined, matchId: string): Promise<MatchEventEntry[]> =>
   judgeRequest<MatchEventEntry[]>(token, `/api/judge/matches/${matchId}/events`, { method: 'GET' })
+
+export const fetchJudgeLineup = async (
+  token: string | undefined,
+  matchId: string
+): Promise<MatchLineupEntry[]> =>
+  judgeRequest<MatchLineupEntry[]>(token, `/api/judge/matches/${matchId}/lineup`, { method: 'GET' })
 
 export interface JudgeEventPayload {
   playerId: number

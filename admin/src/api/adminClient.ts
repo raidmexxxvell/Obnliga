@@ -89,6 +89,7 @@ const ERROR_DICTIONARY: Record<string, string> = {
   match_club_not_found: 'Клуб не найден среди участников матча.',
   match_fields_required: 'Заполните параметры матча.',
   match_not_found: 'Матч не найден.',
+  match_lineup_failed: 'Не удалось получить заявку матча.',
   match_statistics_failed: 'Не удалось получить статистику матча.',
   match_statistics_update_failed: 'Не удалось обновить статистику матча.',
   matches_not_finished: 'Завершите все матчи перед созданием плей-офф.',

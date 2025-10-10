@@ -34,6 +34,7 @@ import {
   MatchStatisticMetric,
   getMatchStatisticsWithMeta,
   loadMatchEventsWithRoster,
+  loadMatchLineupWithNumbers,
   matchStatsCacheKey,
   MATCH_STATS_CACHE_TTL_SECONDS,
   updateMatchEvent,
@@ -2464,50 +2465,16 @@ export default async function (server: FastifyInstance) {
     // Lineups
     admin.get('/matches/:matchId/lineup', async (request, reply) => {
       const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
-      const match = await prisma.match.findUnique({ where: { id: matchId }, select: { seasonId: true } })
-      if (!match) {
-        return reply.status(404).send({ ok: false, error: 'match_not_found' })
-      }
-
-      const lineup = await prisma.matchLineup.findMany({
-        where: { matchId },
-        orderBy: [{ role: 'asc' }, { personId: 'asc' }],
-        include: {
-          person: true,
-          club: true
+      try {
+        const enriched = await loadMatchLineupWithNumbers(matchId)
+        return sendSerialized(reply, enriched)
+      } catch (err) {
+        if (err instanceof RequestError) {
+          return reply.status(err.statusCode).send({ ok: false, error: err.message })
         }
-      })
-
-      if (lineup.length === 0) {
-        return sendSerialized(reply, lineup)
+        request.log.error({ err, matchId: matchId.toString() }, 'match lineup fetch failed')
+        return reply.status(500).send({ ok: false, error: 'match_lineup_failed' })
       }
-
-      const rosterNumbers = await prisma.seasonRoster.findMany({
-        where: {
-          seasonId: match.seasonId,
-          personId: { in: lineup.map((entry) => entry.personId) }
-        },
-        select: { personId: true, shirtNumber: true }
-      })
-
-      const shirtMap = new Map<number, number>()
-      rosterNumbers.forEach((entry) => {
-        shirtMap.set(entry.personId, entry.shirtNumber)
-      })
-
-      const enriched = lineup.map((entry) => {
-        const shirtNumber = shirtMap.get(entry.personId) ?? null
-        return {
-          ...entry,
-          shirtNumber,
-          person: {
-            ...entry.person,
-            shirtNumber
-          }
-        }
-      })
-
-      return sendSerialized(reply, enriched)
     })
 
     admin.put('/matches/:matchId/lineup', async (request, reply) => {

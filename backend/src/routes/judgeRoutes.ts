@@ -13,6 +13,7 @@ import {
   deleteMatchEvent,
   ensureMatchForJudge,
   loadMatchEventsWithRoster,
+  loadMatchLineupWithNumbers,
   updateMatchEvent
 } from './matchModerationHelpers'
 
@@ -167,6 +168,29 @@ export default async function judgeRoutes(server: FastifyInstance) {
         }))
 
         return reply.send({ ok: true, data: serializePrisma(payload) })
+      })
+
+      judge.get('/matches/:matchId/lineup', async (request, reply) => {
+        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+        try {
+          await ensureMatchForJudge(matchId)
+        } catch (err) {
+          if (err instanceof RequestError) {
+            return reply.status(err.statusCode).send({ ok: false, error: err.message })
+          }
+          throw err
+        }
+
+        try {
+          const lineup = await loadMatchLineupWithNumbers(matchId)
+          return reply.send({ ok: true, data: serializePrisma(lineup) })
+        } catch (err) {
+          if (err instanceof RequestError) {
+            return reply.status(err.statusCode).send({ ok: false, error: err.message })
+          }
+          request.log.error({ err, matchId: matchId.toString() }, 'judge lineup fetch failed')
+          return reply.status(500).send({ ok: false, error: 'match_lineup_failed' })
+        }
       })
 
       judge.get('/matches/:matchId/events', async (request, reply) => {

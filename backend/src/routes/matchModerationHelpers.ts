@@ -461,11 +461,56 @@ export const ensureMatchForJudge = async (matchId: bigint) => {
     throw new RequestError(404, 'match_not_found')
   }
 
-  if (match.status !== MatchStatus.FINISHED) {
+  if (match.status !== MatchStatus.FINISHED && match.status !== MatchStatus.LIVE) {
     throw new RequestError(409, 'match_not_finished')
   }
 
   return match
+}
+
+export const loadMatchLineupWithNumbers = async (matchId: bigint) => {
+  const match = await prisma.match.findUnique({ where: { id: matchId }, select: { seasonId: true } })
+  if (!match) {
+    throw new RequestError(404, 'match_not_found')
+  }
+
+  const lineup = await prisma.matchLineup.findMany({
+    where: { matchId },
+    orderBy: [{ role: 'asc' }, { personId: 'asc' }],
+    include: {
+      person: true,
+      club: true
+    }
+  })
+
+  if (lineup.length === 0) {
+    return []
+  }
+
+  const rosterNumbers = await prisma.seasonRoster.findMany({
+    where: {
+      seasonId: match.seasonId,
+      personId: { in: lineup.map((entry) => entry.personId) }
+    },
+    select: { personId: true, shirtNumber: true }
+  })
+
+  const shirtMap = new Map<number, number>()
+  rosterNumbers.forEach((entry) => {
+    shirtMap.set(entry.personId, entry.shirtNumber)
+  })
+
+  return lineup.map((entry) => {
+    const shirtNumber = shirtMap.get(entry.personId) ?? null
+    return {
+      ...entry,
+      shirtNumber,
+      person: {
+        ...entry.person,
+        shirtNumber
+      }
+    }
+  })
 }
 
 export { MATCH_STATS_CACHE_TTL_SECONDS }
