@@ -33,6 +33,7 @@ export const NewsSection = () => {
   const [modalState, setModalState] = useState<NewsModalState>(null)
   const touchStartX = useRef<number | null>(null)
   const etagRef = useRef<string | null>(null)
+  const newsRef = useRef<NewsItem[]>([])
   const canSendConditionalHeader = useMemo(() => {
     if (typeof window === 'undefined') return false
     if (!API_BASE) return true
@@ -86,14 +87,18 @@ export const NewsSection = () => {
     }
   }, [])
 
-  const fetchNews = useCallback(async (opts?: { background?: boolean }) => {
+  const fetchNews = useCallback(async (opts?: { background?: boolean; force?: boolean }) => {
     try {
       if (!opts?.background) setLoading(true)
-      const headers: HeadersInit | undefined = etagRef.current && canSendConditionalHeader
+      const headers: HeadersInit | undefined = !opts?.force && etagRef.current && canSendConditionalHeader
         ? { 'If-None-Match': etagRef.current }
         : undefined
       const response = await fetch(buildUrl('/api/news'), headers ? { headers } : undefined)
       if (response.status === 304) {
+        if (!opts?.force && newsRef.current.length === 0) {
+          etagRef.current = null
+          await fetchNews({ background: true, force: true })
+        }
         setError(null)
         setLoading(false)
         return
@@ -107,6 +112,7 @@ export const NewsSection = () => {
       etagRef.current = etag
       writeCache(items, etag)
       setNews(items)
+      newsRef.current = items
       setError(null)
       setActiveIndex(0)
     } catch (err) {
@@ -122,11 +128,13 @@ export const NewsSection = () => {
     if (cached?.items?.length) {
       etagRef.current = cached.etag ?? null
       setNews(cached.items)
+      newsRef.current = cached.items
       setActiveIndex(0)
       setLoading(false)
       setError(null)
       void fetchNews({ background: true })
     } else {
+      newsRef.current = []
       void fetchNews()
     }
   }, [fetchNews, readCache])
@@ -147,6 +155,7 @@ export const NewsSection = () => {
         const deduped = current.filter((entry) => entry.id !== item.id)
         const nextItems = [item, ...deduped]
         writeCache(nextItems, etagRef.current)
+        newsRef.current = nextItems
         return nextItems
       })
       setActiveIndex(0)
@@ -161,6 +170,7 @@ export const NewsSection = () => {
           return current
         }
         writeCache(filtered, etagRef.current)
+        newsRef.current = filtered
         setActiveIndex((prev) => {
           if (filtered.length === 0) return 0
           return Math.min(prev, filtered.length - 1)

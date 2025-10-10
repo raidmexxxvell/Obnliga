@@ -5,10 +5,15 @@ const HEARTBEAT_STALE_MS = 60_000
 const RECONNECT_BASE_DELAY_MS = 1_000
 const RECONNECT_MAX_DELAY_MS = 15_000
 
+type WSClientOptions = {
+  requireAuth?: boolean
+}
+
 export class WSClient {
   private ws: WebSocket | null = null
   private readonly url: string
   private token?: string
+  private readonly requireAuth: boolean
   private readonly handlers: Map<string, Handler[]> = new Map()
   private readonly desiredTopics: Set<string> = new Set()
   private reconnectAttempts = 0
@@ -16,13 +21,21 @@ export class WSClient {
   private heartbeatTimer: number | null = null
   private lastMessageAt = Date.now()
   private manualClose = false
+  private authRejected = false
 
-  constructor(url: string) {
+  constructor(url: string, options?: WSClientOptions) {
     this.url = url
+    this.requireAuth = options?.requireAuth ?? true
   }
 
   connect(token?: string) {
-    if (token) this.token = token
+    if (token) {
+      this.token = token
+      this.authRejected = false
+    }
+    if (!this.canConnect()) {
+      return
+    }
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return
     }
@@ -53,6 +66,9 @@ export class WSClient {
     if (!topic) return
     if (this.desiredTopics.has(topic)) return
     this.desiredTopics.add(topic)
+    if (!this.canConnect()) {
+      return
+    }
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.send({ action: 'subscribe', topic })
     } else {
@@ -108,6 +124,9 @@ export class WSClient {
   }
 
   private ensureConnection() {
+    if (!this.canConnect()) {
+      return
+    }
     if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
       this.connect()
     }
@@ -137,7 +156,7 @@ export class WSClient {
     this.cleanupSocket()
     if (this.manualClose) return
     if (event.code === 4001) {
-      // неверный токен — не пытаемся переподключаться бесконечно
+      this.authRejected = true
       return
     }
     this.scheduleReconnect()
@@ -151,6 +170,7 @@ export class WSClient {
 
   private scheduleReconnect() {
     if (this.reconnectTimer !== null) return
+    if (!this.canConnect()) return
     const attempt = this.reconnectAttempts + 1
     const delay = Math.min(
       RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt - 1),
@@ -202,6 +222,34 @@ export class WSClient {
     this.ws = null
     this.stopHeartbeat()
   }
+
+  private canConnect() {
+    if (this.authRejected) {
+      return false
+    }
+    if (!this.requireAuth) {
+      return true
+    }
+    return Boolean(this.token)
+  }
+
+  setToken(token?: string) {
+    const normalized = token || undefined
+    const changed = normalized !== this.token
+    this.token = normalized
+    this.authRejected = false
+    if (!normalized) {
+      this.disconnect()
+      return
+    }
+    if (changed) {
+      this.connect(normalized)
+    }
+  }
+
+  hasToken() {
+    return Boolean(this.token)
+  }
 }
 
 const token = typeof window !== 'undefined' ? (localStorage.getItem('session') || undefined) : undefined
@@ -222,4 +270,6 @@ if (VITE_WS_URL) {
 }
 
 export const wsClient = new WSClient(resolvedWsUrl)
-wsClient.connect(token)
+if (token) {
+  wsClient.setToken(token)
+}

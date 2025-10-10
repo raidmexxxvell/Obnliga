@@ -558,7 +558,7 @@
   border-radius: 12px;
   background: rgba(3, 8, 18, 0.68);
   color: var(--text-primary);
-  padding: 10px 12px;
+  padding: 7px 12px;
   font-size: 14px;
 }
 
@@ -1887,8 +1887,8 @@
 }
 
 .score-input {
-  width: 56px;
-  height: 56px;
+  width: 46px;
+  height: 26px;
   padding: 0;
   display: inline-flex;
   align-items: center;

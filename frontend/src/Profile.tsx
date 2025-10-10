@@ -175,6 +175,9 @@ export default function Profile() {
           if (cached?.data) {
             setUser(cached.data)
             console.log('Using cached profile (304 Not Modified)')
+            if (cached?.etag && localStorage.getItem('session')) {
+              wsClient.setToken(localStorage.getItem('session') || undefined)
+            }
             setLoading(false)
             return
           }
@@ -183,6 +186,7 @@ export default function Profile() {
           console.log('Backend response:', dd)
           if (dd?.token) {
             localStorage.setItem('session', dd.token)
+            wsClient.setToken(dd.token)
           }
           if (dd?.ok && dd.user) {
             const etag = r.headers.get('ETag')
@@ -218,6 +222,9 @@ export default function Profile() {
           if (cached?.data) {
             setUser(cached.data)
             console.log('Using cached profile (304 Not Modified)')
+            if (token) {
+              wsClient.setToken(token)
+            }
             setLoading(false)
             return
           }
@@ -228,6 +235,9 @@ export default function Profile() {
             const etag = resp.headers.get('ETag')
             setCachedProfile(data.user, etag || undefined)
             setUser(data.user)
+            if (token) {
+              wsClient.setToken(token)
+            }
             setLoading(false)
             return
           }
