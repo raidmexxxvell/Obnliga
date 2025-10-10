@@ -196,6 +196,9 @@ export const NewsSection = () => {
           <p>{getPreview(activeItem.content)}</p>
         </div>
         <footer className="news-card-footer">
+          <button className="news-more" type="button" onClick={() => openModal(activeItem)}>
+            Читать полностью
+          </button>
           <div className="news-dots" role="tablist" aria-label="Список новостей">
             {news.map((item, index) => (
               <button
@@ -209,21 +212,6 @@ export const NewsSection = () => {
                 <span className="sr-only">{item.title}</span>
               </button>
             ))}
-          </div>
-          <div className="news-actions">
-            {news.length > 1 ? (
-              <div className="news-nav">
-                <button type="button" onClick={prev} aria-label="Предыдущая новость">
-                  ◀
-                </button>
-                <button type="button" onClick={next} aria-label="Следующая новость">
-                  ▶
-                </button>
-              </div>
-            ) : null}
-            <button className="news-more" type="button" onClick={() => openModal(activeItem)}>
-              Читать полностью
-            </button>
           </div>
         </footer>
       </article>
