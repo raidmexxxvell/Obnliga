@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify'
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import prisma from '../db'
 import jwt from 'jsonwebtoken'
 import {
@@ -10,6 +10,41 @@ import { serializePrisma } from '../utils/serialization'
 import { defaultCache } from '../cache'
 
 const INIT_DATA_MAX_AGE_SEC = 24 * 60 * 60
+
+type TelegramInitBody =
+  | string
+  | {
+      initData?: unknown
+      init_data?: unknown
+      [key: string]: unknown
+    }
+  | null
+  | undefined
+
+type TelegramInitQuery = {
+  initData?: unknown
+  init_data?: unknown
+  token?: unknown
+  [key: string]: unknown
+}
+
+type ReplyWithOptionalSetCookie = FastifyReply & {
+  setCookie?: (
+    name: string,
+    value: string,
+    options: {
+      httpOnly?: boolean
+      path?: string
+      sameSite?: 'lax' | 'strict' | 'none'
+    }
+  ) => unknown
+}
+
+type RequestWithSessionCookie = FastifyRequest & {
+  cookies?: {
+    session?: string
+  }
+}
 
 export default async function (server: FastifyInstance) {
   // Simple CORS preflight handlers for auth endpoints (used when frontend is served from a different origin)
@@ -32,18 +67,20 @@ export default async function (server: FastifyInstance) {
     return reply.status(204).send()
   })
   server.post('/api/auth/telegram-init', async (request, reply) => {
-    const body = request.body as any
+    const rawBody = request.body as TelegramInitBody
+    const bodyObject =
+      rawBody && typeof rawBody === 'object' ? (rawBody as Record<string, unknown>) : undefined
     // Accept initData from multiple possible places (body, query, header)
-    const q = request.query as any
+    const q = ((request.query as TelegramInitQuery | undefined) ?? {}) as TelegramInitQuery
     const headerInit = (request.headers['x-telegram-init-data'] ||
       request.headers['x-telegram-initdata']) as string | undefined
     const rawCandidate =
-      body?.initData ||
-      body?.init_data ||
-      q?.initData ||
-      q?.init_data ||
+      bodyObject?.initData ||
+      bodyObject?.init_data ||
+      q.initData ||
+      q.init_data ||
       headerInit ||
-      (typeof body === 'string' ? body : undefined)
+      (typeof rawBody === 'string' ? rawBody : undefined)
     if (!rawCandidate) return reply.status(400).send({ error: 'initData required' })
 
     const botToken = process.env.TELEGRAM_BOT_TOKEN
@@ -107,7 +144,7 @@ export default async function (server: FastifyInstance) {
           verificationMethod = 'signature'
         }
 
-        const parsed = parseInitData(trimmedInitData, true) as any
+        const parsed = parseInitData(trimmedInitData, true)
         const parsedUser = parsed?.user
         if (parsedUser?.id != null) {
           userId = String(parsedUser.id)
@@ -172,7 +209,7 @@ export default async function (server: FastifyInstance) {
         const userPayload = serializePrisma(user)
 
         // Персональный топик пользователя
-        await (server as any).publishTopic(`user:${userId}`, {
+        await server.publishTopic(`user:${userId}`, {
           type: 'profile_updated',
           userId: userPayload.userId,
           tgUsername: userPayload.tgUsername,
@@ -181,7 +218,7 @@ export default async function (server: FastifyInstance) {
         })
 
         // Глобальный топик профилей (для админки, статистики и т.д.)
-        await (server as any).publishTopic('profile', {
+        await server.publishTopic('profile', {
           type: 'profile_updated',
           userId: userPayload.userId,
           tgUsername: userPayload.tgUsername,
@@ -204,7 +241,8 @@ export default async function (server: FastifyInstance) {
       // set cookie (httpOnly). Fastify reply.setCookie requires fastify-cookie plugin; we fallback to header if not present.
       try {
         // try set cookie if plugin available
-        ;(reply as any).setCookie?.('session', token, {
+        const replyWithCookie = reply as ReplyWithOptionalSetCookie
+        replyWithCookie.setCookie?.('session', token, {
           httpOnly: true,
           path: '/',
           sameSite: 'lax',
@@ -227,14 +265,22 @@ export default async function (server: FastifyInstance) {
   // Get current user by JWT (cookie, Authorization header, or ?token=)
   server.get('/api/auth/me', async (request, reply) => {
     const authHeader = (request.headers && (request.headers.authorization as string)) || ''
-    const qToken = (request.query as any)?.token
-    const cookieToken = (request as any).cookies?.session
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : qToken || cookieToken
+    const queryParams = ((request.query as TelegramInitQuery | undefined) ?? {}) as TelegramInitQuery
+    const qToken = typeof queryParams.token === 'string' ? queryParams.token : undefined
+    const cookieToken = (request as RequestWithSessionCookie).cookies?.session
+    const token = authHeader?.startsWith('Bearer ')
+      ? authHeader.slice(7)
+      : qToken || cookieToken
     if (!token) return reply.status(401).send({ error: 'no_token' })
     const jwtSecret = process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'dev-secret'
     try {
-      const jwtPayload: any = jwt.verify(token, jwtSecret)
-      const sub = jwtPayload?.sub
+      const jwtPayload = jwt.verify(token, jwtSecret)
+      const sub =
+        typeof jwtPayload === 'string'
+          ? jwtPayload
+          : typeof jwtPayload?.sub === 'string'
+          ? jwtPayload.sub
+          : undefined
       if (!sub) return reply.status(401).send({ error: 'bad_token' })
 
       // Use cache for user data (5 min TTL)
@@ -254,7 +300,7 @@ export default async function (server: FastifyInstance) {
       reply.header('Access-Control-Allow-Credentials', 'true')
       return reply.send({ ok: true, user: serializedUser })
     } catch (e) {
-      const msg = (e as any)?.message
+      const msg = e instanceof Error ? e.message : undefined
       return reply.status(401).send({ error: 'invalid_token', detail: msg })
     }
   })

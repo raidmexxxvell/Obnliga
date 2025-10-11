@@ -3,11 +3,20 @@ import prisma from '../db'
 import { serializePrisma } from '../utils/serialization'
 import { defaultCache } from '../cache'
 
+type UserUpsertBody = {
+  userId?: string | number | bigint
+  username?: string | null
+  photoUrl?: string | null
+}
+
+type UserParams = {
+  userId?: string
+}
+
 export default async function (server: FastifyInstance) {
   // Create or update user (idempotent upsert by userId)
-  server.post('/api/users', async (request, reply) => {
-    const body = request.body as any
-    const { userId, username, photoUrl } = body
+  server.post<{ Body: UserUpsertBody }>('/api/users', async (request, reply) => {
+    const { userId, username, photoUrl } = request.body || {}
     if (!userId) return reply.status(400).send({ error: 'userId is required' })
 
     try {
@@ -34,7 +43,7 @@ export default async function (server: FastifyInstance) {
         const userPayload = serializePrisma(user)
 
         // Персональный топик пользователя
-        await (server as any).publishTopic(`user:${userId}`, {
+        await server.publishTopic(`user:${userId}`, {
           type: 'profile_updated',
           userId: userPayload.userId,
           tgUsername: userPayload.tgUsername,
@@ -43,7 +52,7 @@ export default async function (server: FastifyInstance) {
         })
 
         // Глобальный топик профилей
-        await (server as any).publishTopic('profile', {
+        await server.publishTopic('profile', {
           type: 'profile_updated',
           userId: userPayload.userId,
           tgUsername: userPayload.tgUsername,
@@ -64,8 +73,8 @@ export default async function (server: FastifyInstance) {
   })
 
   // Get user by Telegram userId
-  server.get('/api/users/:userId', async (request, reply) => {
-    const { userId } = request.params as any
+  server.get<{ Params: UserParams }>('/api/users/:userId', async (request, reply) => {
+    const { userId } = request.params || {}
     if (!userId) return reply.status(400).send({ error: 'userId required' })
     try {
       // Use cache for user data (5 min TTL)
