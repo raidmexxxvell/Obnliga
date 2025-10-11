@@ -1,10 +1,9 @@
 import type { PointerEvent, TouchEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { NewsItem } from '@shared/types'
-import { wsClient } from '../wsClient'
+import { wsClient, WSMessage } from '../wsClient'
 
-const API_BASE =
-  (import.meta as ImportMeta & { env?: { VITE_BACKEND_URL?: string } }).env?.VITE_BACKEND_URL || ''
+const API_BASE = import.meta.env.VITE_BACKEND_URL || ''
 const ROTATION_INTERVAL_MS = 7_000
 const SWIPE_THRESHOLD = 40
 const NEWS_CACHE_KEY = 'obnliga_news_cache'
@@ -25,6 +24,30 @@ const getPreview = (content: string, limit = 220) => {
 type NewsModalState = {
   item: NewsItem
 } | null
+
+const isNewsItem = (value: unknown): value is NewsItem => {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.title === 'string' &&
+    typeof candidate.content === 'string' &&
+    typeof candidate.createdAt === 'string'
+  )
+}
+
+const extractNewsItems = (value: unknown): NewsItem[] => {
+  if (!value || typeof value !== 'object') return []
+  const data = (value as Record<string, unknown>).data
+  if (!Array.isArray(data)) return []
+  return data.filter(isNewsItem)
+}
+
+const getNewsId = (value: unknown): string | null => {
+  if (!value || typeof value !== 'object') return null
+  const id = (value as Record<string, unknown>).id
+  return typeof id === 'string' ? id : null
+}
 
 export const NewsSection = () => {
   const [news, setNews] = useState<NewsItem[]>([])
@@ -66,17 +89,21 @@ export const NewsSection = () => {
     try {
       const raw = window.localStorage.getItem(NEWS_CACHE_KEY)
       if (!raw) return null
-      const entry = JSON.parse(raw) as {
-        items: NewsItem[]
+      const parsed = JSON.parse(raw) as unknown
+      if (!parsed || typeof parsed !== 'object') return null
+      const entry = parsed as {
+        items?: unknown
         etag?: string | null
-        timestamp: number
+        timestamp?: unknown
       }
+      if (typeof entry.timestamp !== 'number') return null
       if (!Array.isArray(entry.items)) return null
+      const items = entry.items.filter(isNewsItem)
       if (Date.now() - entry.timestamp > NEWS_CACHE_TTL) {
         window.localStorage.removeItem(NEWS_CACHE_KEY)
         return null
       }
-      return entry
+      return { items, etag: entry.etag ?? null, timestamp: entry.timestamp }
     } catch {
       return null
     }
@@ -113,8 +140,8 @@ export const NewsSection = () => {
         if (!response.ok) {
           throw new Error(`news_fetch_failed_${response.status}`)
         }
-        const payload = await response.json()
-        const items = (payload?.data ?? []) as NewsItem[]
+        const payload = (await response.json()) as unknown
+        const items = extractNewsItems(payload)
         const etag = response.headers.get('ETag')
         etagRef.current = etag
         writeCache(items, etag)
@@ -129,7 +156,7 @@ export const NewsSection = () => {
         setLoading(false)
       }
     },
-    [writeCache]
+    [writeCache, canSendConditionalHeader]
   )
 
   useEffect(() => {
@@ -157,9 +184,9 @@ export const NewsSection = () => {
   }, [news.length, next])
 
   useEffect(() => {
-    const handler = (message: any) => {
-      if (!message?.payload) return
-      const item = message.payload as NewsItem
+    const handler = (message: WSMessage) => {
+      if (!isNewsItem(message.payload)) return
+      const item = message.payload
       setNews(current => {
         const deduped = current.filter(entry => entry.id !== item.id)
         const nextItems = [item, ...deduped]
@@ -170,8 +197,8 @@ export const NewsSection = () => {
       setActiveIndex(0)
     }
     const detachFull = wsClient.on('news.full', handler)
-    const removeHandler = (message: any) => {
-      const id = message?.payload?.id
+    const removeHandler = (message: WSMessage) => {
+      const id = getNewsId(message.payload)
       if (!id) return
       setNews(current => {
         const filtered = current.filter(entry => entry.id !== id)

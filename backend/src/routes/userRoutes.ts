@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import prisma from '../db'
-import { serializePrisma } from '../utils/serialization'
+import { serializePrisma, isSerializedAppUserPayload } from '../utils/serialization'
 import { defaultCache } from '../cache'
 
 type UserUpsertBody = {
@@ -42,25 +42,26 @@ export default async function (server: FastifyInstance) {
       try {
         const userPayload = serializePrisma(user)
 
-        // Персональный топик пользователя
-        await server.publishTopic(`user:${userId}`, {
-          type: 'profile_updated',
-          userId: userPayload.userId,
-          tgUsername: userPayload.tgUsername,
-          photoUrl: userPayload.photoUrl,
-          updatedAt: userPayload.updatedAt,
-        })
+        if (!isSerializedAppUserPayload(userPayload)) {
+          server.log.warn({ userPayload }, 'Unexpected user payload shape after serialization')
+        } else {
+          const realtimePayload = {
+            type: 'profile_updated' as const,
+            telegramId: userPayload.telegramId,
+            username: userPayload.username,
+            firstName: userPayload.firstName,
+            photoUrl: userPayload.photoUrl,
+            updatedAt: userPayload.updatedAt,
+          }
 
-        // Глобальный топик профилей
-        await server.publishTopic('profile', {
-          type: 'profile_updated',
-          userId: userPayload.userId,
-          tgUsername: userPayload.tgUsername,
-          photoUrl: userPayload.photoUrl,
-          updatedAt: userPayload.updatedAt,
-        })
+          // Персональный топик пользователя
+          await server.publishTopic(`user:${userId}`, realtimePayload)
 
-        server.log.info({ userId }, 'Published profile updates to WebSocket topics')
+          // Глобальный топик профилей
+          await server.publishTopic('profile', realtimePayload)
+
+          server.log.info({ userId }, 'Published profile updates to WebSocket topics')
+        }
       } catch (wsError) {
         server.log.warn({ err: wsError }, 'Failed to publish WebSocket updates')
       }

@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useMemo, useState } from 'react'
+import React, { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { formatPlayersCount } from '@shared/utils/wordForms'
 import './app.css'
 
@@ -38,9 +38,7 @@ const formatKickoff = (iso: string) =>
     minute: '2-digit',
   })
 
-const API_BASE_RAW =
-  (import.meta as unknown as { env?: Record<string, string | undefined> }).env
-    ?.VITE_LINEUP_API_BASE ?? ''
+const API_BASE_RAW = import.meta.env.VITE_LINEUP_API_BASE ?? ''
 const API_BASE_URL = API_BASE_RAW ? API_BASE_RAW.replace(/\/$/, '') : ''
 const buildApiUrl = (path: string) => {
   const normalized = path.startsWith('/') ? path : `/${path}`
@@ -57,41 +55,29 @@ const formatMatchesRemaining = (count: number) => {
   return `${absCount} матчей`
 }
 
-const getDisqualificationReasonLabel = (info: DisqualificationInfo | null) => {
-  if (!info) return null
-  switch (info.reason) {
-    case 'RED_CARD':
-      return 'Красная карточка'
-    case 'ACCUMULATED_CARDS':
-      return 'Накопление карточек'
-    case 'OTHER':
-    default:
-      return 'Санкция'
-  }
+const DISQUALIFICATION_LABELS: Record<DisqualificationInfo['reason'], string> = {
+  RED_CARD: 'Красная карточка',
+  ACCUMULATED_CARDS: 'Накопление карточек',
+  OTHER: 'Санкция',
 }
 
-const mapError = (code: string) => {
-  switch (code) {
-    case 'invalid_credentials':
-      return 'Неверный логин или пароль.'
-    case 'unauthorized':
-      return 'Сессия истекла. Войдите заново.'
-    case 'persons_not_in_roster':
-      return 'Некоторые игроки отсутствуют в заявке сезона.'
-    case 'club_not_in_match':
-      return 'Выбранная команда не участвует в этом матче.'
-    case 'match_not_found':
-      return 'Матч не найден или удалён.'
-    case 'shirt_invalid':
-      return 'Укажите корректные номера для всех игроков.'
-    case 'duplicate_shirt_numbers':
-      return 'Номера игроков внутри клуба должны быть уникальными.'
-    case 'player_disqualified':
-      return 'Один или несколько игроков пропускают матч. Уберите их из заявки и попробуйте снова.'
-    default:
-      return 'Не удалось выполнить запрос. Повторите попытку.'
-  }
+const getDisqualificationReasonLabel = (info: DisqualificationInfo | null) =>
+  info ? DISQUALIFICATION_LABELS[info.reason] ?? 'Санкция' : null
+
+const ERROR_MESSAGES: Record<string, string> = {
+  invalid_credentials: 'Неверный логин или пароль.',
+  unauthorized: 'Сессия истекла. Войдите заново.',
+  persons_not_in_roster: 'Некоторые игроки отсутствуют в заявке сезона.',
+  club_not_in_match: 'Выбранная команда не участвует в этом матче.',
+  match_not_found: 'Матч не найден или удалён.',
+  shirt_invalid: 'Укажите корректные номера для всех игроков.',
+  duplicate_shirt_numbers: 'Номера игроков внутри клуба должны быть уникальными.',
+  player_disqualified:
+    'Один или несколько игроков пропускают матч. Уберите их из заявки и попробуйте снова.',
 }
+
+const mapError = (code: string) =>
+  ERROR_MESSAGES[code] ?? 'Не удалось выполнить запрос. Повторите попытку.'
 
 const LineupPortal: React.FC = () => {
   const [login, setLogin] = useState('')
@@ -122,7 +108,7 @@ const LineupPortal: React.FC = () => {
     [roster, selectedPlayers]
   )
 
-  const resetState = () => {
+  const resetState = useCallback(() => {
     setMatches([])
     setActiveMatch(null)
     setActiveClubId(null)
@@ -130,53 +116,52 @@ const LineupPortal: React.FC = () => {
     setSelectedPlayers({})
     setShirtNumbers({})
     setModalError(null)
-  }
+  }, [])
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setToken(null)
     localStorage.removeItem('lineupToken')
     resetState()
-  }
+  }, [resetState])
 
-  const apiRequest = async <T,>(
-    path: string,
-    init?: RequestInit,
-    requireAuth = true
-  ): Promise<T> => {
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    }
-    if (requireAuth) {
-      if (!token) {
+  const apiRequest = useCallback(
+    async <T,>(path: string, init?: RequestInit, requireAuth = true): Promise<T> => {
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      }
+      if (requireAuth) {
+        if (!token) {
+          throw new Error('unauthorized')
+        }
+        headers.Authorization = `Bearer ${token}`
+      }
+
+      const response = await fetch(buildApiUrl(path), {
+        ...init,
+        headers: {
+          ...headers,
+          ...(init?.headers ?? {}),
+        },
+      })
+
+      if (response.status === 401) {
         throw new Error('unauthorized')
       }
-      headers.Authorization = `Bearer ${token}`
-    }
 
-    const response = await fetch(buildApiUrl(path), {
-      ...init,
-      headers: {
-        ...headers,
-        ...(init?.headers ?? {}),
-      },
-    })
+      const payload = (await response.json()) as ApiResponse<T> | { ok: true; token: string }
 
-    if (response.status === 401) {
-      throw new Error('unauthorized')
-    }
+      if ('token' in payload) {
+        return payload as unknown as T
+      }
 
-    const payload = (await response.json()) as ApiResponse<T> | { ok: true; token: string }
+      if (!payload.ok) {
+        throw new Error(payload.error)
+      }
 
-    if ('token' in payload) {
-      return payload as unknown as T
-    }
-
-    if (!payload.ok) {
-      throw new Error(payload.error)
-    }
-
-    return payload.data
-  }
+      return payload.data
+    },
+    [token]
+  )
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -209,7 +194,7 @@ const LineupPortal: React.FC = () => {
     }
   }
 
-  const fetchMatches = async () => {
+  const fetchMatches = useCallback(async () => {
     if (!token) return
     setMatchesLoading(true)
     setPortalError(null)
@@ -230,13 +215,13 @@ const LineupPortal: React.FC = () => {
     } finally {
       setMatchesLoading(false)
     }
-  }
+  }, [token, apiRequest, logout])
 
   useEffect(() => {
     if (token) {
       void fetchMatches()
     }
-  }, [token])
+  }, [token, fetchMatches])
 
   const openMatchModal = (match: LineupMatch) => {
     setActiveMatch(match)
@@ -292,7 +277,7 @@ const LineupPortal: React.FC = () => {
     }
 
     void loadRoster()
-  }, [modalOpen, token, activeMatch, activeClubId])
+  }, [modalOpen, token, activeMatch, activeClubId, apiRequest, logout])
 
   const handlePlayerToggle = (personId: number) => {
     if (saving) return

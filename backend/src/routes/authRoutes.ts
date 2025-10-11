@@ -6,7 +6,7 @@ import {
   validate as validateInitData,
   validate3rd as validateInitDataSignature,
 } from '@telegram-apps/init-data-node'
-import { serializePrisma } from '../utils/serialization'
+import { serializePrisma, isSerializedAppUserPayload } from '../utils/serialization'
 import { defaultCache } from '../cache'
 
 const INIT_DATA_MAX_AGE_SEC = 24 * 60 * 60
@@ -208,25 +208,26 @@ export default async function (server: FastifyInstance) {
       try {
         const userPayload = serializePrisma(user)
 
-        // Персональный топик пользователя
-        await server.publishTopic(`user:${userId}`, {
-          type: 'profile_updated',
-          userId: userPayload.userId,
-          tgUsername: userPayload.tgUsername,
-          photoUrl: userPayload.photoUrl,
-          updatedAt: userPayload.updatedAt,
-        })
+        if (!isSerializedAppUserPayload(userPayload)) {
+          server.log.warn({ userPayload }, 'Unexpected user payload shape after serialization')
+        } else {
+          const realtimePayload = {
+            type: 'profile_updated' as const,
+            telegramId: userPayload.telegramId,
+            username: userPayload.username,
+            firstName: userPayload.firstName,
+            photoUrl: userPayload.photoUrl,
+            updatedAt: userPayload.updatedAt,
+          }
 
-        // Глобальный топик профилей (для админки, статистики и т.д.)
-        await server.publishTopic('profile', {
-          type: 'profile_updated',
-          userId: userPayload.userId,
-          tgUsername: userPayload.tgUsername,
-          photoUrl: userPayload.photoUrl,
-          updatedAt: userPayload.updatedAt,
-        })
+          // Персональный топик пользователя
+          await server.publishTopic(`user:${userId}`, realtimePayload)
 
-        server.log.info({ userId }, 'Published profile updates to WebSocket topics')
+          // Глобальный топик профилей (для админки, статистики и т.д.)
+          await server.publishTopic('profile', realtimePayload)
+
+          server.log.info({ userId }, 'Published profile updates to WebSocket topics')
+        }
       } catch (wsError) {
         server.log.warn({ err: wsError }, 'Failed to publish WebSocket updates')
         // Не прерываем выполнение, WebSocket не критичен для auth flow

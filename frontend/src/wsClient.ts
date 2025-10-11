@@ -1,4 +1,11 @@
-type Handler = (msg: any) => void
+export interface WSMessage {
+  type?: string
+  topic?: string
+  payload?: unknown
+  [key: string]: unknown
+}
+
+type Handler = (msg: WSMessage) => void
 
 const HEARTBEAT_INTERVAL_MS = 25_000
 const HEARTBEAT_STALE_MS = 60_000
@@ -8,6 +15,11 @@ const RECONNECT_MAX_DELAY_MS = 15_000
 type WSClientOptions = {
   requireAuth?: boolean
 }
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null
+
+const isWsMessage = (value: unknown): value is WSMessage => isRecord(value)
 
 export class WSClient {
   private ws: WebSocket | null = null
@@ -108,8 +120,8 @@ export class WSClient {
     }
   }
 
-  private dispatch(msg: any) {
-    const type = msg?.type || 'message'
+  private dispatch(msg: WSMessage) {
+    const type = msg.type || 'message'
     const list = this.handlers.get(type) || []
     for (const h of list) {
       try {
@@ -151,8 +163,10 @@ export class WSClient {
   private handleMessage = (event: MessageEvent) => {
     this.lastMessageAt = Date.now()
     try {
-      const parsed = JSON.parse(event.data)
-      this.dispatch(parsed)
+      const parsed = JSON.parse(event.data) as unknown
+      if (isWsMessage(parsed)) {
+        this.dispatch(parsed)
+      }
     } catch {
       // ignore malformed payloads
     }
@@ -262,9 +276,8 @@ const token =
   typeof window !== 'undefined' ? localStorage.getItem('session') || undefined : undefined
 
 // Resolve WS URL from Vite env or derive from BACKEND_URL / location
-const metaEnv: any = (import.meta as any).env || {}
-const VITE_WS_URL = (metaEnv && (metaEnv.VITE_WS_URL as string)) || ''
-const VITE_BACKEND_URL = (metaEnv && (metaEnv.VITE_BACKEND_URL as string)) || ''
+const VITE_WS_URL = import.meta.env.VITE_WS_URL ?? ''
+const VITE_BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? ''
 let resolvedWsUrl = ''
 if (VITE_WS_URL) {
   resolvedWsUrl = VITE_WS_URL

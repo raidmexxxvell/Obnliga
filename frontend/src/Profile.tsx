@@ -2,17 +2,58 @@ import React, { useEffect, useState } from 'react'
 import './profile.css'
 import { wsClient } from './wsClient'
 
+interface ProfileUser {
+  telegramId?: string
+  username?: string | null
+  firstName?: string | null
+  photoUrl?: string | null
+  createdAt?: string
+  updatedAt?: string
+}
+
+type ProfilePatchPayload = Partial<ProfileUser> & { telegramId?: string }
+
+interface PatchMessage {
+  type: string
+  topic?: string
+  payload?: ProfilePatchPayload
+}
+
 interface CacheEntry {
-  data: any
+  data: ProfileUser
   timestamp: number
   etag?: string
+}
+
+type Nullable<T> = T | null
+
+interface TelegramUserPayload {
+  id: number
+  first_name?: string
+  last_name?: string
+  username?: string
+  photo_url?: string
+  language_code?: string
+}
+
+interface TelegramWebApp {
+  initData?: string
+  initDataUnsafe?: {
+    user?: TelegramUserPayload
+  }
+}
+
+interface TelegramWindow extends Window {
+  Telegram?: {
+    WebApp?: TelegramWebApp
+  }
 }
 
 const CACHE_TTL = 5 * 60 * 1000 // 5 минут
 const CACHE_KEY = 'obnliga_profile_cache'
 
 export default function Profile() {
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<Nullable<ProfileUser>>(null)
   const [loading, setLoading] = useState<boolean>(false)
 
   useEffect(() => {
@@ -22,9 +63,10 @@ export default function Profile() {
 
   // WebSocket real-time updates для профиля
   useEffect(() => {
-    if (!user?.telegramId) return
+    const telegramId = user?.telegramId
+    if (!telegramId) return
 
-    const userTopic = `user:${user.telegramId}`
+    const userTopic = `user:${telegramId}`
     const profileTopic = 'profile' // Глобальные обновления профилей
 
     console.log(`Subscribing to topics: ${userTopic}, ${profileTopic}`)
@@ -35,31 +77,28 @@ export default function Profile() {
     wsClient.subscribe(profileTopic)
 
     // Обработчик патчей для реального времени
-    const handlePatch = (msg: any) => {
-      if (msg.type === 'patch') {
-        const { topic, payload } = msg
+    const handlePatch = (msg: PatchMessage) => {
+      if (msg.type !== 'patch' || !msg.topic || !msg.payload) return
 
-        // Персональные обновления пользователя
-        if (topic === userTopic && payload.telegramId === user.telegramId) {
-          console.log('Received user patch:', payload)
-          setUser((prev: any) => {
-            const updated = { ...prev, ...payload }
-            // Обновляем кэш
-            setCachedProfile(updated)
-            return updated
-          })
+      const { topic, payload } = msg
+      const payloadTelegramId = payload.telegramId
+      if (!payloadTelegramId) return
+
+      const tryUpdate = (expectedTopic: string) => {
+        if (topic !== expectedTopic || payloadTelegramId !== telegramId) {
+          return
         }
 
-        // Глобальные обновления профилей (если касаются текущего пользователя)
-        if (topic === profileTopic && payload.telegramId === user.telegramId) {
-          console.log('Received profile patch:', payload)
-          setUser((prev: any) => {
-            const updated = { ...prev, ...payload }
-            setCachedProfile(updated)
-            return updated
-          })
-        }
+        setUser(prev => {
+          const base: ProfileUser = prev ? { ...prev } : {}
+          const updated: ProfileUser = { ...base, ...payload }
+          setCachedProfile(updated)
+          return updated
+        })
       }
+
+      tryUpdate(userTopic)
+      tryUpdate(profileTopic)
     }
 
     const detach = wsClient.on('patch', handlePatch)
@@ -76,7 +115,19 @@ export default function Profile() {
     try {
       const stored = localStorage.getItem(CACHE_KEY)
       if (!stored) return null
-      const entry: CacheEntry = JSON.parse(stored)
+
+      const parsed = JSON.parse(stored) as Partial<CacheEntry> & { data?: unknown }
+      if (!parsed || typeof parsed !== 'object') return null
+      if (typeof parsed.timestamp !== 'number') return null
+      const dataCandidate = parsed.data
+      if (!isProfileUser(dataCandidate)) return null
+
+      const entry: CacheEntry = {
+        data: dataCandidate,
+        timestamp: parsed.timestamp,
+        etag: typeof parsed.etag === 'string' ? parsed.etag : undefined,
+      }
+
       const now = Date.now()
       if (now - entry.timestamp > CACHE_TTL) {
         localStorage.removeItem(CACHE_KEY)
@@ -88,7 +139,7 @@ export default function Profile() {
     }
   }
 
-  function setCachedProfile(data: any, etag?: string) {
+  function setCachedProfile(data: ProfileUser, etag?: string) {
     try {
       const entry: CacheEntry = {
         data,
@@ -111,25 +162,23 @@ export default function Profile() {
     }
 
     setLoading(true)
-    const metaEnv: any = (import.meta as any).env || {}
-    const backend = metaEnv.VITE_BACKEND_URL || ''
+    const backendRaw = import.meta.env.VITE_BACKEND_URL ?? ''
+    const backend = backendRaw || ''
     const meUrl = backend ? `${backend.replace(/\/$/, '')}/api/auth/me` : '/api/auth/me'
 
     // 1) Check if we're inside Telegram WebApp first and try to authenticate
     try {
-      // @ts-ignore
-      const tg = (window as any)?.Telegram?.WebApp
-      if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-        console.log('Telegram user data:', tg.initDataUnsafe.user)
-        const unsafe = tg.initDataUnsafe.user
-        const fallbackName =
-          unsafe.username || [unsafe.first_name, unsafe.last_name].filter(Boolean).join(' ').trim()
+      const telegramWindow = window as TelegramWindow
+      const tg = telegramWindow.Telegram?.WebApp
+      const unsafe = tg?.initDataUnsafe?.user
+      if (tg && unsafe) {
+        console.log('Telegram user data:', unsafe)
         if (!user) {
           setUser({
-            telegramId: unsafe.id,
-            username: unsafe.username,
-            firstName: unsafe.first_name,
-            photoUrl: unsafe.photo_url,
+            telegramId: String(unsafe.id),
+            username: unsafe.username ?? null,
+            firstName: unsafe.first_name ?? null,
+            photoUrl: unsafe.photo_url ?? null,
             createdAt: new Date().toISOString(),
           })
         }
@@ -143,15 +192,14 @@ export default function Profile() {
         let initDataValue = tg.initData
         if (!initDataValue) {
           // Fallback: construct from initDataUnsafe
-          const user = tg.initDataUnsafe.user
           initDataValue = JSON.stringify({
             user: {
-              id: user.id,
-              first_name: user.first_name,
-              last_name: user.last_name,
-              username: user.username,
-              photo_url: user.photo_url,
-              language_code: user.language_code,
+              id: unsafe.id,
+              first_name: unsafe.first_name,
+              last_name: unsafe.last_name,
+              username: unsafe.username,
+              photo_url: unsafe.photo_url,
+              language_code: unsafe.language_code,
             },
           })
         }
@@ -178,23 +226,27 @@ export default function Profile() {
           if (cached?.data) {
             setUser(cached.data)
             console.log('Using cached profile (304 Not Modified)')
-            if (cached?.etag && localStorage.getItem('session')) {
-              wsClient.setToken(localStorage.getItem('session') || undefined)
+            const existingToken = localStorage.getItem('session')
+            if (cached?.etag && existingToken) {
+              wsClient.setToken(existingToken)
             }
             setLoading(false)
             return
           }
         } else if (r.ok) {
-          const dd = await r.json()
-          console.log('Backend response:', dd)
-          if (dd?.token) {
-            localStorage.setItem('session', dd.token)
-            wsClient.setToken(dd.token)
+          const responseBody = (await r.json()) as unknown
+          console.log('Backend response:', responseBody)
+          const sessionToken = readTokenFromResponse(responseBody)
+          if (sessionToken) {
+            localStorage.setItem('session', sessionToken)
+            wsClient.setToken(sessionToken)
           }
-          if (dd?.ok && dd.user) {
-            const etag = r.headers.get('ETag')
-            setCachedProfile(dd.user, etag || undefined)
-            setUser(dd.user)
+
+          const profileUser = readProfileUser(responseBody)
+          if (profileUser) {
+            const etag = r.headers.get('ETag') ?? undefined
+            setCachedProfile(profileUser, etag)
+            setUser(profileUser)
             setLoading(false)
             return
           }
@@ -212,7 +264,7 @@ export default function Profile() {
     try {
       const token = localStorage.getItem('session')
       if (token) {
-        const headers: any = { Authorization: `Bearer ${token}` }
+        const headers: Record<string, string> = { Authorization: `Bearer ${token}` }
         // Добавляем ETag из кэша если есть
         if (cached?.etag) {
           headers['If-None-Match'] = cached.etag
@@ -232,15 +284,14 @@ export default function Profile() {
             return
           }
         } else if (resp.ok) {
-          const data = await resp.json()
-          console.log('Token-based profile load:', data)
-          if (data?.ok && data.user) {
-            const etag = resp.headers.get('ETag')
-            setCachedProfile(data.user, etag || undefined)
-            setUser(data.user)
-            if (token) {
-              wsClient.setToken(token)
-            }
+          const payload = (await resp.json()) as unknown
+          console.log('Token-based profile load:', payload)
+          const profileUser = readProfileUser(payload)
+          if (profileUser) {
+            const etag = resp.headers.get('ETag') ?? undefined
+            setCachedProfile(profileUser, etag)
+            setUser(profileUser)
+            wsClient.setToken(token)
             setLoading(false)
             return
           }
@@ -296,6 +347,40 @@ export default function Profile() {
       </div>
     </div>
   )
+}
+
+function isNullableString(value: unknown): value is string | null | undefined {
+  return value === undefined || value === null || typeof value === 'string'
+}
+
+function isProfileUser(value: unknown): value is ProfileUser {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Record<string, unknown>
+  if (!isNullableString(record.telegramId)) return false
+  if (!isNullableString(record.username)) return false
+  if (!isNullableString(record.firstName)) return false
+  if (!isNullableString(record.photoUrl)) return false
+  if (!isNullableString(record.createdAt)) return false
+  if (!isNullableString(record.updatedAt)) return false
+  return true
+}
+
+function readProfileUser(payload: unknown): ProfileUser | null {
+  if (!payload || typeof payload !== 'object') return null
+  const record = payload as Record<string, unknown>
+  if ('user' in record && isProfileUser(record.user)) {
+    return record.user
+  }
+  if (isProfileUser(payload)) {
+    return payload
+  }
+  return null
+}
+
+function readTokenFromResponse(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null
+  const token = (payload as Record<string, unknown>).token
+  return typeof token === 'string' ? token : null
 }
 
 function formatDate(dt?: string) {
