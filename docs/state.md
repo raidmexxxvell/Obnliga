@@ -124,6 +124,7 @@ Edge cases / Notes
 - Состояние:
   - `status: 'idle' | 'authenticating' | 'authenticated' | 'error'`
   - `token?: string` — JWT после успешного входа.
+  - `assistantToken?: string` — токен помощника (SUDIA/POMOSH роли), хранится в `localStorage` (`obnliga-assistant-token`).
   - `activeTab: 'teams' | 'matches' | 'stats' | 'players' | 'news'`
   - `error?: string`
   - `data`: сезоны, серии, матчи и отдельный список `friendlyMatches` (товарищеские встречи вне сезона), а также справочники (клубы, стадионы, люди).
@@ -138,7 +139,7 @@ Edge cases / Notes
   - при автоматизации сезона `SeasonAutomationPayload.seriesFormat` выбирается из `SeriesFormat`, опция `PLAYOFF_BRACKET` активирует генерацию случайной сетки (локальный state `automationRandomBracket` блочит ручные посевы);
   - для `BEST_OF_N` сохраняем прежнюю логику биндинга посевов (`automationSeedingEnabled`).
 - Действия (ключевые):
-  - `login(login: string, password: string)` — обращается к `/api/admin/login`, сохраняет JWT в `localStorage` (`obnliga-admin-token`).
+  - `login(login: string, password: string)` — обращается к `/api/admin/login`, сохраняет JWT в `localStorage` (`obnliga-admin-token`). Fallback-порядок: admin → judge → assistant → lineup; при успешном входе в один режим остальные токены очищаются, а вспомогательные store (`judgeStore`, `assistantStore`) сбрасываются.
   - `logout()` — очищает токен, сбрасывает вкладку.
   - `setTab(tab)` — переключает активную вкладку.
   - `clearError()` — сбрасывает сообщение об ошибке при фокусе формы.
@@ -168,6 +169,11 @@ Edge cases / Notes
   - Расположение: `admin/src/store/judgeStore.ts`, используется в компоненте `JudgePanel` для судейского входа.
   - Состояние: `status`, `matches`, `events`, `selectedMatchId`, `loading`, `error`.
   - Действия: `loadMatches`, `refreshMatches`, `selectMatch`, `updateScore`, `createEvent`, `updateEvent`, `deleteEvent`, `reset`, `clearError`.
-  - Хранение токена: `adminStore` сохраняет `obnliga-judge-token`; логика входа добавлена в `adminStore.login` с fallback-порядком admin → judge → lineup.
+  - Хранение токена: `adminStore` сохраняет `obnliga-judge-token`; логика входа добавлена в `adminStore.login` с fallback-порядком admin → judge → assistant → lineup.
   - Ограничение: создание событий требует ручного ввода ID игроков. После получения артефактов Context7 планируется интеграция выпадающих списков на основе заявки клуба и текущей заявки матча.
+- **Assistant Store (temporary stub до синхронизации с Context7)**
+  - Расположение: `admin/src/store/assistantStore.ts`, используется компонентом `AssistantPanel` для роли помощника матча.
+  - Состояние: `status`, `token`, `matches`, `selectedMatchId`, `events`, `lineup`, `statistics`, `statisticsVersion`, `loading`, `error`.
+  - Действия: `fetchMatches`, `selectMatch`, `refreshSelected`, `createEvent`, `updateEvent`, `deleteEvent`, `updateScore`, `adjustStatistic`, `reset`, `clearError`.
+  - Особенности: локально хранит токен в `obnliga-assistant-token`, поддерживает двойное подтверждение перевода матча в статус `FINISHED`, применяет контроль версий (`X-Resource-Version`) для статистики и готов к интеграции с patch WebSocket после синхронизации с Context7.
 

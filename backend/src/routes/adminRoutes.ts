@@ -32,6 +32,7 @@ import {
   eventStatisticAdjustments,
   hasMatchStatisticsExpired,
   MatchStatisticMetric,
+  MATCH_STATISTIC_METRICS,
   getMatchStatisticsWithMeta,
   loadMatchEventsWithRoster,
   loadMatchLineupWithNumbers,
@@ -263,7 +264,7 @@ const NEWS_CACHE_KEY = 'news:all'
 const seasonStatsCacheKey = (seasonId: number, suffix: string) => `season:${seasonId}:${suffix}`
 const competitionStatsCacheKey = (competitionId: number, suffix: string) => `competition:${competitionId}:${suffix}`
 
-const matchStatisticMetrics: MatchStatisticMetric[] = ['totalShots', 'shotsOnTarget', 'corners', 'yellowCards', 'redCards']
+const matchStatisticMetrics: MatchStatisticMetric[] = MATCH_STATISTIC_METRICS
 
 type EventStatisticAdjustments = Partial<Record<MatchStatisticMetric, number>>
 

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { adminGet, adminLogin, adminRequestWithMeta, lineupLogin, translateAdminError } from '../api/adminClient'
+import { assistantLogin } from '../api/assistantClient'
 import { judgeLogin } from '../api/judgeClient'
 import type { NewsItem } from '@shared/types'
 import {
@@ -21,12 +22,14 @@ import {
   Stadium,
   UserAchievement
 } from '../types'
+import { useAssistantStore } from './assistantStore'
 
 export type AdminTab = 'teams' | 'matches' | 'stats' | 'players' | 'news' | 'users'
 
 const storageKey = 'obnliga-admin-token'
 const lineupStorageKey = 'obnliga-lineup-token'
 const judgeStorageKey = 'obnliga-judge-token'
+const assistantStorageKey = 'obnliga-assistant-token'
 
 const readPersistedToken = () => {
   if (typeof window === 'undefined') return undefined
@@ -61,19 +64,33 @@ const readPersistedJudgeToken = () => {
   }
 }
 
+const readPersistedAssistantToken = () => {
+  if (typeof window === 'undefined') return undefined
+  try {
+    const stored = window.localStorage.getItem(assistantStorageKey)
+    return stored ?? undefined
+  } catch (err) {
+    console.warn('admin store: failed to read assistant token', err)
+    return undefined
+  }
+}
+
 const initialAdminToken = readPersistedToken()
 const initialLineupToken = readPersistedLineupToken()
 const initialJudgeToken = readPersistedJudgeToken()
+const initialAssistantToken = readPersistedAssistantToken()
 
-type AuthMode = 'admin' | 'lineup' | 'judge'
+type AuthMode = 'admin' | 'lineup' | 'judge' | 'assistant'
 
 const initialMode: AuthMode | undefined = initialAdminToken
   ? 'admin'
   : initialJudgeToken
     ? 'judge'
-  : initialLineupToken
-    ? 'lineup'
-    : undefined
+  : initialAssistantToken
+    ? 'assistant'
+    : initialLineupToken
+      ? 'lineup'
+      : undefined
 
 const initialStatus: AdminState['status'] = initialMode ? 'authenticated' : 'idle'
 
@@ -104,6 +121,7 @@ interface AdminState {
   token?: string
   lineupToken?: string
   judgeToken?: string
+  assistantToken?: string
   error?: string
   activeTab: AdminTab
   selectedCompetitionId?: number
@@ -278,11 +296,12 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     token: initialMode === 'admin' ? initialAdminToken : undefined,
     lineupToken: initialMode === 'lineup' ? initialLineupToken : undefined,
     judgeToken: initialMode === 'judge' ? initialJudgeToken : undefined,
+    assistantToken: initialMode === 'assistant' ? initialAssistantToken : undefined,
     error: undefined,
     activeTab: 'teams',
     selectedCompetitionId: undefined,
     selectedSeasonId: undefined,
-  newsVersion: undefined,
+    newsVersion: undefined,
     data: createEmptyData(),
     loading: {},
     async login(login: string, password: string) {
@@ -295,6 +314,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
             window.localStorage.setItem(storageKey, adminResult.token)
             window.localStorage.removeItem(lineupStorageKey)
             window.localStorage.removeItem(judgeStorageKey)
+            window.localStorage.removeItem(assistantStorageKey)
           }
           resetFetchCache()
           set({
@@ -303,8 +323,10 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
             token: adminResult.token,
             lineupToken: undefined,
             judgeToken: undefined,
+            assistantToken: undefined,
             error: undefined
           })
+          useAssistantStore.getState().reset()
           try {
             await Promise.all([get().fetchDictionaries(), get().fetchSeasons()])
           } catch (err) {
@@ -324,6 +346,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
             window.localStorage.setItem(judgeStorageKey, judgeResult.token)
             window.localStorage.removeItem(storageKey)
             window.localStorage.removeItem(lineupStorageKey)
+            window.localStorage.removeItem(assistantStorageKey)
           }
 
           resetFetchCache()
@@ -333,6 +356,38 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
             token: undefined,
             lineupToken: undefined,
             judgeToken: judgeResult.token,
+            assistantToken: undefined,
+            error: undefined,
+            data: createEmptyData(),
+            loading: {}
+          })
+          useAssistantStore.getState().reset()
+          return
+        }
+
+        const judgeErrorCode = judgeResult.errorCode ?? 'invalid_credentials'
+        if (judgeErrorCode !== 'invalid_credentials') {
+          throw new Error(judgeResult.error ?? translateAdminError(judgeErrorCode))
+        }
+
+        const assistantResult = await assistantLogin(login, password)
+        if (assistantResult.ok && assistantResult.token) {
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem(assistantStorageKey, assistantResult.token)
+            window.localStorage.removeItem(storageKey)
+            window.localStorage.removeItem(lineupStorageKey)
+            window.localStorage.removeItem(judgeStorageKey)
+          }
+
+          useAssistantStore.getState().setToken(assistantResult.token)
+          resetFetchCache()
+          set({
+            status: 'authenticated',
+            mode: 'assistant',
+            token: undefined,
+            lineupToken: undefined,
+            judgeToken: undefined,
+            assistantToken: assistantResult.token,
             error: undefined,
             data: createEmptyData(),
             loading: {}
@@ -340,9 +395,9 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           return
         }
 
-        const judgeErrorCode = judgeResult.errorCode ?? 'invalid_credentials'
-        if (judgeErrorCode !== 'invalid_credentials') {
-          throw new Error(judgeResult.error ?? translateAdminError(judgeErrorCode))
+        const assistantErrorCode = assistantResult.errorCode ?? 'invalid_credentials'
+        if (assistantErrorCode !== 'invalid_credentials') {
+          throw new Error(assistantResult.error ?? translateAdminError(assistantErrorCode))
         }
 
         const lineupResult = await lineupLogin(login, password)
@@ -356,8 +411,10 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           window.localStorage.setItem(lineupStorageKey, lineupResult.token)
           window.localStorage.removeItem(storageKey)
           window.localStorage.removeItem(judgeStorageKey)
+          window.localStorage.removeItem(assistantStorageKey)
         }
 
+        useAssistantStore.getState().reset()
         resetFetchCache()
         set({
           status: 'authenticated',
@@ -365,6 +422,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           token: undefined,
           lineupToken: lineupResult.token,
           judgeToken: undefined,
+          assistantToken: undefined,
           error: undefined,
           data: createEmptyData(),
           loading: {}
@@ -372,12 +430,21 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       } catch (err) {
         const rawMessage = err instanceof Error ? err.message : 'auth_failed'
         const message = mapAuthError(rawMessage)
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem(storageKey)
+          window.localStorage.removeItem(lineupStorageKey)
+          window.localStorage.removeItem(judgeStorageKey)
+          window.localStorage.removeItem(assistantStorageKey)
+        }
+        useAssistantStore.getState().reset()
         set({
           status: 'error',
           mode: undefined,
           error: message,
           token: undefined,
           lineupToken: undefined,
+          judgeToken: undefined,
+          assistantToken: undefined,
           data: createEmptyData(),
           loading: {}
         })
@@ -389,13 +456,16 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         window.localStorage.removeItem(storageKey)
         window.localStorage.removeItem(lineupStorageKey)
         window.localStorage.removeItem(judgeStorageKey)
+        window.localStorage.removeItem(assistantStorageKey)
       }
+      useAssistantStore.getState().reset()
       set({
         status: 'idle',
         mode: undefined,
         token: undefined,
         lineupToken: undefined,
         judgeToken: undefined,
+        assistantToken: undefined,
         activeTab: 'teams',
         selectedSeasonId: undefined,
         newsVersion: undefined,

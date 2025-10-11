@@ -8,42 +8,49 @@ import { serializePrisma } from '../utils/serialization'
 import { handleMatchFinalization } from '../services/matchAggregation'
 import {
   RequestError,
+  MATCH_STATISTIC_METRICS,
+  applyStatisticDelta,
   broadcastMatchStatistics,
+  cleanupExpiredMatchStatistics,
   createMatchEvent,
   deleteMatchEvent,
+  updateMatchEvent,
   ensureMatchForJudge,
+  getMatchStatisticsWithMeta,
+  hasMatchStatisticsExpired,
   loadMatchEventsWithRoster,
   loadMatchLineupWithNumbers,
-  updateMatchEvent
+  matchStatsCacheKey
 } from './matchModerationHelpers'
+import { defaultCache } from '../cache'
 
-interface JudgeJwtPayload {
+interface AssistantJwtPayload {
   sub: string
-  role: 'judge'
+  role: 'assistant'
 }
 
 declare module 'fastify' {
   interface FastifyRequest {
-    judge?: JudgeJwtPayload
+    assistant?: AssistantJwtPayload
   }
 }
 
-const getJudgeSecret = () =>
-  process.env.JUDGE_JWT_SECRET || process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'judge-portal-secret'
+const getAssistantSecret = () =>
+  process.env.ASSISTANT_JWT_SECRET || process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'assistant-portal-secret'
 
-const getJudgeCredentials = () => ({
-  login: process.env.SUDIA_LOGIN || process.env.JUDGE_LOGIN || 'SUDIA',
-  password: process.env.SUDIA_PASSWORD || process.env.JUDGE_PASSWORD || 'SUDIA'
+const getAssistantCredentials = () => ({
+  login: process.env.POMOSH_LOGIN || 'POMOSH',
+  password: process.env.POMOSH_PASSWORD || 'POMOSH'
 })
 
-const issueJudgeToken = (payload: JudgeJwtPayload) =>
-  jwt.sign(payload, getJudgeSecret(), {
+const issueAssistantToken = (payload: AssistantJwtPayload) =>
+  jwt.sign(payload, getAssistantSecret(), {
     expiresIn: '12h',
     issuer: 'obnliga-backend',
-    audience: 'judge-panel'
+    audience: 'assistant-portal'
   })
 
-const verifyJudgeToken = async (request: FastifyRequest, reply: FastifyReply) => {
+const verifyAssistantToken = async (request: FastifyRequest, reply: FastifyReply) => {
   const authHeader = request.headers.authorization
   if (!authHeader?.startsWith('Bearer ')) {
     return reply.status(401).send({ ok: false, error: 'unauthorized' })
@@ -51,13 +58,13 @@ const verifyJudgeToken = async (request: FastifyRequest, reply: FastifyReply) =>
 
   const token = authHeader.slice('Bearer '.length)
   try {
-    const decoded = jwt.verify(token, getJudgeSecret()) as JudgeJwtPayload
-    if (decoded.role !== 'judge') {
+    const decoded = jwt.verify(token, getAssistantSecret()) as AssistantJwtPayload
+    if (decoded.role !== 'assistant') {
       return reply.status(403).send({ ok: false, error: 'forbidden' })
     }
-    request.judge = decoded
+    request.assistant = decoded
   } catch (err) {
-    request.log.warn({ err }, 'judge token verification failed')
+    request.log.warn({ err }, 'assistant token verification failed')
     return reply.status(401).send({ ok: false, error: 'invalid_token' })
   }
 }
@@ -80,54 +87,54 @@ const parsePenaltyScore = (value: unknown, fallback: number): number => {
   return Math.max(0, Math.trunc(numeric))
 }
 
-export default async function judgeRoutes(server: FastifyInstance) {
-  server.post('/api/judge/login', async (request, reply) => {
+const ensureAssistantMatch = (matchId: bigint) =>
+  ensureMatchForJudge(matchId, { allowedStatuses: [MatchStatus.SCHEDULED, MatchStatus.LIVE], errorCode: 'match_not_available' })
+
+export default async function assistantRoutes(server: FastifyInstance) {
+  server.post('/api/assistant/login', async (request, reply) => {
     const { login, password } = (request.body || {}) as { login?: string; password?: string }
 
     if (!login || !password) {
       return reply.status(400).send({ ok: false, error: 'login_and_password_required' })
     }
 
-    const expected = getJudgeCredentials()
+    const expected = getAssistantCredentials()
     const loginMatches = secureEquals(login, expected.login)
     const passwordMatches = secureEquals(password, expected.password)
 
     if (!loginMatches || !passwordMatches) {
-      request.log.warn({ login }, 'judge login failed')
+      request.log.warn({ login }, 'assistant login failed')
       return reply.status(401).send({ ok: false, error: 'invalid_credentials' })
     }
 
-    const token = issueJudgeToken({ sub: expected.login, role: 'judge' })
+    const token = issueAssistantToken({ sub: expected.login, role: 'assistant' })
     return reply.send({ ok: true, token, expiresIn: 12 * 60 * 60 })
   })
 
   server.register(
-    async (judge) => {
-      judge.addHook('onRequest', verifyJudgeToken)
+    async (assistant) => {
+      assistant.addHook('onRequest', verifyAssistantToken)
 
-      judge.get('/me', async (request, reply) => {
-        return reply.send({ ok: true, judge: request.judge })
-      })
-
-      judge.get('/matches', async (_request, reply) => {
+      assistant.get('/matches', async (_request, reply) => {
         const now = new Date()
-        const windowStart = new Date(now.getTime() - 48 * 60 * 60 * 1000)
+        const windowEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000)
 
         const matches = await prisma.match.findMany({
           where: {
-            matchDateTime: {
-              gte: windowStart,
-              lte: now
-            },
-            status: {
-              in: [MatchStatus.LIVE, MatchStatus.FINISHED]
-            }
+            OR: [
+              {
+                status: MatchStatus.SCHEDULED,
+                matchDateTime: {
+                  gte: new Date(now.getTime() - 60 * 60 * 1000),
+                  lte: windowEnd
+                }
+              },
+              { status: MatchStatus.LIVE }
+            ]
           },
-          orderBy: { matchDateTime: 'desc' },
+          orderBy: { matchDateTime: 'asc' },
           include: {
-            season: {
-              select: { id: true, name: true }
-            },
+            season: { select: { id: true, name: true } },
             round: true,
             homeClub: true,
             awayClub: true
@@ -170,10 +177,10 @@ export default async function judgeRoutes(server: FastifyInstance) {
         return reply.send({ ok: true, data: serializePrisma(payload) })
       })
 
-      judge.get('/matches/:matchId/lineup', async (request, reply) => {
+      assistant.get('/matches/:matchId/lineup', async (request, reply) => {
         const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
         try {
-          await ensureMatchForJudge(matchId)
+          await ensureAssistantMatch(matchId)
         } catch (err) {
           if (err instanceof RequestError) {
             return reply.status(err.statusCode).send({ ok: false, error: err.message })
@@ -188,15 +195,15 @@ export default async function judgeRoutes(server: FastifyInstance) {
           if (err instanceof RequestError) {
             return reply.status(err.statusCode).send({ ok: false, error: err.message })
           }
-          request.log.error({ err, matchId: matchId.toString() }, 'judge lineup fetch failed')
+          request.log.error({ err, matchId: matchId.toString() }, 'assistant lineup fetch failed')
           return reply.status(500).send({ ok: false, error: 'match_lineup_failed' })
         }
       })
 
-      judge.get('/matches/:matchId/events', async (request, reply) => {
+      assistant.get('/matches/:matchId/events', async (request, reply) => {
         const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
         try {
-          await ensureMatchForJudge(matchId)
+          await ensureAssistantMatch(matchId)
         } catch (err) {
           if (err instanceof RequestError) {
             return reply.status(err.statusCode).send({ ok: false, error: err.message })
@@ -208,12 +215,12 @@ export default async function judgeRoutes(server: FastifyInstance) {
           const events = await loadMatchEventsWithRoster(matchId)
           return reply.send({ ok: true, data: serializePrisma(events) })
         } catch (err) {
-          request.log.error({ err, matchId: matchId.toString() }, 'judge events fetch failed')
+          request.log.error({ err, matchId: matchId.toString() }, 'assistant events fetch failed')
           return reply.status(500).send({ ok: false, error: 'match_events_failed' })
         }
       })
 
-      judge.post('/matches/:matchId/events', async (request, reply) => {
+      assistant.post('/matches/:matchId/events', async (request, reply) => {
         const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
         const body = request.body as {
           playerId?: number
@@ -228,7 +235,7 @@ export default async function judgeRoutes(server: FastifyInstance) {
         }
 
         try {
-          await ensureMatchForJudge(matchId)
+          await ensureAssistantMatch(matchId)
         } catch (err) {
           if (err instanceof RequestError) {
             return reply.status(err.statusCode).send({ ok: false, error: err.message })
@@ -249,18 +256,17 @@ export default async function judgeRoutes(server: FastifyInstance) {
             await broadcastMatchStatistics(request.server, matchId)
           }
 
-          await handleMatchFinalization(matchId, request.server.log)
           return reply.send({ ok: true, data: serializePrisma(created.event) })
         } catch (err) {
           if (err instanceof RequestError) {
             return reply.status(err.statusCode).send({ ok: false, error: err.message })
           }
-          request.log.error({ err, matchId: matchId.toString() }, 'judge create event failed')
+          request.log.error({ err, matchId: matchId.toString() }, 'assistant create event failed')
           return reply.status(500).send({ ok: false, error: 'event_create_failed' })
         }
       })
 
-      judge.put('/matches/:matchId/events/:eventId', async (request, reply) => {
+      assistant.put('/matches/:matchId/events/:eventId', async (request, reply) => {
         const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
         const eventId = parseBigIntId((request.params as any).eventId, 'eventId')
         const body = request.body as Partial<{
@@ -272,7 +278,7 @@ export default async function judgeRoutes(server: FastifyInstance) {
         }>
 
         try {
-          await ensureMatchForJudge(matchId)
+          await ensureAssistantMatch(matchId)
         } catch (err) {
           if (err instanceof RequestError) {
             return reply.status(err.statusCode).send({ ok: false, error: err.message })
@@ -293,23 +299,22 @@ export default async function judgeRoutes(server: FastifyInstance) {
             await broadcastMatchStatistics(request.server, matchId)
           }
 
-          await handleMatchFinalization(matchId, request.server.log)
           return reply.send({ ok: true, data: serializePrisma(updated.event) })
         } catch (err) {
           if (err instanceof RequestError) {
             return reply.status(err.statusCode).send({ ok: false, error: err.message })
           }
-          request.log.error({ err, matchId: matchId.toString(), eventId: eventId.toString() }, 'judge update event failed')
+          request.log.error({ err, matchId: matchId.toString(), eventId: eventId.toString() }, 'assistant update event failed')
           return reply.status(500).send({ ok: false, error: 'event_update_failed' })
         }
       })
 
-      judge.delete('/matches/:matchId/events/:eventId', async (request, reply) => {
+      assistant.delete('/matches/:matchId/events/:eventId', async (request, reply) => {
         const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
         const eventId = parseBigIntId((request.params as any).eventId, 'eventId')
 
         try {
-          await ensureMatchForJudge(matchId)
+          await ensureAssistantMatch(matchId)
         } catch (err) {
           if (err instanceof RequestError) {
             return reply.status(err.statusCode).send({ ok: false, error: err.message })
@@ -322,18 +327,17 @@ export default async function judgeRoutes(server: FastifyInstance) {
           if (result.statAdjusted) {
             await broadcastMatchStatistics(request.server, matchId)
           }
-          await handleMatchFinalization(matchId, request.server.log)
           return reply.send({ ok: true })
         } catch (err) {
           if (err instanceof RequestError) {
             return reply.status(err.statusCode).send({ ok: false, error: err.message })
           }
-          request.log.error({ err, matchId: matchId.toString(), eventId: eventId.toString() }, 'judge delete event failed')
+          request.log.error({ err, matchId: matchId.toString(), eventId: eventId.toString() }, 'assistant delete event failed')
           return reply.status(500).send({ ok: false, error: 'event_delete_failed' })
         }
       })
 
-      judge.put('/matches/:matchId/score', async (request, reply) => {
+      assistant.put('/matches/:matchId/score', async (request, reply) => {
         const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
         const body = request.body as {
           homeScore?: number
@@ -341,11 +345,15 @@ export default async function judgeRoutes(server: FastifyInstance) {
           hasPenaltyShootout?: boolean
           penaltyHomeScore?: number
           penaltyAwayScore?: number
+          status?: MatchStatus
         }
 
-        let match: Awaited<ReturnType<typeof ensureMatchForJudge>>
+        let match
         try {
-          match = await ensureMatchForJudge(matchId)
+          match = await ensureMatchForJudge(matchId, {
+            allowedStatuses: [MatchStatus.SCHEDULED, MatchStatus.LIVE],
+            errorCode: 'match_not_available'
+          })
         } catch (err) {
           if (err instanceof RequestError) {
             return reply.status(err.statusCode).send({ ok: false, error: err.message })
@@ -392,6 +400,19 @@ export default async function judgeRoutes(server: FastifyInstance) {
           penaltyAwayScore = 0
         }
 
+        const statusUpdate = body.status && body.status !== match.status ? body.status : undefined
+        if (statusUpdate && statusUpdate !== MatchStatus.LIVE && statusUpdate !== MatchStatus.FINISHED) {
+          return reply.status(400).send({ ok: false, error: 'status_update_invalid' })
+        }
+
+        if (statusUpdate === MatchStatus.LIVE && match.status !== MatchStatus.SCHEDULED) {
+          return reply.status(409).send({ ok: false, error: 'status_transition_invalid' })
+        }
+
+        if (statusUpdate === MatchStatus.FINISHED && match.status !== MatchStatus.LIVE) {
+          return reply.status(409).send({ ok: false, error: 'status_transition_invalid' })
+        }
+
         try {
           const updated = await prisma.match.update({
             where: { id: matchId },
@@ -400,20 +421,144 @@ export default async function judgeRoutes(server: FastifyInstance) {
               awayScore: nextAwayScore,
               hasPenaltyShootout: hasPenalty,
               penaltyHomeScore,
-              penaltyAwayScore
+              penaltyAwayScore,
+              status: statusUpdate ?? match.status
             }
           })
 
-          await handleMatchFinalization(matchId, request.server.log)
-          await broadcastMatchStatistics(request.server, matchId)
+          if (statusUpdate === MatchStatus.FINISHED) {
+            await handleMatchFinalization(matchId, request.server.log)
+          }
 
           return reply.send({ ok: true, data: serializePrisma(updated) })
         } catch (err) {
-          request.log.error({ err, matchId: matchId.toString() }, 'judge score update failed')
+          request.log.error({ err, matchId: matchId.toString() }, 'assistant score update failed')
           return reply.status(500).send({ ok: false, error: 'match_update_failed' })
         }
       })
+
+      assistant.get('/matches/:matchId/statistics', async (request, reply) => {
+        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+        try {
+          await ensureAssistantMatch(matchId)
+        } catch (err) {
+          if (err instanceof RequestError) {
+            return reply.status(err.statusCode).send({ ok: false, error: err.message })
+          }
+          throw err
+        }
+
+        try {
+          const { value, version } = await getMatchStatisticsWithMeta(matchId)
+          const serialized = serializePrisma(value)
+          reply.header('X-Resource-Version', String(version))
+          return reply.send({ ok: true, data: serialized, meta: { version } })
+        } catch (err) {
+          if (err instanceof RequestError) {
+            return reply.status(err.statusCode).send({ ok: false, error: err.message })
+          }
+          request.log.error({ err, matchId: matchId.toString() }, 'assistant stats fetch failed')
+          return reply.status(500).send({ ok: false, error: 'match_statistics_failed' })
+        }
+      })
+
+      assistant.post('/matches/:matchId/statistics/adjust', async (request, reply) => {
+        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+        const body = request.body as {
+          clubId?: number
+          metric?: string
+          delta?: number
+        }
+
+        try {
+          await ensureAssistantMatch(matchId)
+        } catch (err) {
+          if (err instanceof RequestError) {
+            return reply.status(err.statusCode).send({ ok: false, error: err.message })
+          }
+          throw err
+        }
+
+        const clubId = body?.clubId !== undefined ? parseNumericId(body.clubId, 'clubId') : null
+        if (!clubId) {
+          return reply.status(400).send({ ok: false, error: 'clubId_required' })
+        }
+
+        const metric = body?.metric as typeof MATCH_STATISTIC_METRICS[number] | undefined
+        if (!metric || !MATCH_STATISTIC_METRICS.includes(metric)) {
+          return reply.status(400).send({ ok: false, error: 'metric_invalid' })
+        }
+
+        const rawDelta = body?.delta
+        if (typeof rawDelta !== 'number' || Number.isNaN(rawDelta) || !Number.isFinite(rawDelta) || rawDelta === 0) {
+          return reply.status(400).send({ ok: false, error: 'delta_invalid' })
+        }
+        const delta = Math.max(-20, Math.min(20, Math.trunc(rawDelta)))
+
+        const now = new Date()
+        await cleanupExpiredMatchStatistics(now).catch(() => undefined)
+
+        const match = await prisma.match.findUnique({
+          where: { id: matchId },
+          select: {
+            id: true,
+            homeTeamId: true,
+            awayTeamId: true,
+            status: true,
+            matchDateTime: true
+          }
+        })
+
+        if (!match) {
+          return reply.status(404).send({ ok: false, error: 'match_not_found' })
+        }
+
+        if (hasMatchStatisticsExpired(match.matchDateTime, now)) {
+          await prisma.matchStatistic.deleteMany({ where: { matchId } }).catch(() => undefined)
+          await defaultCache.invalidate(matchStatsCacheKey(matchId)).catch(() => undefined)
+          return reply.status(409).send({ ok: false, error: 'match_statistics_expired' })
+        }
+
+        if (clubId !== match.homeTeamId && clubId !== match.awayTeamId) {
+          return reply.status(400).send({ ok: false, error: 'club_not_in_match' })
+        }
+
+        let adjusted = false
+        try {
+          adjusted = await prisma.$transaction((tx) => applyStatisticDelta(tx, matchId, clubId, metric, delta))
+        } catch (err) {
+          request.log.error({ err, matchId: matchId.toString(), clubId, metric, delta }, 'assistant stat adjust failed')
+          return reply.status(500).send({ ok: false, error: 'match_statistics_update_failed' })
+        }
+
+        if (adjusted) {
+          try {
+            const { serialized, version } = await broadcastMatchStatistics(request.server, matchId)
+            reply.header('X-Resource-Version', String(version))
+            return reply.send({ ok: true, data: serialized, meta: { version } })
+          } catch (err) {
+            if (err instanceof RequestError) {
+              return reply.status(err.statusCode).send({ ok: false, error: err.message })
+            }
+            request.log.error({ err, matchId: matchId.toString() }, 'assistant stats broadcast failed')
+            return reply.status(500).send({ ok: false, error: 'match_statistics_failed' })
+          }
+        }
+
+        try {
+          const { value, version } = await getMatchStatisticsWithMeta(matchId)
+          const serialized = serializePrisma(value)
+          reply.header('X-Resource-Version', String(version))
+          return reply.send({ ok: true, data: serialized, meta: { version } })
+        } catch (err) {
+          if (err instanceof RequestError) {
+            return reply.status(err.statusCode).send({ ok: false, error: err.message })
+          }
+          request.log.error({ err, matchId: matchId.toString() }, 'assistant stats reload failed')
+          return reply.status(500).send({ ok: false, error: 'match_statistics_failed' })
+        }
+      })
     },
-    { prefix: '/api/judge' }
+    { prefix: '/api/assistant' }
   )
 }

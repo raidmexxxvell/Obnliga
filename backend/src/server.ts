@@ -54,6 +54,10 @@ server.register(lineupRoutes)
 import judgeRoutes from './routes/judgeRoutes'
 server.register(judgeRoutes)
 
+// register assistant match control routes
+import assistantRoutes from './routes/assistantRoutes'
+server.register(assistantRoutes)
+
 // register public bracket routes
 import bracketRoutes from './routes/bracketRoutes'
 server.register(bracketRoutes)

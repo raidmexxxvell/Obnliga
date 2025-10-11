@@ -22,6 +22,7 @@ const ERROR_DICTIONARY: Record<string, string> = {
   invalid_token: 'Токен авторизации недействителен. Войдите снова.',
   missing_token: 'Сессия администратора истекла. Авторизуйтесь снова.',
   missing_lineup_token: 'Сеанс капитана истёк. Авторизуйтесь снова.',
+  missing_assistant_token: 'Сеанс помощника истёк. Авторизуйтесь снова.',
   forbidden: 'Недостаточно прав для выполнения операции.',
   news_id_invalid: 'Некорректный идентификатор новости.',
   news_not_found: 'Новость не найдена.',
@@ -89,9 +90,12 @@ const ERROR_DICTIONARY: Record<string, string> = {
   match_club_not_found: 'Клуб не найден среди участников матча.',
   match_fields_required: 'Заполните параметры матча.',
   match_not_found: 'Матч не найден.',
+  match_not_available: 'Матч недоступен для модерации.',
   match_lineup_failed: 'Не удалось получить заявку матча.',
+  match_events_failed: 'Не удалось получить события матча.',
   match_statistics_failed: 'Не удалось получить статистику матча.',
   match_statistics_update_failed: 'Не удалось обновить статистику матча.',
+  match_statistics_expired: 'Статистика матча устарела и была очищена.',
   matches_not_finished: 'Завершите все матчи перед созданием плей-офф.',
   metric_invalid: 'Некорректный показатель статистики.',
   name_and_city_required: 'Укажите название и город.',
@@ -132,7 +136,9 @@ const ERROR_DICTIONARY: Record<string, string> = {
   stadium_used_in_matches: 'Стадион используется в матчах.',
   too_many_names: 'Слишком много имён в списке.',
   update_failed: 'Не удалось сохранить изменения.',
-  userid_required: 'Укажите пользователя.'
+  userid_required: 'Укажите пользователя.',
+  status_update_invalid: 'Некорректный статус матча.',
+  status_transition_invalid: 'Такой переход статуса невозможен.'
 }
 
 const normalizeErrorKey = (value: string): string => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_')

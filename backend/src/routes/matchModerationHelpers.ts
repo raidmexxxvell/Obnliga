@@ -15,6 +15,14 @@ export class RequestError extends Error {
 }
 
 export type MatchStatisticMetric = 'totalShots' | 'shotsOnTarget' | 'corners' | 'yellowCards' | 'redCards'
+
+export const MATCH_STATISTIC_METRICS: MatchStatisticMetric[] = [
+  'totalShots',
+  'shotsOnTarget',
+  'corners',
+  'yellowCards',
+  'redCards'
+]
 export type EventStatisticAdjustments = Partial<Record<MatchStatisticMetric, number>>
 
 export interface MatchEventPayload {
@@ -436,7 +444,19 @@ export const deleteMatchEvent = async (
   })
 }
 
-export const ensureMatchForJudge = async (matchId: bigint) => {
+export const ensureMatchForJudge = async (
+  matchId: bigint,
+  options?: {
+    allowedStatuses?: MatchStatus[]
+    errorCode?: string
+  }
+) => {
+  const allowed = options?.allowedStatuses ?? [MatchStatus.LIVE, MatchStatus.FINISHED]
+  const defaultError = allowed.includes(MatchStatus.LIVE) && allowed.includes(MatchStatus.FINISHED) && allowed.length === 2
+    ? 'match_not_finished'
+    : 'match_not_available'
+  const errorCode = options?.errorCode ?? defaultError
+
   const match = await prisma.match.findUnique({
     where: { id: matchId },
     include: {
@@ -461,8 +481,8 @@ export const ensureMatchForJudge = async (matchId: bigint) => {
     throw new RequestError(404, 'match_not_found')
   }
 
-  if (match.status !== MatchStatus.FINISHED && match.status !== MatchStatus.LIVE) {
-    throw new RequestError(409, 'match_not_finished')
+  if (!allowed.includes(match.status)) {
+    throw new RequestError(409, errorCode)
   }
 
   return match
