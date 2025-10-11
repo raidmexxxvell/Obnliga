@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import './profile.css'
-import { wsClient } from './wsClient'
+import { wsClient, WSMessage } from './wsClient'
 
 interface ProfileUser {
   telegramId?: string
@@ -77,10 +77,17 @@ export default function Profile() {
     wsClient.subscribe(profileTopic)
 
     // Обработчик патчей для реального времени
-    const handlePatch = (msg: PatchMessage) => {
-      if (msg.type !== 'patch' || !msg.topic || !msg.payload) return
+    const handlePatch = (msg: WSMessage) => {
+      if (msg.type !== 'patch' || !msg.topic) {
+        return
+      }
 
-      const { topic, payload } = msg
+      const { topic } = msg
+      const payload = msg.payload
+      if (!isProfilePatchPayload(payload)) {
+        return
+      }
+
       const payloadTelegramId = payload.telegramId
       if (!payloadTelegramId) return
 
@@ -90,10 +97,9 @@ export default function Profile() {
         }
 
         setUser(prev => {
-          const base: ProfileUser = prev ? { ...prev } : {}
-          const updated: ProfileUser = { ...base, ...payload }
-          setCachedProfile(updated)
-          return updated
+          const next: ProfileUser = prev ? { ...prev, ...payload } : { ...payload }
+          setCachedProfile(next)
+          return next
         })
       }
 
@@ -362,6 +368,18 @@ function isProfileUser(value: unknown): value is ProfileUser {
   if (!isNullableString(record.photoUrl)) return false
   if (!isNullableString(record.createdAt)) return false
   if (!isNullableString(record.updatedAt)) return false
+  return true
+}
+
+function isProfilePatchPayload(value: unknown): value is ProfilePatchPayload {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Record<string, unknown>
+  if ('telegramId' in record && typeof record.telegramId !== 'string') return false
+  if ('username' in record && !isNullableString(record.username)) return false
+  if ('firstName' in record && !isNullableString(record.firstName)) return false
+  if ('photoUrl' in record && !isNullableString(record.photoUrl)) return false
+  if ('createdAt' in record && !isNullableString(record.createdAt)) return false
+  if ('updatedAt' in record && !isNullableString(record.updatedAt)) return false
   return true
 }
 
