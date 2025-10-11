@@ -9,6 +9,7 @@ import { handleMatchFinalization } from '../services/matchAggregation'
 import {
   RequestError,
   MATCH_STATISTIC_METRICS,
+  MatchStatisticMetric,
   applyStatisticDelta,
   broadcastMatchStatistics,
   cleanupExpiredMatchStatistics,
@@ -28,6 +29,40 @@ import { defaultCache } from '../cache'
 interface AssistantJwtPayload {
   sub: string
   role: 'assistant'
+}
+
+type MatchParams = { matchId: string }
+type MatchEventParams = { matchId: string; eventId: string }
+
+type EventCreatePayload = {
+  playerId?: number
+  teamId?: number
+  minute?: number
+  eventType?: MatchEventType
+  relatedPlayerId?: number | null
+}
+
+type EventUpdatePayload = Partial<{
+  minute: number
+  eventType: MatchEventType
+  teamId: number
+  playerId: number
+  relatedPlayerId: number | null
+}>
+
+type ScoreUpdatePayload = {
+  homeScore?: number
+  awayScore?: number
+  hasPenaltyShootout?: boolean
+  penaltyHomeScore?: number
+  penaltyAwayScore?: number
+  status?: MatchStatus
+}
+
+type StatisticsAdjustPayload = {
+  clubId?: number
+  metric?: MatchStatisticMetric
+  delta?: number
 }
 
 declare module 'fastify' {
@@ -184,8 +219,8 @@ export default async function assistantRoutes(server: FastifyInstance) {
         return reply.send({ ok: true, data: serializePrisma(payload) })
       })
 
-      assistant.get('/matches/:matchId/lineup', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+      assistant.get<{ Params: MatchParams }>('/matches/:matchId/lineup', async (request, reply) => {
+        const matchId = parseBigIntId(request.params.matchId, 'matchId')
         try {
           await ensureAssistantMatch(matchId)
         } catch (err) {
@@ -207,8 +242,10 @@ export default async function assistantRoutes(server: FastifyInstance) {
         }
       })
 
-      assistant.get('/matches/:matchId/events', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+      assistant.get<{ Params: MatchParams }>(
+        '/matches/:matchId/events',
+        async (request, reply) => {
+          const matchId = parseBigIntId(request.params.matchId, 'matchId')
         try {
           await ensureAssistantMatch(matchId)
         } catch (err) {
@@ -218,24 +255,21 @@ export default async function assistantRoutes(server: FastifyInstance) {
           throw err
         }
 
-        try {
-          const events = await loadMatchEventsWithRoster(matchId)
-          return reply.send({ ok: true, data: serializePrisma(events) })
-        } catch (err) {
-          request.log.error({ err, matchId: matchId.toString() }, 'assistant events fetch failed')
-          return reply.status(500).send({ ok: false, error: 'match_events_failed' })
+          try {
+            const events = await loadMatchEventsWithRoster(matchId)
+            return reply.send({ ok: true, data: serializePrisma(events) })
+          } catch (err) {
+            request.log.error({ err, matchId: matchId.toString() }, 'assistant events fetch failed')
+            return reply.status(500).send({ ok: false, error: 'match_events_failed' })
+          }
         }
-      })
+      )
 
-      assistant.post('/matches/:matchId/events', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
-        const body = request.body as {
-          playerId?: number
-          teamId?: number
-          minute?: number
-          eventType?: MatchEventType
-          relatedPlayerId?: number | null
-        }
+      assistant.post<{ Params: MatchParams; Body: EventCreatePayload }>(
+        '/matches/:matchId/events',
+        async (request, reply) => {
+          const matchId = parseBigIntId(request.params.matchId, 'matchId')
+          const body = request.body
 
         if (!body?.playerId || !body?.teamId || !body?.minute || !body?.eventType) {
           return reply.status(400).send({ ok: false, error: 'event_fields_required' })
@@ -280,18 +314,15 @@ export default async function assistantRoutes(server: FastifyInstance) {
           request.log.error({ err, matchId: matchId.toString() }, 'assistant create event failed')
           return reply.status(500).send({ ok: false, error: 'event_create_failed' })
         }
-      })
+        }
+      )
 
-      assistant.put('/matches/:matchId/events/:eventId', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
-        const eventId = parseBigIntId((request.params as any).eventId, 'eventId')
-        const body = request.body as Partial<{
-          minute: number
-          eventType: MatchEventType
-          teamId: number
-          playerId: number
-          relatedPlayerId: number | null
-        }>
+      assistant.put<{ Params: MatchEventParams; Body: EventUpdatePayload }>(
+        '/matches/:matchId/events/:eventId',
+        async (request, reply) => {
+          const matchId = parseBigIntId(request.params.matchId, 'matchId')
+          const eventId = parseBigIntId(request.params.eventId, 'eventId')
+          const body = request.body
 
         try {
           await ensureAssistantMatch(matchId)
@@ -335,11 +366,14 @@ export default async function assistantRoutes(server: FastifyInstance) {
           )
           return reply.status(500).send({ ok: false, error: 'event_update_failed' })
         }
-      })
+        }
+      )
 
-      assistant.delete('/matches/:matchId/events/:eventId', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
-        const eventId = parseBigIntId((request.params as any).eventId, 'eventId')
+      assistant.delete<{ Params: MatchEventParams }>(
+        '/matches/:matchId/events/:eventId',
+        async (request, reply) => {
+          const matchId = parseBigIntId(request.params.matchId, 'matchId')
+          const eventId = parseBigIntId(request.params.eventId, 'eventId')
 
         try {
           await ensureAssistantMatch(matchId)
@@ -374,18 +408,14 @@ export default async function assistantRoutes(server: FastifyInstance) {
           )
           return reply.status(500).send({ ok: false, error: 'event_delete_failed' })
         }
-      })
-
-      assistant.put('/matches/:matchId/score', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
-        const body = request.body as {
-          homeScore?: number
-          awayScore?: number
-          hasPenaltyShootout?: boolean
-          penaltyHomeScore?: number
-          penaltyAwayScore?: number
-          status?: MatchStatus
         }
+      )
+
+      assistant.put<{ Params: MatchParams; Body: ScoreUpdatePayload }>(
+        '/matches/:matchId/score',
+        async (request, reply) => {
+          const matchId = parseBigIntId(request.params.matchId, 'matchId')
+          const body = request.body
 
         let match
         try {
@@ -482,10 +512,13 @@ export default async function assistantRoutes(server: FastifyInstance) {
           request.log.error({ err, matchId: matchId.toString() }, 'assistant score update failed')
           return reply.status(500).send({ ok: false, error: 'match_update_failed' })
         }
-      })
+        }
+      )
 
-      assistant.get('/matches/:matchId/statistics', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+      assistant.get<{ Params: MatchParams }>(
+        '/matches/:matchId/statistics',
+        async (request, reply) => {
+          const matchId = parseBigIntId(request.params.matchId, 'matchId')
         try {
           await ensureAssistantMatch(matchId)
         } catch (err) {
@@ -507,15 +540,14 @@ export default async function assistantRoutes(server: FastifyInstance) {
           request.log.error({ err, matchId: matchId.toString() }, 'assistant stats fetch failed')
           return reply.status(500).send({ ok: false, error: 'match_statistics_failed' })
         }
-      })
-
-      assistant.post('/matches/:matchId/statistics/adjust', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
-        const body = request.body as {
-          clubId?: number
-          metric?: string
-          delta?: number
         }
+      )
+
+      assistant.post<{ Params: MatchParams; Body: StatisticsAdjustPayload }>(
+        '/matches/:matchId/statistics/adjust',
+        async (request, reply) => {
+          const matchId = parseBigIntId(request.params.matchId, 'matchId')
+          const body = request.body
 
         try {
           await ensureAssistantMatch(matchId)
@@ -531,7 +563,7 @@ export default async function assistantRoutes(server: FastifyInstance) {
           return reply.status(400).send({ ok: false, error: 'clubId_required' })
         }
 
-        const metric = body?.metric as (typeof MATCH_STATISTIC_METRICS)[number] | undefined
+  const metric = body?.metric
         if (!metric || !MATCH_STATISTIC_METRICS.includes(metric)) {
           return reply.status(400).send({ ok: false, error: 'metric_invalid' })
         }
@@ -617,7 +649,8 @@ export default async function assistantRoutes(server: FastifyInstance) {
           request.log.error({ err, matchId: matchId.toString() }, 'assistant stats reload failed')
           return reply.status(500).send({ ok: false, error: 'match_statistics_failed' })
         }
-      })
+        }
+      )
     },
     { prefix: '/api/assistant' }
   )

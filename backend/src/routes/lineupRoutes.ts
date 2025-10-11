@@ -57,7 +57,8 @@ const verifyLineupToken = async (request: FastifyRequest, reply: FastifyReply) =
     if (decoded.role !== 'lineup') {
       return reply.status(401).send({ ok: false, error: 'unauthorized' })
     }
-    ;(request as any).lineupUser = decoded
+    const extendedRequest = request as FastifyRequest & { lineupUser?: LineupJwtPayload }
+    extendedRequest.lineupUser = decoded
   } catch (error) {
     request.log.warn({ err: error }, 'lineup token verification failed')
     return reply.status(401).send({ ok: false, error: 'unauthorized' })
@@ -197,57 +198,61 @@ const registerLineupRouteGroup = (
     return reply.send({ ok: true, token })
   })
 
-  server.get(`${basePath}/matches`, { preHandler: verifyLineupToken }, async (request, reply) => {
-    const query = request.query as LineupMatchesQuery | undefined
-    const now = new Date()
-    const nextDay = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+  server.get<{ Querystring: LineupMatchesQuery }>(
+    `${basePath}/matches`,
+    { preHandler: verifyLineupToken },
+    async (request, reply) => {
+      const query = request.query
+      const now = new Date()
+      const nextDay = new Date(now.getTime() + 24 * 60 * 60 * 1000)
 
-    const where: any = {
-      matchDateTime: {
-        gte: now,
-        lte: nextDay,
-      },
-      status: { in: [MatchStatus.SCHEDULED, MatchStatus.LIVE] as MatchStatus[] },
+      const where: Prisma.MatchWhereInput = {
+        matchDateTime: {
+          gte: now,
+          lte: nextDay,
+        },
+        status: { in: [MatchStatus.SCHEDULED, MatchStatus.LIVE] },
+      }
+
+      if (query?.clubId) {
+        const clubId = parseNumericId(query.clubId, 'clubId')
+        where.OR = [{ homeTeamId: clubId }, { awayTeamId: clubId }]
+      }
+
+      const matches = await prisma.match.findMany({
+        where,
+        orderBy: { matchDateTime: 'asc' },
+        include: {
+          season: { select: { id: true, name: true } },
+          homeClub: true,
+          awayClub: true,
+          round: true,
+        },
+      })
+
+      const response = matches.map(match => ({
+        id: match.id.toString(),
+        matchDateTime: match.matchDateTime.toISOString(),
+        status: match.status,
+        season: match.season,
+        round: match.round,
+        homeClub: {
+          id: match.homeClub.id,
+          name: match.homeClub.name,
+          shortName: match.homeClub.shortName,
+          logoUrl: match.homeClub.logoUrl,
+        },
+        awayClub: {
+          id: match.awayClub.id,
+          name: match.awayClub.name,
+          shortName: match.awayClub.shortName,
+          logoUrl: match.awayClub.logoUrl,
+        },
+      }))
+
+      return sendSerialized(reply, response)
     }
-
-    if (query?.clubId) {
-      const clubId = parseNumericId(query.clubId, 'clubId')
-      where.OR = [{ homeTeamId: clubId }, { awayTeamId: clubId }]
-    }
-
-    const matches = await prisma.match.findMany({
-      where,
-      orderBy: { matchDateTime: 'asc' },
-      include: {
-        season: { select: { id: true, name: true } },
-        homeClub: true,
-        awayClub: true,
-        round: true,
-      },
-    })
-
-    const response = matches.map(match => ({
-      id: match.id.toString(),
-      matchDateTime: match.matchDateTime.toISOString(),
-      status: match.status,
-      season: match.season,
-      round: match.round,
-      homeClub: {
-        id: match.homeClub.id,
-        name: match.homeClub.name,
-        shortName: match.homeClub.shortName,
-        logoUrl: match.homeClub.logoUrl,
-      },
-      awayClub: {
-        id: match.awayClub.id,
-        name: match.awayClub.name,
-        shortName: match.awayClub.shortName,
-        logoUrl: match.awayClub.logoUrl,
-      },
-    }))
-
-    return sendSerialized(reply, response)
-  })
+  )
 
   server.get(
     `${basePath}/matches/:matchId/roster`,

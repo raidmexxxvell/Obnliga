@@ -22,6 +22,38 @@ interface JudgeJwtPayload {
   role: 'judge'
 }
 
+type JudgeLoginBody = {
+  login?: string
+  password?: string
+}
+
+type MatchParams = { matchId: string }
+type MatchEventParams = { matchId: string; eventId: string }
+
+type EventCreatePayload = {
+  playerId?: number
+  teamId?: number
+  minute?: number
+  eventType?: MatchEventType
+  relatedPlayerId?: number | null
+}
+
+type EventUpdatePayload = Partial<{
+  minute: number
+  eventType: MatchEventType
+  teamId: number
+  playerId: number
+  relatedPlayerId: number | null
+}>
+
+type ScoreUpdatePayload = {
+  homeScore?: number
+  awayScore?: number
+  hasPenaltyShootout?: boolean
+  penaltyHomeScore?: number
+  penaltyAwayScore?: number
+}
+
 declare module 'fastify' {
   interface FastifyRequest {
     judge?: JudgeJwtPayload
@@ -84,8 +116,8 @@ const parsePenaltyScore = (value: unknown, fallback: number): number => {
 }
 
 export default async function judgeRoutes(server: FastifyInstance) {
-  server.post('/api/judge/login', async (request, reply) => {
-    const { login, password } = (request.body || {}) as { login?: string; password?: string }
+  server.post<{ Body: JudgeLoginBody }>('/api/judge/login', async (request, reply) => {
+    const { login, password } = request.body ?? {}
 
     if (!login || !password) {
       return reply.status(400).send({ ok: false, error: 'login_and_password_required' })
@@ -173,8 +205,8 @@ export default async function judgeRoutes(server: FastifyInstance) {
         return reply.send({ ok: true, data: serializePrisma(payload) })
       })
 
-      judge.get('/matches/:matchId/lineup', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+      judge.get<{ Params: MatchParams }>('/matches/:matchId/lineup', async (request, reply) => {
+        const matchId = parseBigIntId(request.params.matchId, 'matchId')
         try {
           await ensureMatchForJudge(matchId)
         } catch (err) {
@@ -196,8 +228,8 @@ export default async function judgeRoutes(server: FastifyInstance) {
         }
       })
 
-      judge.get('/matches/:matchId/events', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
+      judge.get<{ Params: MatchParams }>('/matches/:matchId/events', async (request, reply) => {
+        const matchId = parseBigIntId(request.params.matchId, 'matchId')
         try {
           await ensureMatchForJudge(matchId)
         } catch (err) {
@@ -216,63 +248,56 @@ export default async function judgeRoutes(server: FastifyInstance) {
         }
       })
 
-      judge.post('/matches/:matchId/events', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
-        const body = request.body as {
-          playerId?: number
-          teamId?: number
-          minute?: number
-          eventType?: MatchEventType
-          relatedPlayerId?: number | null
-        }
+      judge.post<{ Params: MatchParams; Body: EventCreatePayload }>(
+        '/matches/:matchId/events',
+        async (request, reply) => {
+          const matchId = parseBigIntId(request.params.matchId, 'matchId')
+          const body = request.body
 
-        if (!body?.playerId || !body?.teamId || !body?.minute || !body?.eventType) {
-          return reply.status(400).send({ ok: false, error: 'event_fields_required' })
-        }
-
-        try {
-          await ensureMatchForJudge(matchId)
-        } catch (err) {
-          if (err instanceof RequestError) {
-            return reply.status(err.statusCode).send({ ok: false, error: err.message })
-          }
-          throw err
-        }
-
-        try {
-          const created = await createMatchEvent(matchId, {
-            playerId: parseNumericId(body.playerId, 'playerId'),
-            teamId: parseNumericId(body.teamId, 'teamId'),
-            minute: parseNumericId(body.minute, 'minute'),
-            eventType: body.eventType,
-            relatedPlayerId: body.relatedPlayerId ?? null,
-          })
-
-          if (created.statAdjusted) {
-            await broadcastMatchStatistics(request.server, matchId)
+          if (!body?.playerId || !body?.teamId || !body?.minute || !body?.eventType) {
+            return reply.status(400).send({ ok: false, error: 'event_fields_required' })
           }
 
-          await handleMatchFinalization(matchId, request.server.log)
-          return reply.send({ ok: true, data: serializePrisma(created.event) })
-        } catch (err) {
-          if (err instanceof RequestError) {
-            return reply.status(err.statusCode).send({ ok: false, error: err.message })
+          try {
+            await ensureMatchForJudge(matchId)
+          } catch (err) {
+            if (err instanceof RequestError) {
+              return reply.status(err.statusCode).send({ ok: false, error: err.message })
+            }
+            throw err
           }
-          request.log.error({ err, matchId: matchId.toString() }, 'judge create event failed')
-          return reply.status(500).send({ ok: false, error: 'event_create_failed' })
-        }
-      })
 
-      judge.put('/matches/:matchId/events/:eventId', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
-        const eventId = parseBigIntId((request.params as any).eventId, 'eventId')
-        const body = request.body as Partial<{
-          minute: number
-          eventType: MatchEventType
-          teamId: number
-          playerId: number
-          relatedPlayerId: number | null
-        }>
+          try {
+            const created = await createMatchEvent(matchId, {
+              playerId: parseNumericId(body.playerId, 'playerId'),
+              teamId: parseNumericId(body.teamId, 'teamId'),
+              minute: parseNumericId(body.minute, 'minute'),
+              eventType: body.eventType,
+              relatedPlayerId: body.relatedPlayerId ?? null,
+            })
+
+            if (created.statAdjusted) {
+              await broadcastMatchStatistics(request.server, matchId)
+            }
+
+            await handleMatchFinalization(matchId, request.server.log)
+            return reply.send({ ok: true, data: serializePrisma(created.event) })
+          } catch (err) {
+            if (err instanceof RequestError) {
+              return reply.status(err.statusCode).send({ ok: false, error: err.message })
+            }
+            request.log.error({ err, matchId: matchId.toString() }, 'judge create event failed')
+            return reply.status(500).send({ ok: false, error: 'event_create_failed' })
+          }
+        }
+      )
+
+      judge.put<{ Params: MatchEventParams; Body: EventUpdatePayload }>(
+        '/matches/:matchId/events/:eventId',
+        async (request, reply) => {
+          const matchId = parseBigIntId(request.params.matchId, 'matchId')
+          const eventId = parseBigIntId(request.params.eventId, 'eventId')
+          const body = request.body
 
         try {
           await ensureMatchForJudge(matchId)
@@ -308,11 +333,14 @@ export default async function judgeRoutes(server: FastifyInstance) {
           )
           return reply.status(500).send({ ok: false, error: 'event_update_failed' })
         }
-      })
+        }
+      )
 
-      judge.delete('/matches/:matchId/events/:eventId', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
-        const eventId = parseBigIntId((request.params as any).eventId, 'eventId')
+      judge.delete<{ Params: MatchEventParams }>(
+        '/matches/:matchId/events/:eventId',
+        async (request, reply) => {
+          const matchId = parseBigIntId(request.params.matchId, 'matchId')
+          const eventId = parseBigIntId(request.params.eventId, 'eventId')
 
         try {
           await ensureMatchForJudge(matchId)
@@ -340,17 +368,14 @@ export default async function judgeRoutes(server: FastifyInstance) {
           )
           return reply.status(500).send({ ok: false, error: 'event_delete_failed' })
         }
-      })
-
-      judge.put('/matches/:matchId/score', async (request, reply) => {
-        const matchId = parseBigIntId((request.params as any).matchId, 'matchId')
-        const body = request.body as {
-          homeScore?: number
-          awayScore?: number
-          hasPenaltyShootout?: boolean
-          penaltyHomeScore?: number
-          penaltyAwayScore?: number
         }
+      )
+
+      judge.put<{ Params: MatchParams; Body: ScoreUpdatePayload }>(
+        '/matches/:matchId/score',
+        async (request, reply) => {
+          const matchId = parseBigIntId(request.params.matchId, 'matchId')
+          const body = request.body
 
         let match: Awaited<ReturnType<typeof ensureMatchForJudge>>
         try {
@@ -425,7 +450,8 @@ export default async function judgeRoutes(server: FastifyInstance) {
           request.log.error({ err, matchId: matchId.toString() }, 'judge score update failed')
           return reply.status(500).send({ ok: false, error: 'match_update_failed' })
         }
-      })
+      }
+      )
     },
     { prefix: '/api/judge' }
   )

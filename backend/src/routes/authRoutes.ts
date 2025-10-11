@@ -189,12 +189,12 @@ export default async function (server: FastifyInstance) {
         where: { telegramId: BigInt(userId) },
         create: {
           telegramId: BigInt(userId),
-          username: username,
+          username,
           firstName: firstName || null,
           photoUrl: photoUrl || null,
         },
         update: {
-          username: username,
+          username,
           firstName: firstName || undefined,
           photoUrl: photoUrl || undefined,
         },

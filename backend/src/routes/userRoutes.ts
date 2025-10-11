@@ -24,12 +24,12 @@ export default async function (server: FastifyInstance) {
         where: { telegramId: BigInt(userId) },
         create: {
           telegramId: BigInt(userId),
-          username: username,
+          username,
           firstName: null, // Can be updated later if needed
           photoUrl: photoUrl || null,
         },
         update: {
-          username: username,
+          username,
           photoUrl: photoUrl || undefined,
         },
       })

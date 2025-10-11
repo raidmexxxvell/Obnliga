@@ -307,9 +307,8 @@ export const broadcastMatchStatistics = async (server: FastifyInstance, matchId:
   const { value, version } = await getMatchStatisticsWithMeta(matchId)
   const serialized = serializePrisma(value)
   const topic = `match:${matchId.toString()}:stats`
-  const publish = (server as any).publishTopic
-  if (typeof publish === 'function') {
-    await publish(topic, { type: 'full', version, data: serialized })
+  if (typeof server.publishTopic === 'function') {
+    await server.publishTopic(topic, { type: 'full', version, data: serialized })
   }
   return { serialized, version }
 }
@@ -317,9 +316,11 @@ export const broadcastMatchStatistics = async (server: FastifyInstance, matchId:
 export const broadcastMatchEvents = async (server: FastifyInstance, matchId: bigint) => {
   const events = await loadMatchEventsWithRoster(matchId)
   const serialized = serializePrisma(events)
-  const publish = (server as any).publishTopic
-  if (typeof publish === 'function') {
-    await publish(`match:${matchId.toString()}:events`, { type: 'full', data: serialized })
+  if (typeof server.publishTopic === 'function') {
+    await server.publishTopic(`match:${matchId.toString()}:events`, {
+      type: 'full',
+      data: serialized,
+    })
   }
   return serialized
 }

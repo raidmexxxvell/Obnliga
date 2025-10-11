@@ -16,6 +16,18 @@ const FLOOD_RETRY_FALLBACK_MS = 5_000
 const PER_RECIPIENT_DELAY_MS = Number(process.env.TELEGRAM_BROADCAST_DELAY_MS ?? '60')
 const MAX_FLOOD_RETRIES = 3
 
+type TelegramApiError = {
+  code?: string
+  response?: {
+    statusCode?: number
+    body?: {
+      parameters?: {
+        retry_after?: number
+      }
+    }
+  }
+}
+
 let bot: TelegramBot | null = null
 let worker: Worker<TelegramNewsJobPayload> | null = null
 let pollTimer: NodeJS.Timeout | null = null
@@ -42,14 +54,16 @@ const ensureBot = (logger: FastifyBaseLogger): TelegramBot | null => {
   return bot
 }
 
-const isFloodError = (err: unknown) => {
-  const error = err as any
-  return error?.code === 'ETELEGRAM' && error?.response?.statusCode === 429
+const isFloodError = (err: unknown): boolean => {
+  if (!err || typeof err !== 'object') return false
+  const error = err as TelegramApiError
+  return error.code === 'ETELEGRAM' && error.response?.statusCode === 429
 }
 
 const resolveFloodRetryDelay = (err: unknown): number => {
-  const error = err as any
-  const retry = Number(error?.response?.body?.parameters?.retry_after ?? 0)
+  if (!err || typeof err !== 'object') return FLOOD_RETRY_FALLBACK_MS
+  const error = err as TelegramApiError
+  const retry = Number(error.response?.body?.parameters?.retry_after ?? 0)
   if (Number.isFinite(retry) && retry > 0) {
     return retry * 1000
   }

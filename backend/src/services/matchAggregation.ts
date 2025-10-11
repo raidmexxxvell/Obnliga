@@ -8,7 +8,6 @@ import {
   MatchEventType,
   MatchSeries,
   MatchStatus,
-  PlayerClubCareerStats,
   PredictionResult,
   Prisma,
   RoundType,
@@ -21,7 +20,6 @@ import {
   addDays,
   applyTimeToDate,
   createInitialPlayoffPlans,
-  createRandomPlayoffPlans,
   stageNameForTeams,
 } from './seasonAutomation'
 
