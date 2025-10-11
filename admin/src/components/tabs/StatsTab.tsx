@@ -5,7 +5,7 @@ import {
   ClubSeasonStats,
   MatchSummary,
   PlayerCareerStats,
-  PlayerSeasonStats
+  PlayerSeasonStats,
 } from '../../types'
 
 type StatView =
@@ -21,7 +21,7 @@ const sortStandings = (rows: ClubSeasonStats[], matches: MatchSummary[]) => {
   const dataset = [...rows]
   if (!dataset.length) return dataset
 
-  const seasonIds = new Set(dataset.map((row) => row.seasonId))
+  const seasonIds = new Set(dataset.map(row => row.seasonId))
   type HeadToHeadEntry = { points: number; goalsFor: number; goalsAgainst: number }
   const headToHead = new Map<number, Map<number, HeadToHeadEntry>>()
 
@@ -77,7 +77,8 @@ const sortStandings = (rows: ClubSeasonStats[], matches: MatchSummary[]) => {
     const rightHeadDiff = rightVsLeft.goalsFor - rightVsLeft.goalsAgainst
     if (rightHeadDiff !== leftHeadDiff) return rightHeadDiff - leftHeadDiff
 
-    if (rightVsLeft.goalsFor !== leftVsRight.goalsFor) return rightVsLeft.goalsFor - leftVsRight.goalsFor
+    if (rightVsLeft.goalsFor !== leftVsRight.goalsFor)
+      return rightVsLeft.goalsFor - leftVsRight.goalsFor
 
     const leftDiff = left.goalsFor - left.goalsAgainst
     const rightDiff = right.goalsFor - right.goalsAgainst
@@ -99,10 +100,11 @@ const sortScorers = (rows: PlayerSeasonStats[]) => {
 
 const sortAssists = (rows: PlayerSeasonStats[]) => {
   return [...rows]
-    .filter((row) => row.assists > 0)
+    .filter(row => row.assists > 0)
     .sort((left, right) => {
       if (right.assists !== left.assists) return right.assists - left.assists
-      if (left.matchesPlayed !== right.matchesPlayed) return left.matchesPlayed - right.matchesPlayed
+      if (left.matchesPlayed !== right.matchesPlayed)
+        return left.matchesPlayed - right.matchesPlayed
       const leftName = `${left.person.lastName} ${left.person.firstName}`
       const rightName = `${right.person.lastName} ${right.person.firstName}`
       return leftName.localeCompare(rightName, 'ru')
@@ -111,7 +113,7 @@ const sortAssists = (rows: PlayerSeasonStats[]) => {
 
 const sortGoalContributions = (rows: PlayerSeasonStats[]) => {
   return [...rows]
-    .filter((row) => row.goals + row.assists > 0)
+    .filter(row => row.goals + row.assists > 0)
     .sort((left, right) => {
       const leftTotal = left.goals + left.assists
       const rightTotal = right.goals + right.assists
@@ -121,7 +123,8 @@ const sortGoalContributions = (rows: PlayerSeasonStats[]) => {
       const rightCleanGoals = right.goals - (right.penaltyGoals ?? 0)
       if (rightCleanGoals !== leftCleanGoals) return rightCleanGoals - leftCleanGoals
       if (right.assists !== left.assists) return right.assists - left.assists
-      if (left.matchesPlayed !== right.matchesPlayed) return left.matchesPlayed - right.matchesPlayed
+      if (left.matchesPlayed !== right.matchesPlayed)
+        return left.matchesPlayed - right.matchesPlayed
       const leftName = `${left.person.lastName} ${left.person.firstName}`
       const rightName = `${right.person.lastName} ${right.person.firstName}`
       return leftName.localeCompare(rightName, 'ru')
@@ -130,9 +133,9 @@ const sortGoalContributions = (rows: PlayerSeasonStats[]) => {
 
 const sortDiscipline = (rows: PlayerSeasonStats[]) => {
   return rows
-    .filter((row) => row.yellowCards > 0 || row.redCards > 0)
+    .filter(row => row.yellowCards > 0 || row.redCards > 0)
     .sort((left, right) => {
-    if (right.yellowCards !== left.yellowCards) return right.yellowCards - left.yellowCards
+      if (right.yellowCards !== left.yellowCards) return right.yellowCards - left.yellowCards
       if (right.redCards !== left.redCards) return right.redCards - left.redCards
       return right.matchesPlayed - left.matchesPlayed
     })
@@ -169,8 +172,8 @@ export const StatsTab = () => {
     fetchSeasons,
     fetchStats,
     loading,
-    error
-  } = useAdminStore((state) => ({
+    error,
+  } = useAdminStore(state => ({
     token: state.token,
     data: state.data,
     selectedCompetitionId: state.selectedCompetitionId,
@@ -180,7 +183,7 @@ export const StatsTab = () => {
     fetchSeasons: state.fetchSeasons,
     fetchStats: state.fetchStats,
     loading: state.loading,
-    error: state.error
+    error: state.error,
   }))
 
   const [activeView, setActiveView] = useState<StatView>('standings')
@@ -201,7 +204,7 @@ export const StatsTab = () => {
   }, [token, selectedSeasonId, fetchStats])
 
   const selectedSeason = useMemo(
-    () => data.seasons.find((season) => season.id === selectedSeasonId),
+    () => data.seasons.find(season => season.id === selectedSeasonId),
     [data.seasons, selectedSeasonId]
   )
 
@@ -211,7 +214,7 @@ export const StatsTab = () => {
       if (!map.has(season.competition.id)) {
         map.set(season.competition.id, {
           id: season.competition.id,
-          name: season.competition.name
+          name: season.competition.name,
         })
       }
     }
@@ -227,7 +230,7 @@ export const StatsTab = () => {
 
   const seasonsForCompetition = useMemo(() => {
     if (!selectedCompetitionId) return data.seasons
-    return data.seasons.filter((season) => season.competitionId === selectedCompetitionId)
+    return data.seasons.filter(season => season.competitionId === selectedCompetitionId)
   }, [data.seasons, selectedCompetitionId])
 
   const standings = useMemo(
@@ -240,7 +243,7 @@ export const StatsTab = () => {
       totalsByClub.set(entry.clubId, entry)
     }
 
-    const fullList: ClubCareerTotals[] = data.clubs.map((club) => {
+    const fullList: ClubCareerTotals[] = data.clubs.map(club => {
       const totals = totalsByClub.get(club.id)
       if (totals) {
         return totals
@@ -254,7 +257,7 @@ export const StatsTab = () => {
         goalsAgainst: 0,
         yellowCards: 0,
         redCards: 0,
-        cleanSheets: 0
+        cleanSheets: 0,
       }
     })
 
@@ -262,16 +265,19 @@ export const StatsTab = () => {
   }, [data.clubs, data.clubCareerTotals])
   const scorers = useMemo(() => sortScorers(data.playerStats), [data.playerStats])
   const assistsTop = useMemo(() => sortAssists(data.playerStats).slice(0, 10), [data.playerStats])
-  const goalContributions = useMemo(() => sortGoalContributions(data.playerStats), [data.playerStats])
+  const goalContributions = useMemo(
+    () => sortGoalContributions(data.playerStats),
+    [data.playerStats]
+  )
   const discipline = useMemo(() => sortDiscipline(data.playerStats), [data.playerStats])
   const careerSorted = useMemo(() => sortCareer(data.careerStats), [data.careerStats])
   const career = useMemo(
-    () => (careerClubId ? careerSorted.filter((row) => row.clubId === careerClubId) : []),
+    () => (careerClubId ? careerSorted.filter(row => row.clubId === careerClubId) : []),
     [careerSorted, careerClubId]
   )
 
   const careerClubOptions = useMemo(() => {
-    const options = data.clubs.map((club) => [club.id, club.name] as const)
+    const options = data.clubs.map(club => [club.id, club.name] as const)
     if (options.length) {
       return options.sort((left, right) => left[1].localeCompare(right[1], 'ru'))
     }
@@ -279,7 +285,9 @@ export const StatsTab = () => {
     for (const row of data.careerStats) {
       fallback.set(row.clubId, row.club.name)
     }
-    return Array.from(fallback.entries()).sort((left, right) => left[1].localeCompare(right[1], 'ru'))
+    return Array.from(fallback.entries()).sort((left, right) =>
+      left[1].localeCompare(right[1], 'ru')
+    )
   }, [data.clubs, data.careerStats])
 
   const finishedMatchesByClub = useMemo(() => {
@@ -304,38 +312,36 @@ export const StatsTab = () => {
     if (!groups.length) return []
 
     const seasonMatches = data.matches.filter(
-      (match) =>
-        match.seasonId === selectedSeason.id &&
-        match.round?.roundType !== 'PLAYOFF'
+      match => match.seasonId === selectedSeason.id && match.round?.roundType !== 'PLAYOFF'
     )
 
     return groups
-      .map((group) => {
+      .map(group => {
         const clubIds = new Set(
           group.slots
-            .filter((slot) => typeof slot.clubId === 'number')
-            .map((slot) => slot.clubId as number)
+            .filter(slot => typeof slot.clubId === 'number')
+            .map(slot => slot.clubId as number)
         )
         if (!clubIds.size) {
           return {
             groupIndex: group.groupIndex,
             label: group.label,
             qualifyCount: group.qualifyCount,
-            rows: [] as typeof standings
+            rows: [] as typeof standings,
           }
         }
-        const groupRows = standings.filter((row) => clubIds.has(row.clubId))
+        const groupRows = standings.filter(row => clubIds.has(row.clubId))
         const groupMatches = seasonMatches.filter(
-          (match) => clubIds.has(match.homeTeamId) && clubIds.has(match.awayTeamId)
+          match => clubIds.has(match.homeTeamId) && clubIds.has(match.awayTeamId)
         )
         return {
           groupIndex: group.groupIndex,
           label: group.label,
           qualifyCount: group.qualifyCount,
-          rows: sortStandings(groupRows, groupMatches)
+          rows: sortStandings(groupRows, groupMatches),
         }
       })
-      .filter((entry) => entry !== null)
+      .filter(entry => entry !== null)
       .sort((left, right) => left.groupIndex - right.groupIndex)
   }, [data.matches, selectedSeason, standings])
 
@@ -380,7 +386,7 @@ export const StatsTab = () => {
           goalDiff,
           goalsFor: row.goalsFor,
           wins: row.wins,
-          preRank
+          preRank,
         })
       }
     }
@@ -450,7 +456,7 @@ export const StatsTab = () => {
           <label className="stacked">
             Турнир
             <div className="chip-row">
-              {competitionOptions.map((competition) => (
+              {competitionOptions.map(competition => (
                 <button
                   key={competition.id}
                   type="button"
@@ -466,10 +472,12 @@ export const StatsTab = () => {
             Сезон
             <select
               value={selectedSeasonId ?? ''}
-              onChange={(event) => setSelectedSeason(event.target.value ? Number(event.target.value) : undefined)}
+              onChange={event =>
+                setSelectedSeason(event.target.value ? Number(event.target.value) : undefined)
+              }
             >
               <option value="">—</option>
-              {seasonsForCompetition.map((season) => (
+              {seasonsForCompetition.map(season => (
                 <option key={season.id} value={season.id}>
                   {season.name} ({season.competition.name})
                 </option>
@@ -478,7 +486,8 @@ export const StatsTab = () => {
           </label>
           {selectedSeason ? (
             <p className="muted">
-              Период: {selectedSeason.startDate.slice(0, 10)} — {selectedSeason.endDate.slice(0, 10)}
+              Период: {selectedSeason.startDate.slice(0, 10)} —{' '}
+              {selectedSeason.endDate.slice(0, 10)}
             </p>
           ) : (
             <p className="muted">Выберите сезон, чтобы увидеть таблицы.</p>
@@ -490,13 +499,25 @@ export const StatsTab = () => {
             <p>Переключайтесь между показателями клубов и игроков.</p>
           </header>
           <nav className="chip-row">
-            <button type="button" className={activeView === 'standings' ? 'chip active' : 'chip'} onClick={() => setActiveView('standings')}>
+            <button
+              type="button"
+              className={activeView === 'standings' ? 'chip active' : 'chip'}
+              onClick={() => setActiveView('standings')}
+            >
               Таблица
             </button>
-            <button type="button" className={activeView === 'scorers' ? 'chip active' : 'chip'} onClick={() => setActiveView('scorers')}>
+            <button
+              type="button"
+              className={activeView === 'scorers' ? 'chip active' : 'chip'}
+              onClick={() => setActiveView('scorers')}
+            >
               Бомбардиры
             </button>
-            <button type="button" className={activeView === 'assists' ? 'chip active' : 'chip'} onClick={() => setActiveView('assists')}>
+            <button
+              type="button"
+              className={activeView === 'assists' ? 'chip active' : 'chip'}
+              onClick={() => setActiveView('assists')}
+            >
               Передачи
             </button>
             <button
@@ -506,7 +527,11 @@ export const StatsTab = () => {
             >
               Гол+Пасс
             </button>
-            <button type="button" className={activeView === 'discipline' ? 'chip active' : 'chip'} onClick={() => setActiveView('discipline')}>
+            <button
+              type="button"
+              className={activeView === 'discipline' ? 'chip active' : 'chip'}
+              onClick={() => setActiveView('discipline')}
+            >
               Дисциплина
             </button>
           </nav>
@@ -518,10 +543,18 @@ export const StatsTab = () => {
             <p>Сводные показатели по клубам и игрокам без привязки к сезону.</p>
           </header>
           <nav className="chip-row">
-            <button type="button" className={activeView === 'teams' ? 'chip active' : 'chip'} onClick={() => setActiveView('teams')}>
+            <button
+              type="button"
+              className={activeView === 'teams' ? 'chip active' : 'chip'}
+              onClick={() => setActiveView('teams')}
+            >
               Команды
             </button>
-            <button type="button" className={activeView === 'career' ? 'chip active' : 'chip'} onClick={() => setActiveView('career')}>
+            <button
+              type="button"
+              className={activeView === 'career' ? 'chip active' : 'chip'}
+              onClick={() => setActiveView('career')}
+            >
               Карьера игроков
             </button>
           </nav>
@@ -537,7 +570,7 @@ export const StatsTab = () => {
           </header>
           {groupStandings && groupStandings.length ? (
             <div className="group-standings-grid">
-              {groupStandings.map((group) => {
+              {groupStandings.map(group => {
                 const hasRows = group.rows.length > 0
                 return (
                   <div className="group-standings-card" key={`group-${group.groupIndex}`}>
@@ -582,7 +615,8 @@ export const StatsTab = () => {
                                 <td>{draws}</td>
                                 <td>{row.losses}</td>
                                 <td>
-                                  {row.goalsFor}:{row.goalsAgainst} ({row.goalsFor - row.goalsAgainst})
+                                  {row.goalsFor}:{row.goalsAgainst} (
+                                  {row.goalsFor - row.goalsAgainst})
                                 </td>
                                 <td>{row.points}</td>
                               </tr>
@@ -637,7 +671,9 @@ export const StatsTab = () => {
                   })}
                 </tbody>
               </table>
-              {!standings.length ? <p className="muted">Нет данных для выбранного сезона.</p> : null}
+              {!standings.length ? (
+                <p className="muted">Нет данных для выбранного сезона.</p>
+              ) : null}
             </>
           )}
         </section>
@@ -679,7 +715,9 @@ export const StatsTab = () => {
               ))}
             </tbody>
           </table>
-          {!teams.length ? <p className="muted">Нет данных: сыгранные турниры не найдены.</p> : null}
+          {!teams.length ? (
+            <p className="muted">Нет данных: сыгранные турниры не найдены.</p>
+          ) : null}
         </section>
       ) : null}
 
@@ -704,7 +742,9 @@ export const StatsTab = () => {
               {scorers.map((row, index) => (
                 <tr key={`${row.seasonId}-${row.personId}`}>
                   <td>{index + 1}</td>
-                  <td>{row.person.lastName} {row.person.firstName}</td>
+                  <td>
+                    {row.person.lastName} {row.person.firstName}
+                  </td>
                   <td>{row.club.name}</td>
                   <td>{row.matchesPlayed}</td>
                   <td>{formatEfficiency(row.goals, row.matchesPlayed)}</td>
@@ -737,7 +777,9 @@ export const StatsTab = () => {
               {assistsTop.map((row, index) => (
                 <tr key={`${row.seasonId}-${row.personId}`}>
                   <td>{index + 1}</td>
-                  <td>{row.person.lastName} {row.person.firstName}</td>
+                  <td>
+                    {row.person.lastName} {row.person.firstName}
+                  </td>
                   <td>{row.club.name}</td>
                   <td>{row.matchesPlayed}</td>
                   <td>{row.assists}</td>
@@ -773,7 +815,9 @@ export const StatsTab = () => {
                 return (
                   <tr key={`${row.seasonId}-${row.personId}`}>
                     <td>{index + 1}</td>
-                    <td>{row.person.lastName} {row.person.firstName}</td>
+                    <td>
+                      {row.person.lastName} {row.person.firstName}
+                    </td>
                     <td>{row.club.name}</td>
                     <td>{row.matchesPlayed}</td>
                     <td>{formatGoals(row.goals, row.penaltyGoals)}</td>
@@ -784,7 +828,9 @@ export const StatsTab = () => {
               })}
             </tbody>
           </table>
-          {!goalContributions.length ? <p className="muted">Нет результативных действий в выбранном сезоне.</p> : null}
+          {!goalContributions.length ? (
+            <p className="muted">Нет результативных действий в выбранном сезоне.</p>
+          ) : null}
         </section>
       ) : null}
 
@@ -808,7 +854,9 @@ export const StatsTab = () => {
               {discipline.map((row, index) => (
                 <tr key={`${row.seasonId}-${row.personId}`}>
                   <td>{index + 1}</td>
-                  <td>{row.person.lastName} {row.person.firstName}</td>
+                  <td>
+                    {row.person.lastName} {row.person.firstName}
+                  </td>
                   <td>{row.club.name}</td>
                   <td>{row.yellowCards}</td>
                   <td>{row.redCards}</td>
@@ -830,7 +878,9 @@ export const StatsTab = () => {
             Клуб
             <select
               value={careerClubId ?? ''}
-              onChange={(event) => setCareerClubId(event.target.value ? Number(event.target.value) : undefined)}
+              onChange={event =>
+                setCareerClubId(event.target.value ? Number(event.target.value) : undefined)
+              }
             >
               <option value="">Выберите клуб</option>
               {careerClubOptions.map(([id, name]) => (
@@ -859,7 +909,9 @@ export const StatsTab = () => {
                   {career.map((row, index) => (
                     <tr key={`${row.personId}-${row.clubId}`}>
                       <td>{index + 1}</td>
-                      <td>{row.person.lastName} {row.person.firstName}</td>
+                      <td>
+                        {row.person.lastName} {row.person.firstName}
+                      </td>
                       <td>{row.club.name}</td>
                       <td>{row.totalMatches}</td>
                       <td>{row.yellowCards}</td>
@@ -870,7 +922,9 @@ export const StatsTab = () => {
                   ))}
                 </tbody>
               </table>
-              {!career.length ? <p className="muted">Для выбранного клуба нет карьерной статистики.</p> : null}
+              {!career.length ? (
+                <p className="muted">Для выбранного клуба нет карьерной статистики.</p>
+              ) : null}
             </>
           ) : (
             <p className="muted">Выберите клуб, чтобы увидеть карьерную статистику игроков.</p>

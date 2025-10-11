@@ -75,10 +75,12 @@ const formatKickoff = (iso: string): string =>
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   })
 
-const summarizeSeries = (seriesMatches: MatchSummary[]): {
+const summarizeSeries = (
+  seriesMatches: MatchSummary[]
+): {
   homeLabel: string
   awayLabel: string
   mode: 'wins' | 'score'
@@ -95,16 +97,18 @@ const summarizeSeries = (seriesMatches: MatchSummary[]): {
     return {
       homeLabel: showScore ? String(single.homeScore) : '—',
       awayLabel: showScore ? String(single.awayScore) : '—',
-      mode: 'score'
+      mode: 'score',
     }
   }
-  const finished = seriesMatches.filter((match) => match.status === 'FINISHED' || match.status === 'LIVE')
-  const homeWins = finished.filter((match) => match.homeScore > match.awayScore).length
-  const awayWins = finished.filter((match) => match.awayScore > match.homeScore).length
+  const finished = seriesMatches.filter(
+    match => match.status === 'FINISHED' || match.status === 'LIVE'
+  )
+  const homeWins = finished.filter(match => match.homeScore > match.awayScore).length
+  const awayWins = finished.filter(match => match.awayScore > match.homeScore).length
   return {
     homeLabel: homeWins.toString(),
     awayLabel: awayWins.toString(),
-    mode: 'wins'
+    mode: 'wins',
   }
 }
 
@@ -156,7 +160,7 @@ export const PlayoffBracket: React.FC<PlayoffBracketProps> = ({ series, matches,
       const stageEntry = buckets.get(item.stageName) ?? {
         stageName: item.stageName,
         rank: stageRank,
-        series: [] as StageSeries[]
+        series: [] as StageSeries[],
       }
       stageEntry.series.push({
         id: item.id,
@@ -176,9 +180,11 @@ export const PlayoffBracket: React.FC<PlayoffBracketProps> = ({ series, matches,
             (match.seriesMatchNumber ? `Игра ${match.seriesMatchNumber}` : `Матч ${index + 1}`),
           kickoff: formatKickoff(match.matchDateTime),
           status: match.status,
-          scoreLabel: formatScoreLabel(match)
+          scoreLabel: formatScoreLabel(match),
         })),
-        order: stageMatches[0] ? new Date(stageMatches[0].matchDateTime).getTime() : Number.MAX_SAFE_INTEGER
+        order: stageMatches[0]
+          ? new Date(stageMatches[0].matchDateTime).getTime()
+          : Number.MAX_SAFE_INTEGER,
       })
       buckets.set(item.stageName, stageEntry)
     }
@@ -190,9 +196,9 @@ export const PlayoffBracket: React.FC<PlayoffBracketProps> = ({ series, matches,
         }
         return left.stageName.localeCompare(right.stageName, 'ru')
       })
-      .map((stage) => ({
+      .map(stage => ({
         ...stage,
-        series: stage.series.sort((left, right) => left.order - right.order)
+        series: stage.series.sort((left, right) => left.order - right.order),
       }))
   }, [clubMap, matchesBySeriesId, series])
 
@@ -206,11 +212,11 @@ export const PlayoffBracket: React.FC<PlayoffBracketProps> = ({ series, matches,
 
   return (
     <div className="bracket-grid">
-      {stages.map((stage) => (
+      {stages.map(stage => (
         <div className="bracket-stage" key={stage.stageName}>
           <h5>{stage.stageName}</h5>
           <ul>
-            {stage.series.map((item) => {
+            {stage.series.map(item => {
               const homeName = item.homeClub?.name ?? `Клуб #${item.homeClubId}`
               const awayName = item.awayClub?.name ?? `Клуб #${item.awayClubId}`
               const winnerId = item.winnerClubId ?? (item.isBye ? item.homeClubId : undefined)
@@ -220,22 +226,32 @@ export const PlayoffBracket: React.FC<PlayoffBracketProps> = ({ series, matches,
                   className={`bracket-series status-${item.seriesStatus.toLowerCase()}${item.isBye ? ' bye' : ''}`}
                 >
                   <div className="series-team">
-                    <span className={`team-name${winnerId && winnerId === item.homeClubId ? ' winner' : ''}`}>{homeName}</span>
+                    <span
+                      className={`team-name${winnerId && winnerId === item.homeClubId ? ' winner' : ''}`}
+                    >
+                      {homeName}
+                    </span>
                     <span className="team-score">{item.summary.homeLabel}</span>
                   </div>
                   <div className="series-team">
-                    <span className={`team-name${winnerId && winnerId === item.awayClubId ? ' winner' : ''}`}>{awayName}</span>
+                    <span
+                      className={`team-name${winnerId && winnerId === item.awayClubId ? ' winner' : ''}`}
+                    >
+                      {awayName}
+                    </span>
                     <span className="team-score">{item.summary.awayLabel}</span>
                   </div>
                   {item.isBye ? (
                     <p className="series-note">Автоматом проходит дальше.</p>
                   ) : (
                     <ol className="series-matches">
-                      {item.matches.map((match) => (
+                      {item.matches.map(match => (
                         <li key={match.id}>
                           <span className="match-label">{match.label}</span>
                           <span className="match-meta">{match.kickoff}</span>
-                          <span className={`match-score status-${match.status.toLowerCase()}`}>{match.scoreLabel}</span>
+                          <span className={`match-score status-${match.status.toLowerCase()}`}>
+                            {match.scoreLabel}
+                          </span>
                         </li>
                       ))}
                     </ol>

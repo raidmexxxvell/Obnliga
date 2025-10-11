@@ -6,7 +6,10 @@ export const parseNumericId = (value: string | number | undefined, field: string
   return numeric
 }
 
-export const parseBigIntId = (value: string | number | bigint | undefined, field: string): bigint => {
+export const parseBigIntId = (
+  value: string | number | bigint | undefined,
+  field: string
+): bigint => {
   try {
     if (typeof value === 'bigint') return value
     if (typeof value === 'number') return BigInt(value)

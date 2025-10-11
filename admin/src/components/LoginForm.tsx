@@ -8,7 +8,7 @@ export const LoginForm = () => {
     login: state.login,
     status: state.status,
     error: state.error,
-    clearError: state.clearError
+    clearError: state.clearError,
   }))
 
   const [loginField, setLoginField] = useState('')
@@ -23,7 +23,7 @@ export const LoginForm = () => {
   return (
     <form className="glass-card" onSubmit={handleSubmit} onFocus={() => clearError()}>
       <h1>Админ-панель</h1>
-    <p className="auth-meta">Введите логин администратора, судьи или помощника/капитана.</p>
+      <p className="auth-meta">Введите логин администратора, судьи или помощника/капитана.</p>
       {error ? <div className="error-banner">Ошибка авторизации: {error}</div> : null}
       <div className="form-field">
         <label htmlFor="admin-login">Логин</label>
@@ -52,8 +52,8 @@ export const LoginForm = () => {
         {status === 'authenticating' ? 'Проверяем…' : 'Войти'}
       </button>
       <p className="auth-meta">
-        Админ: LOGIN_ADMIN / PASSWORD_ADMIN · Судья: SUDIA_LOGIN / SUDIA_PASSWORD · Помощник матча: POMOSH_LOGIN /
-        POMOSH_PASSWORD · Капитан: LINEUP_PORTAL_LOGIN / LINEUP_PORTAL_PASSWORD.
+        Админ: LOGIN_ADMIN / PASSWORD_ADMIN · Судья: SUDIA_LOGIN / SUDIA_PASSWORD · Помощник матча:
+        POMOSH_LOGIN / POMOSH_PASSWORD · Капитан: LINEUP_PORTAL_LOGIN / LINEUP_PORTAL_PASSWORD.
       </p>
     </form>
   )

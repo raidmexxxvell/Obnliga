@@ -32,25 +32,25 @@ export default async function (server: FastifyInstance) {
       // Publish real-time updates для WebSocket subscribers
       try {
         const userPayload = serializePrisma(user)
-        
+
         // Персональный топик пользователя
         await (server as any).publishTopic(`user:${userId}`, {
           type: 'profile_updated',
           userId: userPayload.userId,
           tgUsername: userPayload.tgUsername,
           photoUrl: userPayload.photoUrl,
-          updatedAt: userPayload.updatedAt
+          updatedAt: userPayload.updatedAt,
         })
-        
+
         // Глобальный топик профилей
         await (server as any).publishTopic('profile', {
           type: 'profile_updated',
           userId: userPayload.userId,
           tgUsername: userPayload.tgUsername,
           photoUrl: userPayload.photoUrl,
-          updatedAt: userPayload.updatedAt
+          updatedAt: userPayload.updatedAt,
         })
-        
+
         server.log.info({ userId }, 'Published profile updates to WebSocket topics')
       } catch (wsError) {
         server.log.warn({ err: wsError }, 'Failed to publish WebSocket updates')
@@ -70,10 +70,14 @@ export default async function (server: FastifyInstance) {
     try {
       // Use cache for user data (5 min TTL)
       const cacheKey = `user:${userId}`
-      const u = await defaultCache.get(cacheKey, async () => {
-        return await prisma.appUser.findUnique({ where: { telegramId: BigInt(userId) } })
-      }, 300) // 5 minutes TTL
-      
+      const u = await defaultCache.get(
+        cacheKey,
+        async () => {
+          return await prisma.appUser.findUnique({ where: { telegramId: BigInt(userId) } })
+        },
+        300
+      ) // 5 minutes TTL
+
       if (!u) return reply.status(404).send({ error: 'not_found' })
       return reply.send(serializePrisma(u))
     } catch (err) {

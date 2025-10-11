@@ -14,7 +14,8 @@
 body {
   margin: 0;
   font-family: 'Segoe UI', Roboto, Arial, sans-serif;
-  background: radial-gradient(1200px 600px at 10% 10%, rgba(0, 240, 255, 0.05), transparent),
+  background:
+    radial-gradient(1200px 600px at 10% 10%, rgba(0, 240, 255, 0.05), transparent),
     radial-gradient(900px 400px at 90% 80%, rgba(255, 45, 247, 0.05), transparent),
     linear-gradient(180deg, var(--bg-1), var(--bg-2));
   color: var(--text-primary);

@@ -35,10 +35,12 @@ const formatKickoff = (iso: string) =>
     day: 'numeric',
     month: 'long',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   })
 
-const API_BASE_RAW = ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_LINEUP_API_BASE) ?? ''
+const API_BASE_RAW =
+  (import.meta as unknown as { env?: Record<string, string | undefined> }).env
+    ?.VITE_LINEUP_API_BASE ?? ''
 const API_BASE_URL = API_BASE_RAW ? API_BASE_RAW.replace(/\/$/, '') : ''
 const buildApiUrl = (path: string) => {
   const normalized = path.startsWith('/') ? path : `/${path}`
@@ -50,7 +52,8 @@ const formatMatchesRemaining = (count: number) => {
   const remainder10 = absCount % 10
   const remainder100 = absCount % 100
   if (remainder10 === 1 && remainder100 !== 11) return `${absCount} матч`
-  if (remainder10 >= 2 && remainder10 <= 4 && (remainder100 < 10 || remainder100 >= 20)) return `${absCount} матча`
+  if (remainder10 >= 2 && remainder10 <= 4 && (remainder100 < 10 || remainder100 >= 20))
+    return `${absCount} матча`
   return `${absCount} матчей`
 }
 
@@ -135,9 +138,13 @@ const LineupPortal: React.FC = () => {
     resetState()
   }
 
-  const apiRequest = async <T,>(path: string, init?: RequestInit, requireAuth = true): Promise<T> => {
+  const apiRequest = async <T,>(
+    path: string,
+    init?: RequestInit,
+    requireAuth = true
+  ): Promise<T> => {
     const headers: HeadersInit = {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
     }
     if (requireAuth) {
       if (!token) {
@@ -150,8 +157,8 @@ const LineupPortal: React.FC = () => {
       ...init,
       headers: {
         ...headers,
-        ...(init?.headers ?? {})
-      }
+        ...(init?.headers ?? {}),
+      },
     })
 
     if (response.status === 401) {
@@ -186,7 +193,7 @@ const LineupPortal: React.FC = () => {
         '/api/lineup-portal/login',
         {
           method: 'POST',
-          body: JSON.stringify({ login, password })
+          body: JSON.stringify({ login, password }),
         },
         false
       )
@@ -207,7 +214,7 @@ const LineupPortal: React.FC = () => {
     setMatchesLoading(true)
     setPortalError(null)
     try {
-    const data = await apiRequest<LineupMatch[]>('/api/lineup-portal/matches')
+      const data = await apiRequest<LineupMatch[]>('/api/lineup-portal/matches')
       setMatches(data)
       if (!data.length) {
         setPortalMessage('В ближайшие сутки матчей не найдено. Проверьте позже.')
@@ -264,7 +271,7 @@ const LineupPortal: React.FC = () => {
         setRoster(data)
         const selectedMap: Record<number, boolean> = {}
         const numbersMap: Record<number, string> = {}
-        data.forEach((entry) => {
+        data.forEach(entry => {
           selectedMap[entry.personId] = entry.disqualification ? false : entry.selected
           numbersMap[entry.personId] = String(entry.shirtNumber ?? '')
         })
@@ -289,7 +296,7 @@ const LineupPortal: React.FC = () => {
 
   const handlePlayerToggle = (personId: number) => {
     if (saving) return
-    const entry = roster.find((item) => item.personId === personId)
+    const entry = roster.find(item => item.personId === personId)
     if (!entry) return
 
     if (entry.disqualification) {
@@ -304,8 +311,11 @@ const LineupPortal: React.FC = () => {
       return
     }
 
-    setModalError((previous) => (previous && previous.includes('пропускает матч') ? null : previous))
-    setSelectedPlayers((prev: Record<number, boolean>) => ({ ...prev, [personId]: !prev[personId] }))
+    setModalError(previous => (previous && previous.includes('пропускает матч') ? null : previous))
+    setSelectedPlayers((prev: Record<number, boolean>) => ({
+      ...prev,
+      [personId]: !prev[personId],
+    }))
   }
 
   const updateShirtNumber = (personId: number, value: string) => {
@@ -319,9 +329,9 @@ const LineupPortal: React.FC = () => {
       if (entry.disqualification) return false
       return selectedPlayers[entry.personId]
     })
-    const payloadIds = selectedEntries.map((entry) => entry.personId)
+    const payloadIds = selectedEntries.map(entry => entry.personId)
 
-    const missingNumber = selectedEntries.some((entry) => {
+    const missingNumber = selectedEntries.some(entry => {
       const raw = shirtNumbers[entry.personId]
       return !raw || raw.trim() === ''
     })
@@ -331,14 +341,19 @@ const LineupPortal: React.FC = () => {
       return
     }
 
-    const numberAssignments: Array<{ personId: number; shirtNumber: number }> = selectedEntries.map((entry) => ({
-      personId: entry.personId,
-      shirtNumber: Number(shirtNumbers[entry.personId])
-    }))
+    const numberAssignments: Array<{ personId: number; shirtNumber: number }> = selectedEntries.map(
+      entry => ({
+        personId: entry.personId,
+        shirtNumber: Number(shirtNumbers[entry.personId]),
+      })
+    )
 
     const hasInvalidNumber = numberAssignments.some(
       ({ shirtNumber }) =>
-        !Number.isFinite(shirtNumber) || !Number.isInteger(shirtNumber) || shirtNumber <= 0 || shirtNumber > 999
+        !Number.isFinite(shirtNumber) ||
+        !Number.isInteger(shirtNumber) ||
+        shirtNumber <= 0 ||
+        shirtNumber > 999
     )
 
     if (hasInvalidNumber) {
@@ -356,15 +371,22 @@ const LineupPortal: React.FC = () => {
     setPortalError(null)
     setModalError(null)
     try {
-  await apiRequest<{ ok: true }>(`/api/lineup-portal/matches/${activeMatch.id}/roster`, {
+      await apiRequest<{ ok: true }>(`/api/lineup-portal/matches/${activeMatch.id}/roster`, {
         method: 'PUT',
-        body: JSON.stringify({ clubId: activeClubId, personIds: payloadIds, numbers: numberAssignments })
+        body: JSON.stringify({
+          clubId: activeClubId,
+          personIds: payloadIds,
+          numbers: numberAssignments,
+        }),
       })
-    const clubName = activeMatch.homeClub.id === activeClubId ? activeMatch.homeClub.name : activeMatch.awayClub.name
-    setSaveSuccess({ 
-      message: `Состав сохранён. В заявке: ${formatPlayersCount(payloadIds.length)}.`,
-      clubName
-    })
+      const clubName =
+        activeMatch.homeClub.id === activeClubId
+          ? activeMatch.homeClub.name
+          : activeMatch.awayClub.name
+      setSaveSuccess({
+        message: `Состав сохранён. В заявке: ${formatPlayersCount(payloadIds.length)}.`,
+        clubName,
+      })
       closeModal()
       if (typeof window !== 'undefined') {
         window.requestAnimationFrame(() => {
@@ -389,19 +411,27 @@ const LineupPortal: React.FC = () => {
     <form className="portal-form" onSubmit={handleLogin}>
       <label>
         Логин
-        <input value={login} onChange={(event) => setLogin(event.target.value)} placeholder="например, captain01" />
+        <input
+          value={login}
+          onChange={event => setLogin(event.target.value)}
+          placeholder="например, captain01"
+        />
       </label>
       <label>
         Пароль
         <input
           type="password"
           value={password}
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={event => setPassword(event.target.value)}
           placeholder="получите у администратора"
         />
       </label>
-      <button type="submit" className="portal-primary">Войти</button>
-      <p className="portal-hint">Доступ получают капитаны команд. После авторизации выберите матч в ближайшие сутки.</p>
+      <button type="submit" className="portal-primary">
+        Войти
+      </button>
+      <p className="portal-hint">
+        Доступ получают капитаны команд. После авторизации выберите матч в ближайшие сутки.
+      </p>
     </form>
   )
 
@@ -410,13 +440,18 @@ const LineupPortal: React.FC = () => {
       <aside className="portal-card">
         <header className="portal-card-header">
           <h2>Ближайшие матчи</h2>
-          <button type="button" className="portal-ghost" onClick={() => void fetchMatches()} disabled={matchesLoading}>
+          <button
+            type="button"
+            className="portal-ghost"
+            onClick={() => void fetchMatches()}
+            disabled={matchesLoading}
+          >
             {matchesLoading ? 'Обновляем…' : 'Обновить'}
           </button>
         </header>
         <p className="portal-sub">Отображаются игры в ближайшие 24 часа.</p>
         <ul className="portal-match-list">
-          {matches.map((match) => {
+          {matches.map(match => {
             const title = `${match.homeClub.name} vs ${match.awayClub.name}`
             const roundLabel = match.round?.label ? match.round.label : 'Без стадии'
             return (
@@ -425,13 +460,24 @@ const LineupPortal: React.FC = () => {
                   <span className="match-date">{formatKickoff(match.matchDateTime)}</span>
                   <span className="match-round">{roundLabel}</span>
                   <span className="match-opponent">{title}</span>
-                  <span className="match-venue">Статус: {match.status === 'SCHEDULED' ? 'Запланирован' : match.status === 'LIVE' ? 'В игре' : match.status === 'FINISHED' ? 'Завершён' : 'Перенесён'}</span>
+                  <span className="match-venue">
+                    Статус:{' '}
+                    {match.status === 'SCHEDULED'
+                      ? 'Запланирован'
+                      : match.status === 'LIVE'
+                        ? 'В игре'
+                        : match.status === 'FINISHED'
+                          ? 'Завершён'
+                          : 'Перенесён'}
+                  </span>
                 </button>
               </li>
             )
           })}
         </ul>
-        {matches.length === 0 ? <p className="portal-hint">Нет матчей, требующих подтверждения состава.</p> : null}
+        {matches.length === 0 ? (
+          <p className="portal-hint">Нет матчей, требующих подтверждения состава.</p>
+        ) : null}
       </aside>
 
       <section className="portal-card">
@@ -444,10 +490,19 @@ const LineupPortal: React.FC = () => {
         <ol className="portal-steps">
           <li>Выберите матч из списка слева. Доступны игры, которые начнутся в ближайшие сутки.</li>
           <li>В появившемся окне выберите свою команду (дом или гости).</li>
-          <li>Отметьте галочками игроков, которые выйдут на поле. Можно отмечать и снимать отметки до свистка.</li>
-          <li>Сохраните изменения — игрокам сразу зачтётся +1 игра, а матч появится в админке с подтверждённым составом.</li>
+          <li>
+            Отметьте галочками игроков, которые выйдут на поле. Можно отмечать и снимать отметки до
+            свистка.
+          </li>
+          <li>
+            Сохраните изменения — игрокам сразу зачтётся +1 игра, а матч появится в админке с
+            подтверждённым составом.
+          </li>
         </ol>
-        <p className="portal-hint">Если состав меняется в последний момент, откройте матч снова и обновите список перед стартом.</p>
+        <p className="portal-hint">
+          Если состав меняется в последний момент, откройте матч снова и обновите список перед
+          стартом.
+        </p>
       </section>
     </div>
   )
@@ -463,9 +518,17 @@ const LineupPortal: React.FC = () => {
           <header className="portal-modal-header">
             <div>
               <h3>Подтверждение состава</h3>
-              <p>{formatKickoff(activeMatch.matchDateTime)} · {activeMatch.homeClub.name} vs {activeMatch.awayClub.name}</p>
+              <p>
+                {formatKickoff(activeMatch.matchDateTime)} · {activeMatch.homeClub.name} vs{' '}
+                {activeMatch.awayClub.name}
+              </p>
             </div>
-            <button type="button" className="portal-ghost" onClick={closeModal} aria-label="Закрыть окно">
+            <button
+              type="button"
+              className="portal-ghost"
+              onClick={closeModal}
+              aria-label="Закрыть окно"
+            >
               Закрыть
             </button>
           </header>
@@ -491,7 +554,7 @@ const LineupPortal: React.FC = () => {
             {modalError ? <div className="portal-feedback error in-modal">{modalError}</div> : null}
             {rosterLoading ? <p className="portal-hint">Загружаем заявку клуба…</p> : null}
             <div className="portal-roster-grid">
-              {roster.map((entry) => {
+              {roster.map(entry => {
                 const checked = Boolean(selectedPlayers[entry.personId])
                 const surname = `${entry.person.lastName} ${entry.person.firstName}`.trim()
                 const disqualified = Boolean(entry.disqualification)
@@ -507,7 +570,7 @@ const LineupPortal: React.FC = () => {
                         type="number"
                         className="player-number-input"
                         value={shirtNumbers[entry.personId] ?? ''}
-                        onChange={(event) => updateShirtNumber(entry.personId, event.target.value)}
+                        onChange={event => updateShirtNumber(entry.personId, event.target.value)}
                         min={1}
                         max={999}
                         inputMode="numeric"
@@ -532,7 +595,8 @@ const LineupPortal: React.FC = () => {
                         <span className="player-name">{surname}</span>
                         {disqualified && reasonLabel ? (
                           <span className="player-badge">
-                            {reasonLabel} · осталось {formatMatchesRemaining(entry.disqualification!.matchesRemaining)}
+                            {reasonLabel} · осталось{' '}
+                            {formatMatchesRemaining(entry.disqualification!.matchesRemaining)}
                           </span>
                         ) : null}
                       </span>
@@ -542,7 +606,9 @@ const LineupPortal: React.FC = () => {
               })}
             </div>
             <footer className="portal-actions">
-              <span>Отмечено: {selectedCount} из {roster.length}</span>
+              <span>
+                Отмечено: {selectedCount} из {roster.length}
+              </span>
               <button type="submit" className="portal-primary" disabled={saving}>
                 {saving ? 'Сохраняем…' : `Сохранить состав (${selectedCount})`}
               </button>
@@ -560,7 +626,10 @@ const LineupPortal: React.FC = () => {
         <header className="portal-header">
           <div>
             <h1>Протокол матча</h1>
-            <p>Подтвердите состав, чтобы участникам сразу засчиталась игра и админ получил готовую заявку.</p>
+            <p>
+              Подтвердите состав, чтобы участникам сразу засчиталась игра и админ получил готовую
+              заявку.
+            </p>
           </div>
           <span className="portal-badge">β</span>
         </header>
@@ -570,8 +639,8 @@ const LineupPortal: React.FC = () => {
         {saveSuccess ? (
           <div className="portal-feedback success">
             <strong>{saveSuccess.clubName}:</strong> {saveSuccess.message}
-            <button 
-              type="button" 
+            <button
+              type="button"
               className="feedback-close"
               onClick={() => setSaveSuccess(null)}
               aria-label="Закрыть сообщение"

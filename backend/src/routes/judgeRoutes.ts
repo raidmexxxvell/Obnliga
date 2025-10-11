@@ -14,7 +14,7 @@ import {
   ensureMatchForJudge,
   loadMatchEventsWithRoster,
   loadMatchLineupWithNumbers,
-  updateMatchEvent
+  updateMatchEvent,
 } from './matchModerationHelpers'
 
 interface JudgeJwtPayload {
@@ -29,18 +29,21 @@ declare module 'fastify' {
 }
 
 const getJudgeSecret = () =>
-  process.env.JUDGE_JWT_SECRET || process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'judge-portal-secret'
+  process.env.JUDGE_JWT_SECRET ||
+  process.env.JWT_SECRET ||
+  process.env.TELEGRAM_BOT_TOKEN ||
+  'judge-portal-secret'
 
 const getJudgeCredentials = () => ({
   login: process.env.SUDIA_LOGIN || process.env.JUDGE_LOGIN || 'SUDIA',
-  password: process.env.SUDIA_PASSWORD || process.env.JUDGE_PASSWORD || 'SUDIA'
+  password: process.env.SUDIA_PASSWORD || process.env.JUDGE_PASSWORD || 'SUDIA',
 })
 
 const issueJudgeToken = (payload: JudgeJwtPayload) =>
   jwt.sign(payload, getJudgeSecret(), {
     expiresIn: '12h',
     issuer: 'obnliga-backend',
-    audience: 'judge-panel'
+    audience: 'judge-panel',
   })
 
 const verifyJudgeToken = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -102,7 +105,7 @@ export default async function judgeRoutes(server: FastifyInstance) {
   })
 
   server.register(
-    async (judge) => {
+    async judge => {
       judge.addHook('onRequest', verifyJudgeToken)
 
       judge.get('/me', async (request, reply) => {
@@ -117,24 +120,24 @@ export default async function judgeRoutes(server: FastifyInstance) {
           where: {
             matchDateTime: {
               gte: windowStart,
-              lte: now
+              lte: now,
             },
             status: {
-              in: [MatchStatus.LIVE, MatchStatus.FINISHED]
-            }
+              in: [MatchStatus.LIVE, MatchStatus.FINISHED],
+            },
           },
           orderBy: { matchDateTime: 'desc' },
           include: {
             season: {
-              select: { id: true, name: true }
+              select: { id: true, name: true },
             },
             round: true,
             homeClub: true,
-            awayClub: true
-          }
+            awayClub: true,
+          },
         })
 
-        const payload = matches.map((match) => ({
+        const payload = matches.map(match => ({
           id: match.id.toString(),
           seasonId: match.seasonId,
           matchDateTime: match.matchDateTime.toISOString(),
@@ -150,21 +153,21 @@ export default async function judgeRoutes(server: FastifyInstance) {
                 id: match.round.id,
                 roundType: match.round.roundType,
                 roundNumber: match.round.roundNumber,
-                label: match.round.label
+                label: match.round.label,
               }
             : null,
           homeClub: {
             id: match.homeClub.id,
             name: match.homeClub.name,
             shortName: match.homeClub.shortName,
-            logoUrl: match.homeClub.logoUrl
+            logoUrl: match.homeClub.logoUrl,
           },
           awayClub: {
             id: match.awayClub.id,
             name: match.awayClub.name,
             shortName: match.awayClub.shortName,
-            logoUrl: match.awayClub.logoUrl
-          }
+            logoUrl: match.awayClub.logoUrl,
+          },
         }))
 
         return reply.send({ ok: true, data: serializePrisma(payload) })
@@ -242,7 +245,7 @@ export default async function judgeRoutes(server: FastifyInstance) {
             teamId: parseNumericId(body.teamId, 'teamId'),
             minute: parseNumericId(body.minute, 'minute'),
             eventType: body.eventType,
-            relatedPlayerId: body.relatedPlayerId ?? null
+            relatedPlayerId: body.relatedPlayerId ?? null,
           })
 
           if (created.statAdjusted) {
@@ -286,7 +289,7 @@ export default async function judgeRoutes(server: FastifyInstance) {
             eventType: body.eventType,
             teamId: body.teamId,
             playerId: body.playerId,
-            relatedPlayerId: body.relatedPlayerId
+            relatedPlayerId: body.relatedPlayerId,
           })
 
           if (updated.statAdjusted) {
@@ -299,7 +302,10 @@ export default async function judgeRoutes(server: FastifyInstance) {
           if (err instanceof RequestError) {
             return reply.status(err.statusCode).send({ ok: false, error: err.message })
           }
-          request.log.error({ err, matchId: matchId.toString(), eventId: eventId.toString() }, 'judge update event failed')
+          request.log.error(
+            { err, matchId: matchId.toString(), eventId: eventId.toString() },
+            'judge update event failed'
+          )
           return reply.status(500).send({ ok: false, error: 'event_update_failed' })
         }
       })
@@ -328,7 +334,10 @@ export default async function judgeRoutes(server: FastifyInstance) {
           if (err instanceof RequestError) {
             return reply.status(err.statusCode).send({ ok: false, error: err.message })
           }
-          request.log.error({ err, matchId: matchId.toString(), eventId: eventId.toString() }, 'judge delete event failed')
+          request.log.error(
+            { err, matchId: matchId.toString(), eventId: eventId.toString() },
+            'judge delete event failed'
+          )
           return reply.status(500).send({ ok: false, error: 'event_delete_failed' })
         }
       })
@@ -356,14 +365,18 @@ export default async function judgeRoutes(server: FastifyInstance) {
         const nextHomeScore = normalizeScore(body.homeScore, match.homeScore)
         const nextAwayScore = normalizeScore(body.awayScore, match.awayScore)
 
-        let hasPenalty = typeof body.hasPenaltyShootout === 'boolean' ? body.hasPenaltyShootout : match.hasPenaltyShootout
+        const hasPenalty =
+          typeof body.hasPenaltyShootout === 'boolean'
+            ? body.hasPenaltyShootout
+            : match.hasPenaltyShootout
         let penaltyHomeScore = match.penaltyHomeScore ?? 0
         let penaltyAwayScore = match.penaltyAwayScore ?? 0
 
         const competition = match.season?.competition
         const isBestOfSeries =
           competition?.type === CompetitionType.LEAGUE &&
-          (competition.seriesFormat === SeriesFormat.BEST_OF_N || competition.seriesFormat === SeriesFormat.DOUBLE_ROUND_PLAYOFF)
+          (competition.seriesFormat === SeriesFormat.BEST_OF_N ||
+            competition.seriesFormat === SeriesFormat.DOUBLE_ROUND_PLAYOFF)
 
         if (hasPenalty) {
           if (!match.seriesId || !isBestOfSeries) {
@@ -400,8 +413,8 @@ export default async function judgeRoutes(server: FastifyInstance) {
               awayScore: nextAwayScore,
               hasPenaltyShootout: hasPenalty,
               penaltyHomeScore,
-              penaltyAwayScore
-            }
+              penaltyAwayScore,
+            },
           })
 
           await handleMatchFinalization(matchId, request.server.log)

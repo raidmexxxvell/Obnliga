@@ -4,7 +4,7 @@ import type {
   MatchLineupEntry,
   MatchStatisticEntry,
   MatchStatisticMetric,
-  MatchSummary
+  MatchSummary,
 } from '../types'
 import { translateAdminError } from './adminClient'
 
@@ -27,13 +27,16 @@ const ensureToken = (token?: string): string => {
 
 const mapError = (value?: string) => translateAdminError(value)
 
-export const assistantLogin = async (login: string, password: string): Promise<AssistantLoginResponse> => {
+export const assistantLogin = async (
+  login: string,
+  password: string
+): Promise<AssistantLoginResponse> => {
   const response = await fetch(`${API_BASE}/api/assistant/login`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ login, password })
+    body: JSON.stringify({ login, password }),
   })
 
   const payload = (await response.json().catch(() => ({}))) as AssistantLoginResponse
@@ -42,14 +45,14 @@ export const assistantLogin = async (login: string, password: string): Promise<A
     return {
       ok: false,
       error: mapError(payload.errorCode || payload.error || 'invalid_credentials'),
-      errorCode: payload.errorCode || payload.error || 'invalid_credentials'
+      errorCode: payload.errorCode || payload.error || 'invalid_credentials',
     }
   }
 
   return {
     ok: true,
     token: payload.token,
-    expiresIn: payload.expiresIn
+    expiresIn: payload.expiresIn,
   }
 }
 
@@ -62,21 +65,27 @@ interface AssistantResponseEnvelope<T> {
   }
 }
 
-const assistantRequest = async <T>(token: string | undefined, path: string, init: RequestInit = {}): Promise<AssistantResponseEnvelope<T>> => {
+const assistantRequest = async <T>(
+  token: string | undefined,
+  path: string,
+  init: RequestInit = {}
+): Promise<AssistantResponseEnvelope<T>> => {
   const safeToken = ensureToken(token)
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${safeToken}`,
-      ...(init.headers || {})
-    }
+      ...(init.headers || {}),
+    },
   })
 
   const raw = await response.text()
   let payload: AssistantResponseEnvelope<T>
   try {
-    payload = raw ? (JSON.parse(raw) as AssistantResponseEnvelope<T>) : ({ ok: response.ok } as AssistantResponseEnvelope<T>)
+    payload = raw
+      ? (JSON.parse(raw) as AssistantResponseEnvelope<T>)
+      : ({ ok: response.ok } as AssistantResponseEnvelope<T>)
   } catch (err) {
     payload = { ok: response.ok }
   }
@@ -96,18 +105,38 @@ const assistantRequest = async <T>(token: string | undefined, path: string, init
   return payload
 }
 
-export const fetchAssistantMatches = async (token: string | undefined): Promise<AssistantMatchSummary[]> => {
-  const { data } = await assistantRequest<AssistantMatchSummary[]>(token, '/api/assistant/matches', { method: 'GET' })
+export const fetchAssistantMatches = async (
+  token: string | undefined
+): Promise<AssistantMatchSummary[]> => {
+  const { data } = await assistantRequest<AssistantMatchSummary[]>(
+    token,
+    '/api/assistant/matches',
+    { method: 'GET' }
+  )
   return data ?? []
 }
 
-export const fetchAssistantEvents = async (token: string | undefined, matchId: string): Promise<MatchEventEntry[]> => {
-  const { data } = await assistantRequest<MatchEventEntry[]>(token, `/api/assistant/matches/${matchId}/events`, { method: 'GET' })
+export const fetchAssistantEvents = async (
+  token: string | undefined,
+  matchId: string
+): Promise<MatchEventEntry[]> => {
+  const { data } = await assistantRequest<MatchEventEntry[]>(
+    token,
+    `/api/assistant/matches/${matchId}/events`,
+    { method: 'GET' }
+  )
   return data ?? []
 }
 
-export const fetchAssistantLineup = async (token: string | undefined, matchId: string): Promise<MatchLineupEntry[]> => {
-  const { data } = await assistantRequest<MatchLineupEntry[]>(token, `/api/assistant/matches/${matchId}/lineup`, { method: 'GET' })
+export const fetchAssistantLineup = async (
+  token: string | undefined,
+  matchId: string
+): Promise<MatchLineupEntry[]> => {
+  const { data } = await assistantRequest<MatchLineupEntry[]>(
+    token,
+    `/api/assistant/matches/${matchId}/lineup`,
+    { method: 'GET' }
+  )
   return data ?? []
 }
 
@@ -124,10 +153,14 @@ export const assistantCreateEvent = async (
   matchId: string,
   payload: AssistantEventPayload
 ): Promise<MatchEventEntry> => {
-  const { data } = await assistantRequest<MatchEventEntry>(token, `/api/assistant/matches/${matchId}/events`, {
-    method: 'POST',
-    body: JSON.stringify(payload)
-  })
+  const { data } = await assistantRequest<MatchEventEntry>(
+    token,
+    `/api/assistant/matches/${matchId}/events`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  )
   if (!data) {
     throw new Error(mapError('event_create_failed'))
   }
@@ -140,18 +173,28 @@ export const assistantUpdateEvent = async (
   eventId: string,
   payload: Partial<AssistantEventPayload>
 ): Promise<MatchEventEntry> => {
-  const { data } = await assistantRequest<MatchEventEntry>(token, `/api/assistant/matches/${matchId}/events/${eventId}`, {
-    method: 'PUT',
-    body: JSON.stringify(payload)
-  })
+  const { data } = await assistantRequest<MatchEventEntry>(
+    token,
+    `/api/assistant/matches/${matchId}/events/${eventId}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }
+  )
   if (!data) {
     throw new Error(mapError('event_update_failed'))
   }
   return data
 }
 
-export const assistantDeleteEvent = async (token: string | undefined, matchId: string, eventId: string): Promise<void> => {
-  await assistantRequest(token, `/api/assistant/matches/${matchId}/events/${eventId}`, { method: 'DELETE' })
+export const assistantDeleteEvent = async (
+  token: string | undefined,
+  matchId: string,
+  eventId: string
+): Promise<void> => {
+  await assistantRequest(token, `/api/assistant/matches/${matchId}/events/${eventId}`, {
+    method: 'DELETE',
+  })
 }
 
 export interface AssistantScorePayload {
@@ -173,7 +216,10 @@ export interface AssistantScoreResult {
   penaltyAwayScore: number
 }
 
-const mapScoreResult = (match: Partial<MatchSummary> | undefined, fallbackId: string): AssistantScoreResult => {
+const mapScoreResult = (
+  match: Partial<MatchSummary> | undefined,
+  fallbackId: string
+): AssistantScoreResult => {
   return {
     id: String(match?.id ?? fallbackId),
     status:
@@ -186,7 +232,7 @@ const mapScoreResult = (match: Partial<MatchSummary> | undefined, fallbackId: st
     awayScore: match?.awayScore ?? 0,
     hasPenaltyShootout: Boolean(match?.hasPenaltyShootout),
     penaltyHomeScore: match?.penaltyHomeScore ?? 0,
-    penaltyAwayScore: match?.penaltyAwayScore ?? 0
+    penaltyAwayScore: match?.penaltyAwayScore ?? 0,
   }
 }
 
@@ -195,10 +241,14 @@ export const assistantUpdateScore = async (
   matchId: string,
   payload: AssistantScorePayload
 ): Promise<AssistantScoreResult> => {
-  const { data } = await assistantRequest<Partial<MatchSummary>>(token, `/api/assistant/matches/${matchId}/score`, {
-    method: 'PUT',
-    body: JSON.stringify(payload)
-  })
+  const { data } = await assistantRequest<Partial<MatchSummary>>(
+    token,
+    `/api/assistant/matches/${matchId}/score`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }
+  )
   return mapScoreResult(data, matchId)
 }
 
@@ -211,12 +261,16 @@ export const fetchAssistantStatistics = async (
   token: string | undefined,
   matchId: string
 ): Promise<AssistantStatisticsResponse> => {
-  const response = await assistantRequest<MatchStatisticEntry[]>(token, `/api/assistant/matches/${matchId}/statistics`, {
-    method: 'GET'
-  })
+  const response = await assistantRequest<MatchStatisticEntry[]>(
+    token,
+    `/api/assistant/matches/${matchId}/statistics`,
+    {
+      method: 'GET',
+    }
+  )
   return {
     entries: response.data ?? [],
-    version: response.meta?.version
+    version: response.meta?.version,
   }
 }
 
@@ -236,11 +290,11 @@ export const assistantAdjustStatistic = async (
     `/api/assistant/matches/${matchId}/statistics/adjust`,
     {
       method: 'POST',
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     }
   )
   return {
     entries: response.data ?? [],
-    version: response.meta?.version
+    version: response.meta?.version,
   }
 }

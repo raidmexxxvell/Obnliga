@@ -31,16 +31,19 @@ interface LineupRosterBody {
 type CredentialsGetter = () => { login: string; password: string }
 
 const getLineupSecret = () =>
-  process.env.LINEUP_JWT_SECRET || process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'lineup-portal-secret'
+  process.env.LINEUP_JWT_SECRET ||
+  process.env.JWT_SECRET ||
+  process.env.TELEGRAM_BOT_TOKEN ||
+  'lineup-portal-secret'
 
 const getLineupCredentials = () => ({
   login: process.env.LINEUP_LOGIN || 'captain',
-  password: process.env.LINEUP_PASSWORD || 'captain'
+  password: process.env.LINEUP_PASSWORD || 'captain',
 })
 
 const getLineupPortalCredentials = () => ({
   login: process.env.LINEUP_PORTAL_LOGIN || process.env.LINEUP_LOGIN || 'portal',
-  password: process.env.LINEUP_PORTAL_PASSWORD || process.env.LINEUP_PASSWORD || 'portal'
+  password: process.env.LINEUP_PORTAL_PASSWORD || process.env.LINEUP_PASSWORD || 'portal',
 })
 
 const verifyLineupToken = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -88,7 +91,7 @@ const adjustMatchesCounters = async (
 ) => {
   if (!delta) return
   const seasonStats = await tx.playerSeasonStats.findUnique({
-    where: { seasonId_personId: { seasonId, personId } }
+    where: { seasonId_personId: { seasonId, personId } },
   })
 
   const nextSeasonMatches = Math.max(0, (seasonStats?.matchesPlayed ?? 0) + delta)
@@ -104,8 +107,8 @@ const adjustMatchesCounters = async (
           assists: 0,
           yellowCards: 0,
           redCards: 0,
-          matchesPlayed: delta
-        }
+          matchesPlayed: delta,
+        },
       })
     }
   } else {
@@ -113,13 +116,13 @@ const adjustMatchesCounters = async (
       where: { seasonId_personId: { seasonId, personId } },
       data: {
         clubId,
-        matchesPlayed: nextSeasonMatches
-      }
+        matchesPlayed: nextSeasonMatches,
+      },
     })
   }
 
   const careerStats = await tx.playerClubCareerStats.findUnique({
-    where: { personId_clubId: { personId, clubId } }
+    where: { personId_clubId: { personId, clubId } },
   })
 
   const nextCareerMatches = Math.max(0, (careerStats?.totalMatches ?? 0) + delta)
@@ -134,21 +137,22 @@ const adjustMatchesCounters = async (
           totalAssists: 0,
           yellowCards: 0,
           redCards: 0,
-          totalMatches: delta
-        }
+          totalMatches: delta,
+        },
       })
     }
   } else {
     await tx.playerClubCareerStats.update({
       where: { personId_clubId: { personId, clubId } },
       data: {
-        totalMatches: nextCareerMatches
-      }
+        totalMatches: nextCareerMatches,
+      },
     })
   }
 }
 
-const sendSerialized = <T>(reply: FastifyReply, data: T) => reply.send({ ok: true, data: serializePrisma(data) })
+const sendSerialized = <T>(reply: FastifyReply, data: T) =>
+  reply.send({ ok: true, data: serializePrisma(data) })
 
 const registerLineupRouteGroup = (
   server: FastifyInstance,
@@ -162,8 +166,8 @@ const registerLineupRouteGroup = (
       endpoints: {
         login: `${basePath}/login`,
         matches: `${basePath}/matches`,
-        roster: `${basePath}/matches/:matchId/roster`
-      }
+        roster: `${basePath}/matches/:matchId/roster`,
+      },
     })
   }
 
@@ -182,68 +186,68 @@ const registerLineupRouteGroup = (
       return reply.status(401).send({ ok: false, error: 'invalid_credentials' })
     }
 
-    const token = jwt.sign({ sub: body.login, role: 'lineup' } satisfies LineupJwtPayload, getLineupSecret(), {
-      expiresIn: '24h'
-    })
+    const token = jwt.sign(
+      { sub: body.login, role: 'lineup' } satisfies LineupJwtPayload,
+      getLineupSecret(),
+      {
+        expiresIn: '24h',
+      }
+    )
 
     return reply.send({ ok: true, token })
   })
 
-  server.get(
-    `${basePath}/matches`,
-    { preHandler: verifyLineupToken },
-    async (request, reply) => {
-      const query = request.query as LineupMatchesQuery | undefined
-      const now = new Date()
-      const nextDay = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+  server.get(`${basePath}/matches`, { preHandler: verifyLineupToken }, async (request, reply) => {
+    const query = request.query as LineupMatchesQuery | undefined
+    const now = new Date()
+    const nextDay = new Date(now.getTime() + 24 * 60 * 60 * 1000)
 
-      const where: any = {
-        matchDateTime: {
-          gte: now,
-          lte: nextDay
-        },
-        status: { in: [MatchStatus.SCHEDULED, MatchStatus.LIVE] as MatchStatus[] }
-      }
-
-      if (query?.clubId) {
-        const clubId = parseNumericId(query.clubId, 'clubId')
-        where.OR = [{ homeTeamId: clubId }, { awayTeamId: clubId }]
-      }
-
-      const matches = await prisma.match.findMany({
-        where,
-        orderBy: { matchDateTime: 'asc' },
-        include: {
-          season: { select: { id: true, name: true } },
-          homeClub: true,
-          awayClub: true,
-          round: true
-        }
-      })
-
-      const response = matches.map((match) => ({
-        id: match.id.toString(),
-        matchDateTime: match.matchDateTime.toISOString(),
-        status: match.status,
-        season: match.season,
-        round: match.round,
-        homeClub: {
-          id: match.homeClub.id,
-          name: match.homeClub.name,
-          shortName: match.homeClub.shortName,
-          logoUrl: match.homeClub.logoUrl
-        },
-        awayClub: {
-          id: match.awayClub.id,
-          name: match.awayClub.name,
-          shortName: match.awayClub.shortName,
-          logoUrl: match.awayClub.logoUrl
-        }
-      }))
-
-      return sendSerialized(reply, response)
+    const where: any = {
+      matchDateTime: {
+        gte: now,
+        lte: nextDay,
+      },
+      status: { in: [MatchStatus.SCHEDULED, MatchStatus.LIVE] as MatchStatus[] },
     }
-  )
+
+    if (query?.clubId) {
+      const clubId = parseNumericId(query.clubId, 'clubId')
+      where.OR = [{ homeTeamId: clubId }, { awayTeamId: clubId }]
+    }
+
+    const matches = await prisma.match.findMany({
+      where,
+      orderBy: { matchDateTime: 'asc' },
+      include: {
+        season: { select: { id: true, name: true } },
+        homeClub: true,
+        awayClub: true,
+        round: true,
+      },
+    })
+
+    const response = matches.map(match => ({
+      id: match.id.toString(),
+      matchDateTime: match.matchDateTime.toISOString(),
+      status: match.status,
+      season: match.season,
+      round: match.round,
+      homeClub: {
+        id: match.homeClub.id,
+        name: match.homeClub.name,
+        shortName: match.homeClub.shortName,
+        logoUrl: match.homeClub.logoUrl,
+      },
+      awayClub: {
+        id: match.awayClub.id,
+        name: match.awayClub.name,
+        shortName: match.awayClub.shortName,
+        logoUrl: match.awayClub.logoUrl,
+      },
+    }))
+
+    return sendSerialized(reply, response)
+  })
 
   server.get(
     `${basePath}/matches/:matchId/roster`,
@@ -265,8 +269,8 @@ const registerLineupRouteGroup = (
           id: true,
           seasonId: true,
           homeTeamId: true,
-          awayTeamId: true
-        }
+          awayTeamId: true,
+        },
       })
 
       if (!match) {
@@ -285,25 +289,25 @@ const registerLineupRouteGroup = (
       const roster = await prisma.seasonRoster.findMany({
         where: { seasonId: match.seasonId, clubId },
         include: {
-          person: true
+          person: true,
         },
-        orderBy: [{ shirtNumber: 'asc' }, { person: { lastName: 'asc' } }]
+        orderBy: [{ shirtNumber: 'asc' }, { person: { lastName: 'asc' } }],
       })
 
       const lineup = await prisma.matchLineup.findMany({
         where: { matchId, clubId },
-        select: { personId: true }
+        select: { personId: true },
       })
 
-      const selectedIds = new Set(lineup.map((entry) => entry.personId))
+      const selectedIds = new Set(lineup.map(entry => entry.personId))
 
-      const rosterPersonIds = roster.map((entry) => entry.personId)
+      const rosterPersonIds = roster.map(entry => entry.personId)
       const activeDisqualifications = rosterPersonIds.length
         ? await prisma.disqualification.findMany({
             where: {
               isActive: true,
               personId: { in: rosterPersonIds },
-              OR: [{ clubId }, { clubId: null }]
+              OR: [{ clubId }, { clubId: null }],
             },
             select: {
               personId: true,
@@ -311,8 +315,8 @@ const registerLineupRouteGroup = (
               reason: true,
               sanctionDate: true,
               banDurationMatches: true,
-              matchesMissed: true
-            }
+              matchesMissed: true,
+            },
           })
         : []
 
@@ -334,7 +338,7 @@ const registerLineupRouteGroup = (
           sanctionDate: dq.sanctionDate,
           banDurationMatches: dq.banDurationMatches,
           matchesMissed: dq.matchesMissed,
-          matchesRemaining
+          matchesRemaining,
         }
 
         const existing = disqualificationMap.get(dq.personId)
@@ -343,12 +347,12 @@ const registerLineupRouteGroup = (
         }
       }
 
-      const response = roster.map((entry) => ({
+      const response = roster.map(entry => ({
         personId: entry.personId,
         person: {
           id: entry.person.id,
           firstName: entry.person.firstName,
-          lastName: entry.person.lastName
+          lastName: entry.person.lastName,
         },
         shirtNumber: entry.shirtNumber,
         selected: disqualificationMap.has(entry.personId) ? false : selectedIds.has(entry.personId),
@@ -358,9 +362,9 @@ const registerLineupRouteGroup = (
               sanctionDate: disqualificationMap.get(entry.personId)!.sanctionDate.toISOString(),
               banDurationMatches: disqualificationMap.get(entry.personId)!.banDurationMatches,
               matchesMissed: disqualificationMap.get(entry.personId)!.matchesMissed,
-              matchesRemaining: disqualificationMap.get(entry.personId)!.matchesRemaining
+              matchesRemaining: disqualificationMap.get(entry.personId)!.matchesRemaining,
             }
-          : null
+          : null,
       }))
 
       return sendSerialized(reply, response)
@@ -386,15 +390,17 @@ const registerLineupRouteGroup = (
       }
 
       const clubId = parseNumericId(body.clubId, 'clubId')
-      const personIds = Array.from(new Set(body.personIds.map((id) => parseNumericId(id, 'personId'))))
+      const personIds = Array.from(
+        new Set(body.personIds.map(id => parseNumericId(id, 'personId')))
+      )
 
       const match = await prisma.match.findUnique({
         where: { id: matchId },
         select: {
           seasonId: true,
           homeTeamId: true,
-          awayTeamId: true
-        }
+          awayTeamId: true,
+        },
       })
 
       if (!match) {
@@ -408,12 +414,12 @@ const registerLineupRouteGroup = (
       const clubRoster = await prisma.seasonRoster.findMany({
         where: {
           seasonId: match.seasonId,
-          clubId
+          clubId,
         },
         select: {
           personId: true,
-          shirtNumber: true
-        }
+          shirtNumber: true,
+        },
       })
 
       const rosterNumbers = new Map<number, number>()
@@ -421,7 +427,7 @@ const registerLineupRouteGroup = (
         rosterNumbers.set(entry.personId, entry.shirtNumber)
       }
 
-      if (!personIds.every((id) => rosterNumbers.has(id))) {
+      if (!personIds.every(id => rosterNumbers.has(id))) {
         return reply.status(400).send({ ok: false, error: 'persons_not_in_roster' })
       }
 
@@ -434,13 +440,20 @@ const registerLineupRouteGroup = (
         if (rawPersonId === undefined || rawShirtNumber === undefined) continue
         const parsedPersonId = parseNumericId(rawPersonId, 'personId')
         const parsedShirtNumber = Number(rawShirtNumber)
-        if (!Number.isFinite(parsedShirtNumber) || !Number.isInteger(parsedShirtNumber) || parsedShirtNumber <= 0) {
+        if (
+          !Number.isFinite(parsedShirtNumber) ||
+          !Number.isInteger(parsedShirtNumber) ||
+          parsedShirtNumber <= 0
+        ) {
           return reply.status(400).send({ ok: false, error: 'shirt_invalid' })
         }
         numberMap.set(parsedPersonId, parsedShirtNumber)
       }
 
-      const parsedNumbers = Array.from(numberMap.entries()).map(([personId, shirtNumber]) => ({ personId, shirtNumber }))
+      const parsedNumbers = Array.from(numberMap.entries()).map(([personId, shirtNumber]) => ({
+        personId,
+        shirtNumber,
+      }))
 
       for (const { personId } of parsedNumbers) {
         if (!rosterNumbers.has(personId)) {
@@ -459,47 +472,49 @@ const registerLineupRouteGroup = (
         return reply.status(400).send({ ok: false, error: 'duplicate_shirt_numbers' })
       }
 
-      const numbersToUpdate = parsedNumbers.filter(({ personId, shirtNumber }) => rosterNumbers.get(personId) !== shirtNumber)
+      const numbersToUpdate = parsedNumbers.filter(
+        ({ personId, shirtNumber }) => rosterNumbers.get(personId) !== shirtNumber
+      )
 
       const existingLineup = await prisma.matchLineup.findMany({
         where: { matchId, clubId },
-        select: { personId: true }
+        select: { personId: true },
       })
 
-      const existingIds = new Set(existingLineup.map((entry) => entry.personId))
+      const existingIds = new Set(existingLineup.map(entry => entry.personId))
 
-      const toAdd = personIds.filter((id) => !existingIds.has(id))
-      const toRemove = Array.from(existingIds).filter((id) => !personIds.includes(id))
+      const toAdd = personIds.filter(id => !existingIds.has(id))
+      const toRemove = Array.from(existingIds).filter(id => !personIds.includes(id))
 
       if (personIds.length) {
         const conflictingDisqualifications = await prisma.disqualification.findMany({
           where: {
             isActive: true,
             personId: { in: personIds },
-            OR: [{ clubId }, { clubId: null }]
+            OR: [{ clubId }, { clubId: null }],
           },
           select: {
             personId: true,
             reason: true,
             banDurationMatches: true,
-            matchesMissed: true
-          }
+            matchesMissed: true,
+          },
         })
 
         if (conflictingDisqualifications.length) {
           return reply.status(409).send({
             ok: false,
             error: 'player_disqualified',
-            data: conflictingDisqualifications.map((dq) => ({
+            data: conflictingDisqualifications.map(dq => ({
               personId: dq.personId,
               reason: dq.reason,
-              matchesRemaining: Math.max(0, dq.banDurationMatches - dq.matchesMissed)
-            }))
+              matchesRemaining: Math.max(0, dq.banDurationMatches - dq.matchesMissed),
+            })),
           })
         }
       }
 
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async tx => {
         if (numbersToUpdate.length) {
           let tempIndex = 0
           for (const { personId } of numbersToUpdate) {
@@ -509,10 +524,10 @@ const registerLineupRouteGroup = (
                 seasonId_clubId_personId: {
                   seasonId: match.seasonId,
                   clubId,
-                  personId
-                }
+                  personId,
+                },
               },
-              data: { shirtNumber: tempNumber }
+              data: { shirtNumber: tempNumber },
             })
           }
 
@@ -522,10 +537,10 @@ const registerLineupRouteGroup = (
                 seasonId_clubId_personId: {
                   seasonId: match.seasonId,
                   clubId,
-                  personId
-                }
+                  personId,
+                },
               },
-              data: { shirtNumber }
+              data: { shirtNumber },
             })
           }
         }
@@ -535,8 +550,8 @@ const registerLineupRouteGroup = (
             where: {
               matchId,
               clubId,
-              personId: { in: toRemove }
-            }
+              personId: { in: toRemove },
+            },
           })
         }
 
@@ -549,13 +564,13 @@ const registerLineupRouteGroup = (
                 personId,
                 clubId,
                 role: LineupRole.STARTER,
-                position: null
+                position: null,
               },
               update: {
                 clubId,
                 role: LineupRole.STARTER,
-                position: null
-              }
+                position: null,
+              },
             })
           }
         }

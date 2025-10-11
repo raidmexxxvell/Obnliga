@@ -7,7 +7,7 @@ const defaultFormState = {
   title: '',
   content: '',
   coverUrl: '',
-  sendToTelegram: true
+  sendToTelegram: true,
 }
 
 type FeedbackKind = 'success' | 'error'
@@ -24,7 +24,7 @@ const formatDate = (iso: string) => {
       day: '2-digit',
       month: 'long',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     })
   } catch (err) {
     return iso
@@ -50,8 +50,8 @@ export const NewsTab = () => {
     loading,
     error,
     clearError,
-    newsVersion
-  } = useAdminStore((state) => ({
+    newsVersion,
+  } = useAdminStore(state => ({
     token: state.token,
     data: state.data,
     fetchNews: state.fetchNews,
@@ -61,7 +61,7 @@ export const NewsTab = () => {
     loading: state.loading,
     error: state.error,
     clearError: state.clearError,
-    newsVersion: state.newsVersion
+    newsVersion: state.newsVersion,
   }))
 
   const [form, setForm] = useState(defaultFormState)
@@ -108,8 +108,16 @@ export const NewsTab = () => {
     if (editTarget) {
       const targetCover = (editTarget.coverUrl ?? '').trim()
       const sameTelegramFlag = Boolean(editTarget.sendToTelegram) === form.sendToTelegram
-      if (title === editTarget.title && content === editTarget.content && cover === targetCover && sameTelegramFlag) {
-        setFeedback({ kind: 'error', message: 'Изменений не обнаружено — сохранение не требуется.' })
+      if (
+        title === editTarget.title &&
+        content === editTarget.content &&
+        cover === targetCover &&
+        sameTelegramFlag
+      ) {
+        setFeedback({
+          kind: 'error',
+          message: 'Изменений не обнаружено — сохранение не требуется.',
+        })
         return
       }
     }
@@ -117,29 +125,32 @@ export const NewsTab = () => {
     setSubmitting(true)
     setFeedback(null)
     try {
-
       if (editTarget) {
         const payload = {
           title,
           content,
           coverUrl: cover ? cover : null,
-          sendToTelegram: form.sendToTelegram
+          sendToTelegram: form.sendToTelegram,
         }
 
-        const updated = await adminPatch<NewsItem>(token, `/api/admin/news/${editTarget.id}`, payload)
+        const updated = await adminPatch<NewsItem>(
+          token,
+          `/api/admin/news/${editTarget.id}`,
+          payload
+        )
         updateNews(updated)
         resetForm()
         setFeedback({
           kind: 'success',
           message: 'Новость обновлена',
-          meta: `ID: ${updated.id}`
+          meta: `ID: ${updated.id}`,
         })
       } else {
         const payload = {
           title,
           content,
           coverUrl: cover ? cover : undefined,
-          sendToTelegram: form.sendToTelegram
+          sendToTelegram: form.sendToTelegram,
         }
 
         const created = await adminPost<NewsItem>(token, '/api/admin/news', payload)
@@ -148,7 +159,7 @@ export const NewsTab = () => {
         setFeedback({
           kind: 'success',
           message: 'Новость опубликована',
-          meta: `ID: ${created.id}${created.sendToTelegram ? ' • Telegram задача поставлена' : ''}`
+          meta: `ID: ${created.id}${created.sendToTelegram ? ' • Telegram задача поставлена' : ''}`,
         })
       }
     } catch (err) {
@@ -169,7 +180,7 @@ export const NewsTab = () => {
       title: item.title,
       content: item.content,
       coverUrl: item.coverUrl ?? '',
-      sendToTelegram: Boolean(item.sendToTelegram)
+      sendToTelegram: Boolean(item.sendToTelegram),
     })
     setFeedback(null)
   }
@@ -183,7 +194,10 @@ export const NewsTab = () => {
       setFeedback({ kind: 'error', message: 'Нет токена администратора. Войдите заново.' })
       return
     }
-    const confirmed = typeof window !== 'undefined' ? window.confirm('Удалить новость без возможности восстановления?') : true
+    const confirmed =
+      typeof window !== 'undefined'
+        ? window.confirm('Удалить новость без возможности восстановления?')
+        : true
     if (!confirmed) {
       return
     }
@@ -198,7 +212,7 @@ export const NewsTab = () => {
       setFeedback({
         kind: 'success',
         message: 'Новость удалена',
-        meta: `ID: ${deleted.id}`
+        meta: `ID: ${deleted.id}`,
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Не удалось удалить новость'
@@ -216,7 +230,12 @@ export const NewsTab = () => {
           <p>Публикуйте обновления и отправляйте их пользователям в Telegram.</p>
         </div>
         <div className="tab-header-actions">
-          <button className="button-ghost" type="button" disabled={isLoading} onClick={handleRefresh}>
+          <button
+            className="button-ghost"
+            type="button"
+            disabled={isLoading}
+            onClick={handleRefresh}
+          >
             {isLoading ? 'Обновляем…' : 'Обновить ленту'}
           </button>
           {newsVersion !== undefined ? (
@@ -268,7 +287,7 @@ export const NewsTab = () => {
               required
               placeholder="Например, Итоги 5 тура"
               value={form.title}
-              onChange={(event) => setForm((state) => ({ ...state, title: event.target.value }))}
+              onChange={event => setForm(state => ({ ...state, title: event.target.value }))}
             />
           </label>
           <label>
@@ -279,7 +298,7 @@ export const NewsTab = () => {
               rows={8}
               placeholder="Длинное описание, поддерживаются переводы строк"
               value={form.content}
-              onChange={(event) => setForm((state) => ({ ...state, content: event.target.value }))}
+              onChange={event => setForm(state => ({ ...state, content: event.target.value }))}
             />
           </label>
           <label>
@@ -289,23 +308,36 @@ export const NewsTab = () => {
               type="url"
               placeholder="https://liga.ru/images/news.jpg"
               value={form.coverUrl}
-              onChange={(event) => setForm((state) => ({ ...state, coverUrl: event.target.value }))}
+              onChange={event => setForm(state => ({ ...state, coverUrl: event.target.value }))}
             />
           </label>
           <label className="checkbox-inline">
             <input
               type="checkbox"
               checked={form.sendToTelegram}
-              onChange={(event) => setForm((state) => ({ ...state, sendToTelegram: event.target.checked }))}
+              onChange={event =>
+                setForm(state => ({ ...state, sendToTelegram: event.target.checked }))
+              }
             />
             <span>Отправить в Telegram бота</span>
           </label>
           <div className="form-actions">
             <button className="button-primary" type="submit" disabled={submitting}>
-              {submitting ? (isEditing ? 'Сохраняем…' : 'Публикуем…') : isEditing ? 'Сохранить' : 'Опубликовать'}
+              {submitting
+                ? isEditing
+                  ? 'Сохраняем…'
+                  : 'Публикуем…'
+                : isEditing
+                  ? 'Сохранить'
+                  : 'Опубликовать'}
             </button>
             {isEditing ? (
-              <button className="button-secondary" type="button" onClick={handleCancelEdit} disabled={submitting}>
+              <button
+                className="button-secondary"
+                type="button"
+                onClick={handleCancelEdit}
+                disabled={submitting}
+              >
                 Отменить
               </button>
             ) : null}
@@ -320,7 +352,7 @@ export const NewsTab = () => {
         </header>
         {latestNews.length ? (
           <ul className="news-preview-list">
-            {latestNews.map((item) => (
+            {latestNews.map(item => (
               <li
                 key={item.id}
                 className={`news-preview-item${editTarget && editTarget.id === item.id ? ' editing' : ''}`}
@@ -336,7 +368,12 @@ export const NewsTab = () => {
                   </span>
                   <div className="news-preview-actions">
                     {item.coverUrl ? (
-                      <a href={item.coverUrl} target="_blank" rel="noreferrer" className="news-link">
+                      <a
+                        href={item.coverUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="news-link"
+                      >
                         Обложка
                       </a>
                     ) : null}

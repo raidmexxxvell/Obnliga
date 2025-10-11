@@ -8,7 +8,7 @@ import type {
   PlayoffCreationResult,
   SeasonAutomationResult,
   SeriesFormat,
-  Person
+  Person,
 } from '../types'
 import type { NewsItem } from '@shared/types'
 
@@ -104,8 +104,10 @@ const ERROR_DICTIONARY: Record<string, string> = {
   no_names_provided: 'Список имён пуст.',
   not_enough_pairs: 'Недостаточно команд для формирования плей-офф.',
   not_enough_participants: 'Недостаточно участников.',
-  penalty_shootout_not_available: 'Серия пенальти доступна только для матчей плей-офф с форматом до двух побед.',
-  penalty_requires_draw: 'Включить серию пенальти можно только при ничейном счёте в основное время.',
+  penalty_shootout_not_available:
+    'Серия пенальти доступна только для матчей плей-офф с форматом до двух побед.',
+  penalty_requires_draw:
+    'Включить серию пенальти можно только при ничейном счёте в основное время.',
   penalty_scores_invalid: 'Счёт серии пенальти должен быть неотрицательным числом.',
   penalty_scores_required: 'Укажите победителя серии пенальти (счёт не может быть равным).',
   participant_exists_or_invalid: 'Участник уже добавлен или указан неверно.',
@@ -138,10 +140,14 @@ const ERROR_DICTIONARY: Record<string, string> = {
   update_failed: 'Не удалось сохранить изменения.',
   userid_required: 'Укажите пользователя.',
   status_update_invalid: 'Некорректный статус матча.',
-  status_transition_invalid: 'Такой переход статуса невозможен.'
+  status_transition_invalid: 'Такой переход статуса невозможен.',
 }
 
-const normalizeErrorKey = (value: string): string => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_')
+const normalizeErrorKey = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
 
 const containsCyrillic = (value: string): boolean => /[а-яё]/i.test(value)
 
@@ -204,9 +210,9 @@ export const adminLogin = async (login: string, password: string): Promise<Admin
   const response = await fetch(`${API_BASE}/api/admin/login`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ login, password })
+    body: JSON.stringify({ login, password }),
   })
 
   const data = (await response.json().catch(() => ({}))) as Partial<AdminLoginResponse>
@@ -218,14 +224,14 @@ export const adminLogin = async (login: string, password: string): Promise<Admin
       token: '',
       expiresIn: 0,
       error: translateAdminError(errorCode),
-      errorCode
+      errorCode,
     }
   }
 
   return {
     ok: true,
     token: data.token ?? '',
-    expiresIn: data.expiresIn ?? 0
+    expiresIn: data.expiresIn ?? 0,
   }
 }
 
@@ -260,14 +266,16 @@ export const adminRequestWithMeta = async <T>(
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${safeToken}`,
-      ...(init.headers || {})
-    }
+      ...(init.headers || {}),
+    },
   })
 
   const raw = await response.text()
   let payload: ApiResponseEnvelope<T>
   try {
-    payload = raw ? (JSON.parse(raw) as ApiResponseEnvelope<T>) : ({ ok: response.ok } as ApiResponseEnvelope<T>)
+    payload = raw
+      ? (JSON.parse(raw) as ApiResponseEnvelope<T>)
+      : ({ ok: response.ok } as ApiResponseEnvelope<T>)
   } catch (err) {
     payload = { ok: response.ok }
   }
@@ -289,11 +297,15 @@ export const adminRequestWithMeta = async <T>(
   return {
     data: payload.data as T,
     meta: payload.meta,
-    version: normalizedVersion
+    version: normalizedVersion,
   }
 }
 
-export const adminRequest = async <T>(token: string | undefined, path: string, init: RequestInit = {}): Promise<T> => {
+export const adminRequest = async <T>(
+  token: string | undefined,
+  path: string,
+  init: RequestInit = {}
+): Promise<T> => {
   const { data } = await adminRequestWithMeta<T>(token, path, init)
   return data
 }
@@ -301,22 +313,34 @@ export const adminRequest = async <T>(token: string | undefined, path: string, i
 export const adminGet = async <T>(token: string | undefined, path: string): Promise<T> =>
   adminRequest<T>(token, path, { method: 'GET' })
 
-export const adminPost = async <T>(token: string | undefined, path: string, body?: unknown): Promise<T> =>
+export const adminPost = async <T>(
+  token: string | undefined,
+  path: string,
+  body?: unknown
+): Promise<T> =>
   adminRequest<T>(token, path, {
     method: 'POST',
-    body: body === undefined ? undefined : JSON.stringify(body)
+    body: body === undefined ? undefined : JSON.stringify(body),
   })
 
-export const adminPut = async <T>(token: string | undefined, path: string, body?: unknown): Promise<T> =>
+export const adminPut = async <T>(
+  token: string | undefined,
+  path: string,
+  body?: unknown
+): Promise<T> =>
   adminRequest<T>(token, path, {
     method: 'PUT',
-    body: body === undefined ? undefined : JSON.stringify(body)
+    body: body === undefined ? undefined : JSON.stringify(body),
   })
 
-export const adminPatch = async <T>(token: string | undefined, path: string, body?: unknown): Promise<T> =>
+export const adminPatch = async <T>(
+  token: string | undefined,
+  path: string,
+  body?: unknown
+): Promise<T> =>
   adminRequest<T>(token, path, {
     method: 'PATCH',
-    body: body === undefined ? undefined : JSON.stringify(body)
+    body: body === undefined ? undefined : JSON.stringify(body),
   })
 
 export const adminDelete = async <T>(token: string | undefined, path: string): Promise<T> =>
@@ -389,7 +413,10 @@ export interface PlayerTransfersResult {
   news?: NewsItem | null
 }
 
-export const fetchClubPlayers = async (token: string | undefined, clubId: number): Promise<ClubPlayerLink[]> =>
+export const fetchClubPlayers = async (
+  token: string | undefined,
+  clubId: number
+): Promise<ClubPlayerLink[]> =>
   adminGet<ClubPlayerLink[]>(token, `/api/admin/clubs/${clubId}/players`)
 
 export const fetchMatchStatistics = async (
@@ -403,7 +430,7 @@ export const fetchMatchStatistics = async (
   )
   return {
     entries: data,
-    version
+    version,
   }
 }
 
@@ -417,12 +444,12 @@ export const adjustMatchStatistic = async (
     `/api/admin/matches/${matchId}/statistics/adjust`,
     {
       method: 'POST',
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     }
   )
   return {
     entries: data,
-    version
+    version,
   }
 }
 
@@ -452,7 +479,8 @@ export const createSeasonPlayoffs = async (
   token: string | undefined,
   seasonId: number,
   payload?: PlayoffCreationPayload
-) => adminPost<PlayoffCreationResult>(token, `/api/admin/seasons/${seasonId}/playoffs`, payload ?? {})
+) =>
+  adminPost<PlayoffCreationResult>(token, `/api/admin/seasons/${seasonId}/playoffs`, payload ?? {})
 
 interface LineupLoginResponse {
   ok: boolean
@@ -461,13 +489,16 @@ interface LineupLoginResponse {
   errorCode?: string
 }
 
-export const lineupLogin = async (login: string, password: string): Promise<LineupLoginResponse> => {
+export const lineupLogin = async (
+  login: string,
+  password: string
+): Promise<LineupLoginResponse> => {
   const response = await fetch(`${API_BASE}/api/lineup-portal/login`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ login, password })
+    body: JSON.stringify({ login, password }),
   })
 
   const payload = (await response.json().catch(() => ({}))) as LineupLoginResponse
@@ -477,7 +508,7 @@ export const lineupLogin = async (login: string, password: string): Promise<Line
     return {
       ok: false,
       error: translateAdminError(errorCode),
-      errorCode
+      errorCode,
     }
   }
 
@@ -487,7 +518,7 @@ export const lineupLogin = async (login: string, password: string): Promise<Line
     ok: Boolean(payload.token),
     token: payload.token,
     error: errorCode ? translateAdminError(errorCode) : undefined,
-    errorCode
+    errorCode,
   }
 }
 
@@ -498,15 +529,19 @@ const ensureLineupToken = (token?: string): string => {
   return token
 }
 
-const lineupRequest = async <T>(token: string | undefined, path: string, init: RequestInit = {}): Promise<T> => {
+const lineupRequest = async <T>(
+  token: string | undefined,
+  path: string,
+  init: RequestInit = {}
+): Promise<T> => {
   const authToken = ensureLineupToken(token)
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${authToken}`,
-      ...(init.headers || {})
-    }
+      ...(init.headers || {}),
+    },
   })
 
   const payload = (await response.json().catch(() => ({}))) as ApiResponseEnvelope<T>
@@ -531,7 +566,11 @@ const lineupRequest = async <T>(token: string | undefined, path: string, init: R
 export const lineupFetchMatches = async (token: string | undefined) =>
   lineupRequest<LineupPortalMatch[]>(token, '/api/lineup-portal/matches', { method: 'GET' })
 
-export const lineupFetchRoster = async (token: string | undefined, matchId: string, clubId: number) =>
+export const lineupFetchRoster = async (
+  token: string | undefined,
+  matchId: string,
+  clubId: number
+) =>
   lineupRequest<LineupPortalRosterEntry[]>(
     token,
     `/api/lineup-portal/matches/${matchId}/roster?clubId=${clubId}`,
@@ -541,9 +580,13 @@ export const lineupFetchRoster = async (token: string | undefined, matchId: stri
 export const lineupUpdateRoster = async (
   token: string | undefined,
   matchId: string,
-  payload: { clubId: number; personIds: number[]; numbers?: Array<{ personId: number; shirtNumber: number }> }
+  payload: {
+    clubId: number
+    personIds: number[]
+    numbers?: Array<{ personId: number; shirtNumber: number }>
+  }
 ) =>
   lineupRequest<unknown>(token, `/api/lineup-portal/matches/${matchId}/roster`, {
     method: 'PUT',
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   })

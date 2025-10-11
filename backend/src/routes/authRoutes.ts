@@ -1,7 +1,11 @@
 import { FastifyInstance } from 'fastify'
 import prisma from '../db'
 import jwt from 'jsonwebtoken'
-import { parse as parseInitData, validate as validateInitData, validate3rd as validateInitDataSignature } from '@telegram-apps/init-data-node'
+import {
+  parse as parseInitData,
+  validate as validateInitData,
+  validate3rd as validateInitDataSignature,
+} from '@telegram-apps/init-data-node'
 import { serializePrisma } from '../utils/serialization'
 import { defaultCache } from '../cache'
 
@@ -31,8 +35,15 @@ export default async function (server: FastifyInstance) {
     const body = request.body as any
     // Accept initData from multiple possible places (body, query, header)
     const q = request.query as any
-    const headerInit = (request.headers['x-telegram-init-data'] || request.headers['x-telegram-initdata']) as string | undefined
-    const rawCandidate = body?.initData || body?.init_data || q?.initData || q?.init_data || headerInit || (typeof body === 'string' ? body : undefined)
+    const headerInit = (request.headers['x-telegram-init-data'] ||
+      request.headers['x-telegram-initdata']) as string | undefined
+    const rawCandidate =
+      body?.initData ||
+      body?.init_data ||
+      q?.initData ||
+      q?.init_data ||
+      headerInit ||
+      (typeof body === 'string' ? body : undefined)
     if (!rawCandidate) return reply.status(400).send({ error: 'initData required' })
 
     const botToken = process.env.TELEGRAM_BOT_TOKEN
@@ -69,8 +80,14 @@ export default async function (server: FastifyInstance) {
         firstName = u.first_name
         photoUrl = u.photo_url || u.photoUrl
         if (u.auth_date) authDateSec = Number(u.auth_date)
-        server.log.warn({ userId }, 'telegram-init: accepted JSON user payload without signature (dev fallback)')
-        server.log.info({ userId, username, photoUrl, verificationMethod }, 'telegram-init: initData processed via JSON payload')
+        server.log.warn(
+          { userId },
+          'telegram-init: accepted JSON user payload without signature (dev fallback)'
+        )
+        server.log.info(
+          { userId, username, photoUrl, verificationMethod },
+          'telegram-init: initData processed via JSON payload'
+        )
       } else {
         // Signed initData — verify using hash and fall back to Telegram signature.
         const maxAge = INIT_DATA_MAX_AGE_SEC
@@ -79,7 +96,10 @@ export default async function (server: FastifyInstance) {
           verificationMethod = 'hash'
         } catch (hashErr) {
           const botId = Number.parseInt(botToken.split(':')[0] ?? '', 10)
-          server.log.warn({ err: hashErr }, 'telegram-init: hash verification failed, attempting signature fallback')
+          server.log.warn(
+            { err: hashErr },
+            'telegram-init: hash verification failed, attempting signature fallback'
+          )
           if (!Number.isFinite(botId)) {
             throw hashErr
           }
@@ -107,7 +127,10 @@ export default async function (server: FastifyInstance) {
           if (!Number.isNaN(parsedNumber)) authDateSec = parsedNumber
         }
 
-        server.log.info({ userId, username, photoUrl, verificationMethod }, 'telegram-init: initData verified')
+        server.log.info(
+          { userId, username, photoUrl, verificationMethod },
+          'telegram-init: initData verified'
+        )
       }
     } catch (err) {
       server.log.warn({ err, rawCandidate }, 'initData verification failed')
@@ -147,25 +170,25 @@ export default async function (server: FastifyInstance) {
       // Publish real-time updates для WebSocket subscribers
       try {
         const userPayload = serializePrisma(user)
-        
+
         // Персональный топик пользователя
         await (server as any).publishTopic(`user:${userId}`, {
           type: 'profile_updated',
           userId: userPayload.userId,
           tgUsername: userPayload.tgUsername,
           photoUrl: userPayload.photoUrl,
-          updatedAt: userPayload.updatedAt
+          updatedAt: userPayload.updatedAt,
         })
-        
+
         // Глобальный топик профилей (для админки, статистики и т.д.)
         await (server as any).publishTopic('profile', {
           type: 'profile_updated',
           userId: userPayload.userId,
           tgUsername: userPayload.tgUsername,
           photoUrl: userPayload.photoUrl,
-          updatedAt: userPayload.updatedAt
+          updatedAt: userPayload.updatedAt,
         })
-        
+
         server.log.info({ userId }, 'Published profile updates to WebSocket topics')
       } catch (wsError) {
         server.log.warn({ err: wsError }, 'Failed to publish WebSocket updates')
@@ -174,20 +197,26 @@ export default async function (server: FastifyInstance) {
 
       // Create a JWT session token (short lived) and set as httpOnly cookie
       const jwtSecret = process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'dev-secret'
-      const token = jwt.sign({ sub: String(user.telegramId), username: user.username }, jwtSecret, { expiresIn: '7d' })
+      const token = jwt.sign({ sub: String(user.telegramId), username: user.username }, jwtSecret, {
+        expiresIn: '7d',
+      })
 
       // set cookie (httpOnly). Fastify reply.setCookie requires fastify-cookie plugin; we fallback to header if not present.
       try {
         // try set cookie if plugin available
-        ;(reply as any).setCookie?.('session', token, { httpOnly: true, path: '/', sameSite: 'lax' })
+        ;(reply as any).setCookie?.('session', token, {
+          httpOnly: true,
+          path: '/',
+          sameSite: 'lax',
+        })
       } catch (e) {
         // fallback: send token in body only
       }
 
       const serializedUser = serializePrisma(user)
-  const origin = (request.headers.origin as string) || '*'
-  reply.header('Access-Control-Allow-Origin', origin)
-  reply.header('Access-Control-Allow-Credentials', 'true')
+      const origin = (request.headers.origin as string) || '*'
+      reply.header('Access-Control-Allow-Origin', origin)
+      reply.header('Access-Control-Allow-Credentials', 'true')
       return reply.send({ ok: true, user: serializedUser, token })
     } catch (err) {
       server.log.error({ err }, 'telegram-init upsert failed')
@@ -200,25 +229,29 @@ export default async function (server: FastifyInstance) {
     const authHeader = (request.headers && (request.headers.authorization as string)) || ''
     const qToken = (request.query as any)?.token
     const cookieToken = (request as any).cookies?.session
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : (qToken || cookieToken)
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : qToken || cookieToken
     if (!token) return reply.status(401).send({ error: 'no_token' })
     const jwtSecret = process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'dev-secret'
     try {
       const jwtPayload: any = jwt.verify(token, jwtSecret)
       const sub = jwtPayload?.sub
       if (!sub) return reply.status(401).send({ error: 'bad_token' })
-      
+
       // Use cache for user data (5 min TTL)
       const cacheKey = `user:${sub}`
-      const u = await defaultCache.get(cacheKey, async () => {
-        return await prisma.appUser.findUnique({ where: { telegramId: BigInt(sub) } })
-      }, 300) // 5 minutes TTL
-      
+      const u = await defaultCache.get(
+        cacheKey,
+        async () => {
+          return await prisma.appUser.findUnique({ where: { telegramId: BigInt(sub) } })
+        },
+        300
+      ) // 5 minutes TTL
+
       if (!u) return reply.status(404).send({ error: 'not_found' })
       const serializedUser = serializePrisma(u)
-  const origin = (request.headers.origin as string) || '*'
-  reply.header('Access-Control-Allow-Origin', origin)
-  reply.header('Access-Control-Allow-Credentials', 'true')
+      const origin = (request.headers.origin as string) || '*'
+      reply.header('Access-Control-Allow-Origin', origin)
+      reply.header('Access-Control-Allow-Credentials', 'true')
       return reply.send({ ok: true, user: serializedUser })
     } catch (e) {
       const msg = (e as any)?.message

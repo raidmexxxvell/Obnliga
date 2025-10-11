@@ -3,7 +3,7 @@ import Redis from 'ioredis'
 import dotenv from 'dotenv'
 import { createHash } from 'crypto'
 
-dotenv.config({ path: __dirname + '/../../.env' })
+dotenv.config({ path: `${__dirname}/../../.env` })
 
 type Loader<T> = () => Promise<T>
 
@@ -15,18 +15,18 @@ type CacheEnvelope<T> = {
 const INVALIDATION_CHANNEL = 'multilevel-cache:invalidate'
 
 export class MultiLevelCache {
-  private lru: QuickLRU<string, CacheEnvelope<any>>
+  private lru: QuickLRU<string, CacheEnvelope<unknown>>
   private redis: Redis | null
   private versions: Map<string, number>
 
   constructor(redisUrl?: string, lruOptions = { maxSize: 1000 }) {
-    this.lru = new QuickLRU<string, CacheEnvelope<any>>(lruOptions)
+    this.lru = new QuickLRU<string, CacheEnvelope<unknown>>(lruOptions)
     this.versions = new Map<string, number>()
     if (redisUrl) {
       this.redis = new Redis(redisUrl)
       // subscribe to invalidation messages
       const sub = new Redis(redisUrl)
-      sub.subscribe(INVALIDATION_CHANNEL, (err) => {
+      sub.subscribe(INVALIDATION_CHANNEL, err => {
         if (err) console.warn('Failed to subscribe cache invalidation channel', err)
       })
       sub.on('message', (_channel, message) => {
@@ -61,14 +61,19 @@ export class MultiLevelCache {
       if (val != null) {
         try {
           const parsed = JSON.parse(val) as CacheEnvelope<T> | T
-          if (typeof parsed === 'object' && parsed && 'value' in parsed && 'fingerprint' in parsed) {
+          if (
+            typeof parsed === 'object' &&
+            parsed &&
+            'value' in parsed &&
+            'fingerprint' in parsed
+          ) {
             this.lru.set(key, parsed as CacheEnvelope<T>)
             await this.ensureVersion(key)
             return parsed.value
           }
           const envelope: CacheEnvelope<T> = {
             value: parsed as T,
-            fingerprint: this.computeFingerprint(parsed)
+            fingerprint: this.computeFingerprint(parsed),
           }
           // warm in-memory
           this.lru.set(key, envelope)
@@ -142,7 +147,11 @@ export class MultiLevelCache {
     }
   }
 
-  async getWithMeta<T>(key: string, loader: Loader<T>, ttlSeconds?: number): Promise<{ value: T; version: number }> {
+  async getWithMeta<T>(
+    key: string,
+    loader: Loader<T>,
+    ttlSeconds?: number
+  ): Promise<{ value: T; version: number }> {
     const value = await this.get(key, loader, ttlSeconds)
     const version = await this.ensureVersion(key)
     return { value, version }
@@ -177,7 +186,11 @@ export class MultiLevelCache {
     return 0
   }
 
-  private async bumpVersion(key: string, fingerprint: string, previousFingerprint?: string): Promise<number> {
+  private async bumpVersion(
+    key: string,
+    fingerprint: string,
+    previousFingerprint?: string
+  ): Promise<number> {
     if (previousFingerprint === fingerprint && this.versions.has(key)) {
       return this.versions.get(key) as number
     }

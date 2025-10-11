@@ -1,4 +1,18 @@
-type Handler = (msg: any) => void
+export interface WsPatchPayload<TData = unknown> {
+  type?: 'full' | 'diff' | string
+  data?: TData
+  version?: number | string
+}
+
+export interface WsPatchMessage<TData = unknown> {
+  type: 'patch'
+  topic?: string
+  payload?: WsPatchPayload<TData>
+}
+
+export type WsMessage = WsPatchMessage | { type: string; topic?: string; [key: string]: unknown }
+
+type Handler = (msg: WsMessage) => void
 
 const HEARTBEAT_INTERVAL_MS = 25_000
 const HEARTBEAT_STALE_MS = 60_000
@@ -32,13 +46,18 @@ export class WSClient {
     if (!this.canConnect()) {
       return
     }
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
+    ) {
       return
     }
     this.manualClose = false
     const sep = this.url.includes('?') ? '&' : '?'
     const authToken = this.token || token
-    const targetUrl = authToken ? `${this.url}${sep}token=${encodeURIComponent(authToken)}` : this.url
+    const targetUrl = authToken
+      ? `${this.url}${sep}token=${encodeURIComponent(authToken)}`
+      : this.url
     this.cleanupSocket()
     this.ws = new WebSocket(targetUrl)
     this.ws.addEventListener('open', this.handleOpen)
@@ -52,7 +71,10 @@ export class WSClient {
     this.reconnectAttempts = 0
     this.clearReconnect()
     this.stopHeartbeat()
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
+    ) {
       this.ws.close()
     }
     this.cleanupSocket()
@@ -90,7 +112,7 @@ export class WSClient {
   off(type: string, cb: Handler) {
     const list = this.handlers.get(type)
     if (!list) return
-    const next = list.filter((handler) => handler !== cb)
+    const next = list.filter(handler => handler !== cb)
     if (next.length === 0) {
       this.handlers.delete(type)
     } else {
@@ -116,7 +138,7 @@ export class WSClient {
     return Boolean(this.token)
   }
 
-  private dispatch(msg: any) {
+  private dispatch(msg: WsMessage) {
     const type = msg?.type || 'message'
     const list = this.handlers.get(type) || []
     for (const handler of list) {
@@ -156,10 +178,10 @@ export class WSClient {
     }
   }
 
-  private handleMessage = (event: MessageEvent) => {
+  private handleMessage = (event: MessageEvent<string>) => {
     this.lastMessageAt = Date.now()
     try {
-      const parsed = JSON.parse(event.data)
+      const parsed = JSON.parse(event.data) as WsMessage
       this.dispatch(parsed)
     } catch (err) {
       // ignore malformed payloads
@@ -186,7 +208,10 @@ export class WSClient {
     if (this.reconnectTimer !== null) return
     if (!this.canConnect()) return
     const attempt = this.reconnectAttempts + 1
-    const delay = Math.min(RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt - 1), RECONNECT_MAX_DELAY_MS)
+    const delay = Math.min(
+      RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt - 1),
+      RECONNECT_MAX_DELAY_MS
+    )
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null
       this.reconnectAttempts = attempt
@@ -245,7 +270,7 @@ export class WSClient {
   }
 }
 
-const metaEnv: any = (import.meta as any).env || {}
+const metaEnv = ((import.meta as ImportMeta).env ?? {}) as Partial<Record<string, string>>
 const ADMIN_WS_URL = (metaEnv.VITE_ADMIN_WS_URL as string) || ''
 const GENERIC_WS_URL = (metaEnv.VITE_WS_URL as string) || ''
 const ADMIN_API_BASE = (metaEnv.VITE_ADMIN_API_BASE as string) || ''

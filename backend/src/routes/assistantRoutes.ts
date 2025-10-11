@@ -21,7 +21,7 @@ import {
   hasMatchStatisticsExpired,
   loadMatchEventsWithRoster,
   loadMatchLineupWithNumbers,
-  matchStatsCacheKey
+  matchStatsCacheKey,
 } from './matchModerationHelpers'
 import { defaultCache } from '../cache'
 
@@ -37,18 +37,21 @@ declare module 'fastify' {
 }
 
 const getAssistantSecret = () =>
-  process.env.ASSISTANT_JWT_SECRET || process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'assistant-portal-secret'
+  process.env.ASSISTANT_JWT_SECRET ||
+  process.env.JWT_SECRET ||
+  process.env.TELEGRAM_BOT_TOKEN ||
+  'assistant-portal-secret'
 
 const getAssistantCredentials = () => ({
   login: process.env.POMOSH_LOGIN || 'POMOSH',
-  password: process.env.POMOSH_PASSWORD || 'POMOSH'
+  password: process.env.POMOSH_PASSWORD || 'POMOSH',
 })
 
 const issueAssistantToken = (payload: AssistantJwtPayload) =>
   jwt.sign(payload, getAssistantSecret(), {
     expiresIn: '12h',
     issuer: 'obnliga-backend',
-    audience: 'assistant-portal'
+    audience: 'assistant-portal',
   })
 
 const verifyAssistantToken = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -89,7 +92,10 @@ const parsePenaltyScore = (value: unknown, fallback: number): number => {
 }
 
 const ensureAssistantMatch = (matchId: bigint) =>
-  ensureMatchForJudge(matchId, { allowedStatuses: [MatchStatus.SCHEDULED, MatchStatus.LIVE], errorCode: 'match_not_available' })
+  ensureMatchForJudge(matchId, {
+    allowedStatuses: [MatchStatus.SCHEDULED, MatchStatus.LIVE],
+    errorCode: 'match_not_available',
+  })
 
 export default async function assistantRoutes(server: FastifyInstance) {
   server.post('/api/assistant/login', async (request, reply) => {
@@ -113,7 +119,7 @@ export default async function assistantRoutes(server: FastifyInstance) {
   })
 
   server.register(
-    async (assistant) => {
+    async assistant => {
       assistant.addHook('onRequest', verifyAssistantToken)
 
       assistant.get('/matches', async (_request, reply) => {
@@ -127,22 +133,22 @@ export default async function assistantRoutes(server: FastifyInstance) {
                 status: MatchStatus.SCHEDULED,
                 matchDateTime: {
                   gte: new Date(now.getTime() - 60 * 60 * 1000),
-                  lte: windowEnd
-                }
+                  lte: windowEnd,
+                },
               },
-              { status: MatchStatus.LIVE }
-            ]
+              { status: MatchStatus.LIVE },
+            ],
           },
           orderBy: { matchDateTime: 'asc' },
           include: {
             season: { select: { id: true, name: true } },
             round: true,
             homeClub: true,
-            awayClub: true
-          }
+            awayClub: true,
+          },
         })
 
-        const payload = matches.map((match) => ({
+        const payload = matches.map(match => ({
           id: match.id.toString(),
           seasonId: match.seasonId,
           matchDateTime: match.matchDateTime.toISOString(),
@@ -158,21 +164,21 @@ export default async function assistantRoutes(server: FastifyInstance) {
                 id: match.round.id,
                 roundType: match.round.roundType,
                 roundNumber: match.round.roundNumber,
-                label: match.round.label
+                label: match.round.label,
               }
             : null,
           homeClub: {
             id: match.homeClub.id,
             name: match.homeClub.name,
             shortName: match.homeClub.shortName,
-            logoUrl: match.homeClub.logoUrl
+            logoUrl: match.homeClub.logoUrl,
           },
           awayClub: {
             id: match.awayClub.id,
             name: match.awayClub.name,
             shortName: match.awayClub.shortName,
-            logoUrl: match.awayClub.logoUrl
-          }
+            logoUrl: match.awayClub.logoUrl,
+          },
         }))
 
         return reply.send({ ok: true, data: serializePrisma(payload) })
@@ -250,7 +256,7 @@ export default async function assistantRoutes(server: FastifyInstance) {
             teamId: parseNumericId(body.teamId, 'teamId'),
             minute: parseNumericId(body.minute, 'minute'),
             eventType: body.eventType,
-            relatedPlayerId: body.relatedPlayerId ?? null
+            relatedPlayerId: body.relatedPlayerId ?? null,
           })
 
           if (created.statAdjusted) {
@@ -260,7 +266,10 @@ export default async function assistantRoutes(server: FastifyInstance) {
           try {
             await broadcastMatchEvents(request.server, matchId)
           } catch (err) {
-            request.log.warn({ err, matchId: matchId.toString() }, 'assistant events broadcast failed')
+            request.log.warn(
+              { err, matchId: matchId.toString() },
+              'assistant events broadcast failed'
+            )
           }
 
           return reply.send({ ok: true, data: serializePrisma(created.event) })
@@ -299,7 +308,7 @@ export default async function assistantRoutes(server: FastifyInstance) {
             eventType: body.eventType,
             teamId: body.teamId,
             playerId: body.playerId,
-            relatedPlayerId: body.relatedPlayerId
+            relatedPlayerId: body.relatedPlayerId,
           })
 
           if (updated.statAdjusted) {
@@ -309,7 +318,10 @@ export default async function assistantRoutes(server: FastifyInstance) {
           try {
             await broadcastMatchEvents(request.server, matchId)
           } catch (err) {
-            request.log.warn({ err, matchId: matchId.toString() }, 'assistant events broadcast failed')
+            request.log.warn(
+              { err, matchId: matchId.toString() },
+              'assistant events broadcast failed'
+            )
           }
 
           return reply.send({ ok: true, data: serializePrisma(updated.event) })
@@ -317,7 +329,10 @@ export default async function assistantRoutes(server: FastifyInstance) {
           if (err instanceof RequestError) {
             return reply.status(err.statusCode).send({ ok: false, error: err.message })
           }
-          request.log.error({ err, matchId: matchId.toString(), eventId: eventId.toString() }, 'assistant update event failed')
+          request.log.error(
+            { err, matchId: matchId.toString(), eventId: eventId.toString() },
+            'assistant update event failed'
+          )
           return reply.status(500).send({ ok: false, error: 'event_update_failed' })
         }
       })
@@ -343,14 +358,20 @@ export default async function assistantRoutes(server: FastifyInstance) {
           try {
             await broadcastMatchEvents(request.server, matchId)
           } catch (err) {
-            request.log.warn({ err, matchId: matchId.toString(), eventId: eventId.toString() }, 'assistant events broadcast failed')
+            request.log.warn(
+              { err, matchId: matchId.toString(), eventId: eventId.toString() },
+              'assistant events broadcast failed'
+            )
           }
           return reply.send({ ok: true })
         } catch (err) {
           if (err instanceof RequestError) {
             return reply.status(err.statusCode).send({ ok: false, error: err.message })
           }
-          request.log.error({ err, matchId: matchId.toString(), eventId: eventId.toString() }, 'assistant delete event failed')
+          request.log.error(
+            { err, matchId: matchId.toString(), eventId: eventId.toString() },
+            'assistant delete event failed'
+          )
           return reply.status(500).send({ ok: false, error: 'event_delete_failed' })
         }
       })
@@ -370,7 +391,7 @@ export default async function assistantRoutes(server: FastifyInstance) {
         try {
           match = await ensureMatchForJudge(matchId, {
             allowedStatuses: [MatchStatus.SCHEDULED, MatchStatus.LIVE],
-            errorCode: 'match_not_available'
+            errorCode: 'match_not_available',
           })
         } catch (err) {
           if (err instanceof RequestError) {
@@ -382,14 +403,18 @@ export default async function assistantRoutes(server: FastifyInstance) {
         const nextHomeScore = normalizeScore(body.homeScore, match.homeScore)
         const nextAwayScore = normalizeScore(body.awayScore, match.awayScore)
 
-        let hasPenalty = typeof body.hasPenaltyShootout === 'boolean' ? body.hasPenaltyShootout : match.hasPenaltyShootout
+        const hasPenalty =
+          typeof body.hasPenaltyShootout === 'boolean'
+            ? body.hasPenaltyShootout
+            : match.hasPenaltyShootout
         let penaltyHomeScore = match.penaltyHomeScore ?? 0
         let penaltyAwayScore = match.penaltyAwayScore ?? 0
 
         const competition = match.season?.competition
         const isBestOfSeries =
           competition?.type === CompetitionType.LEAGUE &&
-          (competition.seriesFormat === SeriesFormat.BEST_OF_N || competition.seriesFormat === SeriesFormat.DOUBLE_ROUND_PLAYOFF)
+          (competition.seriesFormat === SeriesFormat.BEST_OF_N ||
+            competition.seriesFormat === SeriesFormat.DOUBLE_ROUND_PLAYOFF)
 
         if (hasPenalty) {
           if (!match.seriesId || !isBestOfSeries) {
@@ -419,7 +444,11 @@ export default async function assistantRoutes(server: FastifyInstance) {
         }
 
         const statusUpdate = body.status && body.status !== match.status ? body.status : undefined
-        if (statusUpdate && statusUpdate !== MatchStatus.LIVE && statusUpdate !== MatchStatus.FINISHED) {
+        if (
+          statusUpdate &&
+          statusUpdate !== MatchStatus.LIVE &&
+          statusUpdate !== MatchStatus.FINISHED
+        ) {
           return reply.status(400).send({ ok: false, error: 'status_update_invalid' })
         }
 
@@ -440,8 +469,8 @@ export default async function assistantRoutes(server: FastifyInstance) {
               hasPenaltyShootout: hasPenalty,
               penaltyHomeScore,
               penaltyAwayScore,
-              status: statusUpdate ?? match.status
-            }
+              status: statusUpdate ?? match.status,
+            },
           })
 
           if (statusUpdate === MatchStatus.FINISHED) {
@@ -502,13 +531,18 @@ export default async function assistantRoutes(server: FastifyInstance) {
           return reply.status(400).send({ ok: false, error: 'clubId_required' })
         }
 
-        const metric = body?.metric as typeof MATCH_STATISTIC_METRICS[number] | undefined
+        const metric = body?.metric as (typeof MATCH_STATISTIC_METRICS)[number] | undefined
         if (!metric || !MATCH_STATISTIC_METRICS.includes(metric)) {
           return reply.status(400).send({ ok: false, error: 'metric_invalid' })
         }
 
         const rawDelta = body?.delta
-        if (typeof rawDelta !== 'number' || Number.isNaN(rawDelta) || !Number.isFinite(rawDelta) || rawDelta === 0) {
+        if (
+          typeof rawDelta !== 'number' ||
+          Number.isNaN(rawDelta) ||
+          !Number.isFinite(rawDelta) ||
+          rawDelta === 0
+        ) {
           return reply.status(400).send({ ok: false, error: 'delta_invalid' })
         }
         const delta = Math.max(-20, Math.min(20, Math.trunc(rawDelta)))
@@ -523,8 +557,8 @@ export default async function assistantRoutes(server: FastifyInstance) {
             homeTeamId: true,
             awayTeamId: true,
             status: true,
-            matchDateTime: true
-          }
+            matchDateTime: true,
+          },
         })
 
         if (!match) {
@@ -543,9 +577,14 @@ export default async function assistantRoutes(server: FastifyInstance) {
 
         let adjusted = false
         try {
-          adjusted = await prisma.$transaction((tx) => applyStatisticDelta(tx, matchId, clubId, metric, delta))
+          adjusted = await prisma.$transaction(tx =>
+            applyStatisticDelta(tx, matchId, clubId, metric, delta)
+          )
         } catch (err) {
-          request.log.error({ err, matchId: matchId.toString(), clubId, metric, delta }, 'assistant stat adjust failed')
+          request.log.error(
+            { err, matchId: matchId.toString(), clubId, metric, delta },
+            'assistant stat adjust failed'
+          )
           return reply.status(500).send({ ok: false, error: 'match_statistics_update_failed' })
         }
 
@@ -558,7 +597,10 @@ export default async function assistantRoutes(server: FastifyInstance) {
             if (err instanceof RequestError) {
               return reply.status(err.statusCode).send({ ok: false, error: err.message })
             }
-            request.log.error({ err, matchId: matchId.toString() }, 'assistant stats broadcast failed')
+            request.log.error(
+              { err, matchId: matchId.toString() },
+              'assistant stats broadcast failed'
+            )
             return reply.status(500).send({ ok: false, error: 'match_statistics_failed' })
           }
         }

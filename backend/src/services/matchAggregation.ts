@@ -13,7 +13,7 @@ import {
   Prisma,
   RoundType,
   SeriesFormat,
-  SeriesStatus
+  SeriesStatus,
 } from '@prisma/client'
 import prisma from '../db'
 import { defaultCache } from '../cache'
@@ -22,7 +22,7 @@ import {
   applyTimeToDate,
   createInitialPlayoffPlans,
   createRandomPlayoffPlans,
-  stageNameForTeams
+  stageNameForTeams,
 } from './seasonAutomation'
 
 const YELLOW_CARD_LIMIT = 4
@@ -31,7 +31,13 @@ const SECOND_YELLOW_BAN_MATCHES = 1
 
 type MatchOutcomeSource = Pick<
   Match,
-  'homeTeamId' | 'awayTeamId' | 'homeScore' | 'awayScore' | 'hasPenaltyShootout' | 'penaltyHomeScore' | 'penaltyAwayScore'
+  | 'homeTeamId'
+  | 'awayTeamId'
+  | 'homeScore'
+  | 'awayScore'
+  | 'hasPenaltyShootout'
+  | 'penaltyHomeScore'
+  | 'penaltyAwayScore'
 >
 
 const determineMatchWinnerClubId = (match: MatchOutcomeSource): number | null => {
@@ -52,8 +58,8 @@ export async function handleMatchFinalization(matchId: bigint, logger: FastifyBa
       events: true,
       lineups: true,
       series: { include: { matches: true } },
-      predictions: { include: { user: { include: { achievements: true } } } }
-    }
+      predictions: { include: { user: { include: { achievements: true } } } },
+    },
   })
 
   if (!match) {
@@ -62,7 +68,10 @@ export async function handleMatchFinalization(matchId: bigint, logger: FastifyBa
   }
 
   if (match.status !== MatchStatus.FINISHED) {
-    logger.info({ matchId: matchId.toString(), status: match.status }, 'match not finished, skip aggregation')
+    logger.info(
+      { matchId: matchId.toString(), status: match.status },
+      'match not finished, skip aggregation'
+    )
     return
   }
 
@@ -71,7 +80,7 @@ export async function handleMatchFinalization(matchId: bigint, logger: FastifyBa
   const isBracketFormat =
     competitionFormat === ('PLAYOFF_BRACKET' as SeriesFormat) ||
     competitionFormat === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async tx => {
     const includePlayoffRounds = isBracketFormat
     await rebuildClubSeasonStats(seasonId, tx, { includePlayoffRounds })
     await rebuildPlayerSeasonStats(seasonId, tx)
@@ -102,9 +111,9 @@ export async function handleMatchFinalization(matchId: bigint, logger: FastifyBa
     'league:club-career',
     'league:player-career',
     `match:${matchId.toString()}`,
-    ...Array.from(impactedClubIds).map((clubId) => `club:${clubId}:player-career`)
+    ...Array.from(impactedClubIds).map(clubId => `club:${clubId}:player-career`),
   ]
-  await Promise.all(cacheKeys.map((key) => defaultCache.invalidate(key).catch(() => undefined)))
+  await Promise.all(cacheKeys.map(key => defaultCache.invalidate(key).catch(() => undefined)))
 }
 
 type PrismaTx = Prisma.TransactionClient
@@ -123,9 +132,9 @@ async function rebuildClubSeasonStats(
       ...(includePlayoffRounds
         ? {}
         : {
-            OR: [{ roundId: null }, { round: { roundType: RoundType.REGULAR } }]
-          })
-    }
+            OR: [{ roundId: null }, { round: { roundType: RoundType.REGULAR } }],
+          }),
+    },
   })
 
   const totals = new Map<number, ClubSeasonStats>()
@@ -160,7 +169,7 @@ async function rebuildClubSeasonStats(
 
   const participants = await tx.seasonParticipant.findMany({
     where: { seasonId },
-    select: { clubId: true }
+    select: { clubId: true },
   })
 
   for (const participant of participants) {
@@ -182,15 +191,15 @@ async function rebuildClubSeasonStats(
         wins: entry.wins,
         losses: entry.losses,
         goalsFor: entry.goalsFor,
-        goalsAgainst: entry.goalsAgainst
+        goalsAgainst: entry.goalsAgainst,
       },
       update: {
         points: entry.points,
         wins: entry.wins,
         losses: entry.losses,
         goalsFor: entry.goalsFor,
-        goalsAgainst: entry.goalsAgainst
-      }
+        goalsAgainst: entry.goalsAgainst,
+      },
     })
   }
 }
@@ -204,22 +213,22 @@ function newClubSeasonStats(seasonId: number, clubId: number): ClubSeasonStats {
     losses: 0,
     goalsFor: 0,
     goalsAgainst: 0,
-    updatedAt: new Date()
+    updatedAt: new Date(),
   }
 }
 
 async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
   const events = await tx.matchEvent.findMany({
     where: {
-      match: { seasonId, status: MatchStatus.FINISHED }
+      match: { seasonId, status: MatchStatus.FINISHED },
     },
     select: {
       matchId: true,
       playerId: true,
       relatedPlayerId: true,
       teamId: true,
-      eventType: true
-    }
+      eventType: true,
+    },
   })
 
   const statsMap = new Map<
@@ -237,9 +246,15 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
   const eventMatchesMap = new Map<number, Set<bigint>>()
 
   for (const ev of events) {
-    const primary =
-      statsMap.get(ev.playerId) ??
-      { clubId: ev.teamId, goals: 0, penaltyGoals: 0, assists: 0, yellow: 0, red: 0, matches: 0 }
+    const primary = statsMap.get(ev.playerId) ?? {
+      clubId: ev.teamId,
+      goals: 0,
+      penaltyGoals: 0,
+      assists: 0,
+      yellow: 0,
+      red: 0,
+      matches: 0,
+    }
     primary.clubId = ev.teamId
     if (ev.eventType === MatchEventType.GOAL || ev.eventType === MatchEventType.PENALTY_GOAL) {
       primary.goals += 1
@@ -250,7 +265,10 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
     if (ev.eventType === MatchEventType.YELLOW_CARD) {
       primary.yellow += 1
     }
-    if (ev.eventType === MatchEventType.RED_CARD || ev.eventType === MatchEventType.SECOND_YELLOW_CARD) {
+    if (
+      ev.eventType === MatchEventType.RED_CARD ||
+      ev.eventType === MatchEventType.SECOND_YELLOW_CARD
+    ) {
       primary.red += 1
     }
     statsMap.set(ev.playerId, primary)
@@ -263,9 +281,15 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
       (ev.eventType === MatchEventType.GOAL || ev.eventType === MatchEventType.PENALTY_GOAL) &&
       ev.relatedPlayerId
     ) {
-      const assist =
-        statsMap.get(ev.relatedPlayerId) ??
-        { clubId: ev.teamId, goals: 0, penaltyGoals: 0, assists: 0, yellow: 0, red: 0, matches: 0 }
+      const assist = statsMap.get(ev.relatedPlayerId) ?? {
+        clubId: ev.teamId,
+        goals: 0,
+        penaltyGoals: 0,
+        assists: 0,
+        yellow: 0,
+        red: 0,
+        matches: 0,
+      }
       assist.clubId = ev.teamId
       assist.assists += 1
       statsMap.set(ev.relatedPlayerId, assist)
@@ -279,15 +303,21 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
   const lineupAggregates = await tx.matchLineup.groupBy({
     by: ['personId', 'clubId'],
     where: {
-      match: { seasonId, status: MatchStatus.FINISHED }
+      match: { seasonId, status: MatchStatus.FINISHED },
     },
-    _count: { matchId: true }
+    _count: { matchId: true },
   })
 
   for (const lineup of lineupAggregates) {
-    const entry =
-      statsMap.get(lineup.personId) ??
-      { clubId: lineup.clubId, goals: 0, penaltyGoals: 0, assists: 0, yellow: 0, red: 0, matches: 0 }
+    const entry = statsMap.get(lineup.personId) ?? {
+      clubId: lineup.clubId,
+      goals: 0,
+      penaltyGoals: 0,
+      assists: 0,
+      yellow: 0,
+      red: 0,
+      matches: 0,
+    }
     entry.clubId = lineup.clubId
     entry.matches += lineup._count.matchId ?? 0
     statsMap.set(lineup.personId, entry)
@@ -314,7 +344,7 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
         assists: entry.assists,
         yellowCards: entry.yellow,
         redCards: entry.red,
-        matchesPlayed: entry.matches
+        matchesPlayed: entry.matches,
       },
       update: {
         clubId: entry.clubId,
@@ -323,8 +353,8 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
         assists: entry.assists,
         yellowCards: entry.yellow,
         redCards: entry.red,
-        matchesPlayed: entry.matches
-      }
+        matchesPlayed: entry.matches,
+      },
     })
   }
 }
@@ -332,10 +362,10 @@ async function rebuildPlayerSeasonStats(seasonId: number, tx: PrismaTx) {
 async function rebuildPlayerCareerStats(seasonId: number, tx: PrismaTx) {
   const participants = await tx.seasonParticipant.findMany({
     where: { seasonId },
-    select: { clubId: true }
+    select: { clubId: true },
   })
 
-  const clubIds = Array.from(new Set(participants.map((item) => item.clubId)))
+  const clubIds = Array.from(new Set(participants.map(item => item.clubId)))
   if (!clubIds.length) return
 
   await rebuildCareerStatsForClubs(clubIds, tx)
@@ -353,8 +383,8 @@ export async function rebuildCareerStatsForClubs(clubIds: number[], tx: PrismaTx
       assists: true,
       yellowCards: true,
       redCards: true,
-      matchesPlayed: true
-    }
+      matchesPlayed: true,
+    },
   })
 
   await tx.playerClubCareerStats.deleteMany({ where: { clubId: { in: clubIds } } })
@@ -374,8 +404,8 @@ export async function rebuildCareerStatsForClubs(clubIds: number[], tx: PrismaTx
       where: {
         personId_clubId: {
           personId: aggregate.personId,
-          clubId: aggregate.clubId
-        }
+          clubId: aggregate.clubId,
+        },
       },
       create: {
         personId: aggregate.personId,
@@ -385,7 +415,7 @@ export async function rebuildCareerStatsForClubs(clubIds: number[], tx: PrismaTx
         totalMatches,
         totalAssists,
         yellowCards,
-        redCards
+        redCards,
       },
       update: {
         totalGoals,
@@ -393,8 +423,8 @@ export async function rebuildCareerStatsForClubs(clubIds: number[], tx: PrismaTx
         totalMatches,
         totalAssists,
         yellowCards,
-        redCards
-      }
+        redCards,
+      },
     })
 
     createdKeys.add(`${aggregate.personId}:${aggregate.clubId}`)
@@ -402,7 +432,7 @@ export async function rebuildCareerStatsForClubs(clubIds: number[], tx: PrismaTx
 
   const rosterLinks = await tx.clubPlayer.findMany({
     where: { clubId: { in: clubIds } },
-    select: { clubId: true, personId: true }
+    select: { clubId: true, personId: true },
   })
 
   for (const link of rosterLinks) {
@@ -413,8 +443,8 @@ export async function rebuildCareerStatsForClubs(clubIds: number[], tx: PrismaTx
       where: {
         personId_clubId: {
           personId: link.personId,
-          clubId: link.clubId
-        }
+          clubId: link.clubId,
+        },
       },
       create: {
         personId: link.personId,
@@ -424,9 +454,9 @@ export async function rebuildCareerStatsForClubs(clubIds: number[], tx: PrismaTx
         totalMatches: 0,
         totalAssists: 0,
         yellowCards: 0,
-        redCards: 0
+        redCards: 0,
       },
-      update: {}
+      update: {},
     })
   }
 }
@@ -439,7 +469,7 @@ async function processDisqualifications(match: MatchWithEvents, tx: PrismaTx) {
 
   const activeDisquals = await tx.disqualification.findMany({
     where: { isActive: true, clubId: { in: involvedClubs } },
-    select: { id: true, matchesMissed: true, banDurationMatches: true }
+    select: { id: true, matchesMissed: true, banDurationMatches: true },
   })
 
   for (const dq of activeDisquals) {
@@ -448,24 +478,30 @@ async function processDisqualifications(match: MatchWithEvents, tx: PrismaTx) {
       where: { id: dq.id },
       data: {
         matchesMissed: newMissed,
-        isActive: newMissed >= dq.banDurationMatches ? false : true
-      }
+        isActive: newMissed >= dq.banDurationMatches ? false : true,
+      },
     })
   }
 
   for (const ev of match.events) {
-    if (ev.eventType === MatchEventType.RED_CARD || ev.eventType === MatchEventType.SECOND_YELLOW_CARD) {
+    if (
+      ev.eventType === MatchEventType.RED_CARD ||
+      ev.eventType === MatchEventType.SECOND_YELLOW_CARD
+    ) {
       const reason =
         ev.eventType === MatchEventType.SECOND_YELLOW_CARD
           ? DisqualificationReason.SECOND_YELLOW
           : DisqualificationReason.RED_CARD
-      const banDuration = ev.eventType === MatchEventType.SECOND_YELLOW_CARD ? SECOND_YELLOW_BAN_MATCHES : RED_CARD_BAN_MATCHES
+      const banDuration =
+        ev.eventType === MatchEventType.SECOND_YELLOW_CARD
+          ? SECOND_YELLOW_BAN_MATCHES
+          : RED_CARD_BAN_MATCHES
       const exists = await tx.disqualification.findFirst({
         where: {
           personId: ev.playerId,
           reason,
-          isActive: true
-        }
+          isActive: true,
+        },
       })
       if (!exists) {
         await tx.disqualification.create({
@@ -476,8 +512,8 @@ async function processDisqualifications(match: MatchWithEvents, tx: PrismaTx) {
             sanctionDate: match.matchDateTime,
             banDurationMatches: banDuration,
             matchesMissed: 0,
-            isActive: true
-          }
+            isActive: true,
+          },
         })
       }
     }
@@ -490,8 +526,8 @@ async function processDisqualifications(match: MatchWithEvents, tx: PrismaTx) {
         where: {
           personId: stat.personId,
           reason: DisqualificationReason.ACCUMULATED_CARDS,
-          isActive: true
-        }
+          isActive: true,
+        },
       })
       if (!exists) {
         await tx.disqualification.create({
@@ -502,15 +538,17 @@ async function processDisqualifications(match: MatchWithEvents, tx: PrismaTx) {
             sanctionDate: match.matchDateTime,
             banDurationMatches: 1,
             matchesMissed: 0,
-            isActive: true
-          }
+            isActive: true,
+          },
         })
       }
     }
   }
 }
 
-type MatchWithPredictions = Match & { predictions: { id: bigint; result1x2: PredictionResult | null; userId: number }[] }
+type MatchWithPredictions = Match & {
+  predictions: { id: bigint; result1x2: PredictionResult | null; userId: number }[]
+}
 
 async function updatePredictions(match: MatchWithPredictions, tx: PrismaTx) {
   const result = resolveMatchResult(match)
@@ -521,24 +559,24 @@ async function updatePredictions(match: MatchWithPredictions, tx: PrismaTx) {
       where: { id: prediction.id },
       data: {
         isCorrect,
-        pointsAwarded: isCorrect ? 3 : 0
-      }
+        pointsAwarded: isCorrect ? 3 : 0,
+      },
     })
 
     await tx.appUser.update({
       where: { id: prediction.userId },
       data: {
         totalPredictions: {
-          increment: 0
-        }
-      }
+          increment: 0,
+        },
+      },
     })
   }
 
   const achievementTypes = await tx.achievementType.findMany()
   if (achievementTypes.length === 0) return
 
-  const usersToCheck = [...new Set(match.predictions.map((p) => p.userId))]
+  const usersToCheck = [...new Set(match.predictions.map(p => p.userId))]
   if (usersToCheck.length === 0) return
 
   for (const userId of usersToCheck) {
@@ -546,12 +584,12 @@ async function updatePredictions(match: MatchWithPredictions, tx: PrismaTx) {
       where: { id: userId },
       include: {
         predictions: true,
-        achievements: true
-      }
+        achievements: true,
+      },
     })
     if (!user) continue
 
-    const correctCount = user.predictions.filter((p) => p.isCorrect).length
+    const correctCount = user.predictions.filter(p => p.isCorrect).length
     const totalPredictions = user.predictions.length
 
     for (const achievement of achievementTypes) {
@@ -563,14 +601,14 @@ async function updatePredictions(match: MatchWithPredictions, tx: PrismaTx) {
       }
 
       if (achieved) {
-        const already = user.achievements.find((ua) => ua.achievementTypeId === achievement.id)
+        const already = user.achievements.find(ua => ua.achievementTypeId === achievement.id)
         if (!already) {
           await tx.userAchievement.create({
             data: {
               userId,
               achievementTypeId: achievement.id,
-              achievedDate: new Date()
-            }
+              achievedDate: new Date(),
+            },
           })
         }
       }
@@ -598,22 +636,24 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
     include: {
       season: { include: { competition: true } },
       matches: {
-        orderBy: { seriesMatchNumber: 'asc' }
-      }
-    }
+        orderBy: { seriesMatchNumber: 'asc' },
+      },
+    },
   })
 
   if (!series) return
   if (series.seriesStatus === SeriesStatus.FINISHED) return
 
   const format = series.season.competition.seriesFormat
-  const isMultiMatchSeries = format === SeriesFormat.BEST_OF_N || format === SeriesFormat.DOUBLE_ROUND_PLAYOFF
+  const isMultiMatchSeries =
+    format === SeriesFormat.BEST_OF_N || format === SeriesFormat.DOUBLE_ROUND_PLAYOFF
   const isBracketFormat =
-    format === ('PLAYOFF_BRACKET' as SeriesFormat) || format === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
+    format === ('PLAYOFF_BRACKET' as SeriesFormat) ||
+    format === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
 
   if (isMultiMatchSeries) {
     const scheduledMatches = series.matches
-    const finishedMatches = scheduledMatches.filter((m) => m.status === MatchStatus.FINISHED)
+    const finishedMatches = scheduledMatches.filter(m => m.status === MatchStatus.FINISHED)
     if (finishedMatches.length === 0) return
     const totalPlannedMatches = scheduledMatches.length
 
@@ -637,17 +677,17 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
         where: { id: series.id },
         data: {
           seriesStatus: SeriesStatus.FINISHED,
-          winnerClubId
-        }
+          winnerClubId,
+        },
       })
 
       await tx.match.deleteMany({
         where: {
           seriesId: series.id,
           status: {
-            in: [MatchStatus.SCHEDULED, MatchStatus.LIVE, MatchStatus.POSTPONED]
-          }
-        }
+            in: [MatchStatus.SCHEDULED, MatchStatus.LIVE, MatchStatus.POSTPONED],
+          },
+        },
       })
 
       await maybeCreateNextPlayoffStage(tx, {
@@ -655,7 +695,7 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
         currentStageName: series.stageName,
         bestOfLength: totalPlannedMatches,
         format,
-        logger
+        logger,
       })
     }
     return
@@ -668,7 +708,7 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
         {
           matchId: match.id.toString(),
           seriesId: series.id,
-          stage: series.stageName
+          stage: series.stageName,
         },
         'playoff bracket match finished in draw, unable to determine winner automatically'
       )
@@ -679,17 +719,17 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
       where: { id: series.id },
       data: {
         seriesStatus: SeriesStatus.FINISHED,
-        winnerClubId
-      }
+        winnerClubId,
+      },
     })
 
     await tx.match.deleteMany({
       where: {
         seriesId: series.id,
         status: {
-          in: [MatchStatus.SCHEDULED, MatchStatus.LIVE, MatchStatus.POSTPONED]
-        }
-      }
+          in: [MatchStatus.SCHEDULED, MatchStatus.LIVE, MatchStatus.POSTPONED],
+        },
+      },
     })
 
     await maybeCreateNextPlayoffStage(tx, {
@@ -697,7 +737,7 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
       currentStageName: series.stageName,
       bestOfLength: 1,
       format,
-      logger
+      logger,
     })
   }
 }
@@ -713,14 +753,14 @@ type PlayoffProgressionContext = {
 async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgressionContext) {
   const stageSeries = await tx.matchSeries.findMany({
     where: { seasonId: context.seasonId, stageName: context.currentStageName },
-    orderBy: { createdAt: 'asc' }
+    orderBy: { createdAt: 'asc' },
   })
 
   if (!stageSeries.length) return
-  if (stageSeries.some((item) => item.seriesStatus !== SeriesStatus.FINISHED)) return
+  if (stageSeries.some(item => item.seriesStatus !== SeriesStatus.FINISHED)) return
 
   const orderedWinners = stageSeries
-    .map((item) => item.winnerClubId)
+    .map(item => item.winnerClubId)
     .filter((clubId): clubId is number => typeof clubId === 'number')
 
   const uniqueWinners: number[] = []
@@ -733,9 +773,11 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
   if (uniqueWinners.length < 2) return
 
   const isMultiMatchSeries =
-    context.format === SeriesFormat.BEST_OF_N || context.format === SeriesFormat.DOUBLE_ROUND_PLAYOFF
+    context.format === SeriesFormat.BEST_OF_N ||
+    context.format === SeriesFormat.DOUBLE_ROUND_PLAYOFF
   const isBracketFormat =
-    context.format === ('PLAYOFF_BRACKET' as SeriesFormat) || context.format === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
+    context.format === ('PLAYOFF_BRACKET' as SeriesFormat) ||
+    context.format === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
 
   if (isMultiMatchSeries) {
     const stats = await tx.clubSeasonStats.findMany({ where: { seasonId: context.seasonId } })
@@ -750,14 +792,14 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
         wins: 0,
         losses: 0,
         goalsFor: 0,
-        goalsAgainst: 0
+        goalsAgainst: 0,
       }
       const r = statsMap.get(right) ?? {
         points: 0,
         wins: 0,
         losses: 0,
         goalsFor: 0,
-        goalsAgainst: 0
+        goalsAgainst: 0,
       }
       if (l.points !== r.points) return r.points - l.points
       if (l.wins !== r.wins) return r.wins - l.wins
@@ -773,20 +815,25 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
 
     const nextStageName = stageNameForTeams(seededWinners.length)
     const existingNextStage = await tx.matchSeries.count({
-      where: { seasonId: context.seasonId, stageName: nextStageName }
+      where: { seasonId: context.seasonId, stageName: nextStageName },
     })
 
     if (existingNextStage > 0) return
 
     const latestMatch = await tx.match.findFirst({
       where: { seasonId: context.seasonId },
-      orderBy: { matchDateTime: 'desc' }
+      orderBy: { matchDateTime: 'desc' },
     })
 
     const matchTime = latestMatch ? latestMatch.matchDateTime.toISOString().slice(11, 16) : null
     const startDate = latestMatch ? addDays(latestMatch.matchDateTime, 7) : new Date()
 
-    const { plans, byeSeries } = createInitialPlayoffPlans(seededWinners, startDate, matchTime, context.bestOfLength)
+    const { plans, byeSeries } = createInitialPlayoffPlans(
+      seededWinners,
+      startDate,
+      matchTime,
+      context.bestOfLength
+    )
 
     if (plans.length === 0 && byeSeries.length === 0) return
 
@@ -796,7 +843,7 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
 
     for (const plan of plans) {
       let playoffRound = await tx.seasonRound.findFirst({
-        where: { seasonId: context.seasonId, label: plan.stageName }
+        where: { seasonId: context.seasonId, label: plan.stageName },
       })
       if (!playoffRound) {
         playoffRound = await tx.seasonRound.create({
@@ -804,8 +851,8 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
             seasonId: context.seasonId,
             roundType: RoundType.PLAYOFF,
             roundNumber: null,
-            label: plan.stageName
-          }
+            label: plan.stageName,
+          },
         })
       }
 
@@ -818,8 +865,8 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
           seriesStatus: SeriesStatus.IN_PROGRESS,
           homeSeed: plan.homeSeed,
           awaySeed: plan.awaySeed,
-          bracketSlot: plan.targetSlot
-        }
+          bracketSlot: plan.targetSlot,
+        },
       })
       createdSeries += 1
 
@@ -835,7 +882,7 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
           status: MatchStatus.SCHEDULED,
           seriesId: series.id,
           seriesMatchNumber: index + 1,
-          roundId: playoffRound?.id ?? null
+          roundId: playoffRound?.id ?? null,
         }
       })
 
@@ -857,8 +904,8 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
             winnerClubId: bye.clubId,
             homeSeed: bye.seed,
             awaySeed: bye.seed,
-            bracketSlot: bye.targetSlot
-          }
+            bracketSlot: bye.targetSlot,
+          },
         })
         createdSeries += 1
       }
@@ -871,7 +918,7 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
       startDate,
       matchTime,
       bestOfLength: context.bestOfLength,
-      latestDate
+      latestDate,
     })
 
     createdSeries += thirdPlaceOutcome.seriesCreated
@@ -888,8 +935,8 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
         stageName: nextStageName,
         seriesCreated: createdSeries,
         matchesCreated: createdMatches,
-        byeClubIds: byeSeries.map((entry) => entry.clubId),
-        thirdPlaceCreated: thirdPlaceOutcome.seriesCreated > 0
+        byeClubIds: byeSeries.map(entry => entry.clubId),
+        thirdPlaceCreated: thirdPlaceOutcome.seriesCreated > 0,
       },
       'playoff stage progressed'
     )
@@ -900,24 +947,28 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
   if (isBracketFormat) {
     type BracketAdvanceEntry = { clubId: number; seed?: number; slot: number }
 
-    const stageEntries: BracketAdvanceEntry[] = stageSeries.reduce<BracketAdvanceEntry[]>((acc, series) => {
-      if (!series.winnerClubId || typeof series.bracketSlot !== 'number') {
+    const stageEntries: BracketAdvanceEntry[] = stageSeries.reduce<BracketAdvanceEntry[]>(
+      (acc, series) => {
+        if (!series.winnerClubId || typeof series.bracketSlot !== 'number') {
+          return acc
+        }
+
+        const entry: BracketAdvanceEntry = {
+          clubId: series.winnerClubId,
+          slot: series.bracketSlot,
+        }
+
+        const winnerSeed =
+          series.winnerClubId === series.homeClubId ? series.homeSeed : series.awaySeed
+        if (typeof winnerSeed === 'number') {
+          entry.seed = winnerSeed
+        }
+
+        acc.push(entry)
         return acc
-      }
-
-      const entry: BracketAdvanceEntry = {
-        clubId: series.winnerClubId,
-        slot: series.bracketSlot
-      }
-
-      const winnerSeed = series.winnerClubId === series.homeClubId ? series.homeSeed : series.awaySeed
-      if (typeof winnerSeed === 'number') {
-        entry.seed = winnerSeed
-      }
-
-      acc.push(entry)
-      return acc
-    }, [])
+      },
+      []
+    )
 
     stageEntries.sort((left, right) => left.slot - right.slot)
 
@@ -925,14 +976,14 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
 
     const nextStageName = stageNameForTeams(stageEntries.length)
     const existingNextStage = await tx.matchSeries.count({
-      where: { seasonId: context.seasonId, stageName: nextStageName }
+      where: { seasonId: context.seasonId, stageName: nextStageName },
     })
 
     if (existingNextStage > 0) return
 
     const latestMatch = await tx.match.findFirst({
       where: { seasonId: context.seasonId },
-      orderBy: { matchDateTime: 'desc' }
+      orderBy: { matchDateTime: 'desc' },
     })
 
     const matchTime = latestMatch ? latestMatch.matchDateTime.toISOString().slice(11, 16) : null
@@ -944,7 +995,7 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
     let createdMatches = 0
 
     let playoffRound = await tx.seasonRound.findFirst({
-      where: { seasonId: context.seasonId, label: nextStageName }
+      where: { seasonId: context.seasonId, label: nextStageName },
     })
     if (!playoffRound) {
       playoffRound = await tx.seasonRound.create({
@@ -952,8 +1003,8 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
           seasonId: context.seasonId,
           roundType: RoundType.PLAYOFF,
           roundNumber: null,
-          label: nextStageName
-        }
+          label: nextStageName,
+        },
       })
     }
 
@@ -989,8 +1040,8 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
             winnerClubId: left.clubId,
             homeSeed: normalizeSeed(left.seed),
             awaySeed: normalizeSeed(left.seed),
-            bracketSlot: targetSlot
-          }
+            bracketSlot: targetSlot,
+          },
         })
         createdSeries += 1
         autoAdvance.push({ clubId: left.clubId, seed: left.seed, targetSlot })
@@ -1016,8 +1067,8 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
           seriesStatus: SeriesStatus.IN_PROGRESS,
           homeSeed: normalizeSeed(homeEntry.seed),
           awaySeed: normalizeSeed(awayEntry.seed),
-          bracketSlot: targetSlot
-        }
+          bracketSlot: targetSlot,
+        },
       })
       createdSeries += 1
 
@@ -1033,7 +1084,7 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
           status: MatchStatus.SCHEDULED,
           seriesId: series.id,
           seriesMatchNumber: gameIndex + 1,
-          roundId: playoffRound?.id ?? null
+          roundId: playoffRound?.id ?? null,
         }
       })
 
@@ -1050,7 +1101,7 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
       startDate,
       matchTime,
       bestOfLength,
-      latestDate
+      latestDate,
     })
 
     createdSeries += thirdPlaceOutcome.seriesCreated
@@ -1068,7 +1119,7 @@ async function maybeCreateNextPlayoffStage(tx: PrismaTx, context: PlayoffProgres
         seriesCreated: createdSeries,
         matchesCreated: createdMatches,
         autoAdvance,
-        thirdPlaceCreated: thirdPlaceOutcome.seriesCreated > 0
+        thirdPlaceCreated: thirdPlaceOutcome.seriesCreated > 0,
       },
       'playoff stage progressed'
     )
@@ -1093,14 +1144,17 @@ type ThirdPlaceScheduleResult = {
   latestDate: Date | null
 }
 
-async function scheduleThirdPlaceIfFinal(tx: PrismaTx, input: ThirdPlaceScheduleInput): Promise<ThirdPlaceScheduleResult> {
+async function scheduleThirdPlaceIfFinal(
+  tx: PrismaTx,
+  input: ThirdPlaceScheduleInput
+): Promise<ThirdPlaceScheduleResult> {
   if (input.nextStageName !== 'Финал') {
     return { seriesCreated: 0, matchesCreated: 0, latestDate: input.latestDate }
   }
 
   const thirdPlaceStageName = 'Матч за 3 место'
   const existingThirdPlace = await tx.matchSeries.count({
-    where: { seasonId: input.context.seasonId, stageName: thirdPlaceStageName }
+    where: { seasonId: input.context.seasonId, stageName: thirdPlaceStageName },
   })
 
   if (existingThirdPlace > 0) {
@@ -1146,7 +1200,7 @@ async function scheduleThirdPlaceIfFinal(tx: PrismaTx, input: ThirdPlaceSchedule
   const away = sorted[1]
 
   let thirdPlaceRound = await tx.seasonRound.findFirst({
-    where: { seasonId: input.context.seasonId, label: thirdPlaceStageName }
+    where: { seasonId: input.context.seasonId, label: thirdPlaceStageName },
   })
 
   if (!thirdPlaceRound) {
@@ -1155,8 +1209,8 @@ async function scheduleThirdPlaceIfFinal(tx: PrismaTx, input: ThirdPlaceSchedule
         seasonId: input.context.seasonId,
         roundType: RoundType.PLAYOFF,
         roundNumber: null,
-        label: thirdPlaceStageName
-      }
+        label: thirdPlaceStageName,
+      },
     })
   }
 
@@ -1166,7 +1220,7 @@ async function scheduleThirdPlaceIfFinal(tx: PrismaTx, input: ThirdPlaceSchedule
     homeClubId: home.clubId,
     awayClubId: away.clubId,
     seriesStatus: SeriesStatus.IN_PROGRESS,
-    bracketSlot: null
+    bracketSlot: null,
   }
 
   if (typeof home.seed === 'number') {
@@ -1196,7 +1250,7 @@ async function scheduleThirdPlaceIfFinal(tx: PrismaTx, input: ThirdPlaceSchedule
       status: MatchStatus.SCHEDULED,
       seriesId: thirdPlaceSeries.id,
       seriesMatchNumber: index + 1,
-      roundId: thirdPlaceRound?.id ?? null
+      roundId: thirdPlaceRound?.id ?? null,
     }
   })
 
@@ -1209,6 +1263,6 @@ async function scheduleThirdPlaceIfFinal(tx: PrismaTx, input: ThirdPlaceSchedule
   return {
     seriesCreated: 1,
     matchesCreated: createdMatches,
-    latestDate
+    latestDate,
   }
 }

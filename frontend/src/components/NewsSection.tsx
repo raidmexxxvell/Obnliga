@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { NewsItem } from '@shared/types'
 import { wsClient } from '../wsClient'
 
-const API_BASE = ((import.meta as ImportMeta & { env?: { VITE_BACKEND_URL?: string } }).env?.VITE_BACKEND_URL) || ''
+const API_BASE =
+  (import.meta as ImportMeta & { env?: { VITE_BACKEND_URL?: string } }).env?.VITE_BACKEND_URL || ''
 const ROTATION_INTERVAL_MS = 7_000
 const SWIPE_THRESHOLD = 40
 const NEWS_CACHE_KEY = 'obnliga_news_cache'
@@ -46,14 +47,14 @@ export const NewsSection = () => {
   }, [])
 
   const next = useCallback(() => {
-    setActiveIndex((current) => {
+    setActiveIndex(current => {
       if (news.length === 0) return 0
       return (current + 1) % news.length
     })
   }, [news.length])
 
   const prev = useCallback(() => {
-    setActiveIndex((current) => {
+    setActiveIndex(current => {
       if (news.length === 0) return 0
       const nextIndex = current - 1
       return nextIndex >= 0 ? nextIndex : Math.max(news.length - 1, 0)
@@ -65,7 +66,11 @@ export const NewsSection = () => {
     try {
       const raw = window.localStorage.getItem(NEWS_CACHE_KEY)
       if (!raw) return null
-      const entry = JSON.parse(raw) as { items: NewsItem[]; etag?: string | null; timestamp: number }
+      const entry = JSON.parse(raw) as {
+        items: NewsItem[]
+        etag?: string | null
+        timestamp: number
+      }
       if (!Array.isArray(entry.items)) return null
       if (Date.now() - entry.timestamp > NEWS_CACHE_TTL) {
         window.localStorage.removeItem(NEWS_CACHE_KEY)
@@ -87,41 +92,45 @@ export const NewsSection = () => {
     }
   }, [])
 
-  const fetchNews = useCallback(async (opts?: { background?: boolean; force?: boolean }) => {
-    try {
-      if (!opts?.background) setLoading(true)
-      const headers: HeadersInit | undefined = !opts?.force && etagRef.current && canSendConditionalHeader
-        ? { 'If-None-Match': etagRef.current }
-        : undefined
-      const response = await fetch(buildUrl('/api/news'), headers ? { headers } : undefined)
-      if (response.status === 304) {
-        if (!opts?.force && newsRef.current.length === 0) {
-          etagRef.current = null
-          await fetchNews({ background: true, force: true })
+  const fetchNews = useCallback(
+    async (opts?: { background?: boolean; force?: boolean }) => {
+      try {
+        if (!opts?.background) setLoading(true)
+        const headers: HeadersInit | undefined =
+          !opts?.force && etagRef.current && canSendConditionalHeader
+            ? { 'If-None-Match': etagRef.current }
+            : undefined
+        const response = await fetch(buildUrl('/api/news'), headers ? { headers } : undefined)
+        if (response.status === 304) {
+          if (!opts?.force && newsRef.current.length === 0) {
+            etagRef.current = null
+            await fetchNews({ background: true, force: true })
+          }
+          setError(null)
+          setLoading(false)
+          return
         }
+        if (!response.ok) {
+          throw new Error(`news_fetch_failed_${response.status}`)
+        }
+        const payload = await response.json()
+        const items = (payload?.data ?? []) as NewsItem[]
+        const etag = response.headers.get('ETag')
+        etagRef.current = etag
+        writeCache(items, etag)
+        setNews(items)
+        newsRef.current = items
         setError(null)
+        setActiveIndex(0)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'news_fetch_failed'
+        setError(message)
+      } finally {
         setLoading(false)
-        return
       }
-      if (!response.ok) {
-        throw new Error(`news_fetch_failed_${response.status}`)
-      }
-      const payload = await response.json()
-      const items = (payload?.data ?? []) as NewsItem[]
-      const etag = response.headers.get('ETag')
-      etagRef.current = etag
-      writeCache(items, etag)
-      setNews(items)
-      newsRef.current = items
-      setError(null)
-      setActiveIndex(0)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'news_fetch_failed'
-      setError(message)
-    } finally {
-      setLoading(false)
-    }
-  }, [writeCache])
+    },
+    [writeCache]
+  )
 
   useEffect(() => {
     const cached = readCache()
@@ -151,8 +160,8 @@ export const NewsSection = () => {
     const handler = (message: any) => {
       if (!message?.payload) return
       const item = message.payload as NewsItem
-      setNews((current) => {
-        const deduped = current.filter((entry) => entry.id !== item.id)
+      setNews(current => {
+        const deduped = current.filter(entry => entry.id !== item.id)
         const nextItems = [item, ...deduped]
         writeCache(nextItems, etagRef.current)
         newsRef.current = nextItems
@@ -164,14 +173,14 @@ export const NewsSection = () => {
     const removeHandler = (message: any) => {
       const id = message?.payload?.id
       if (!id) return
-      setNews((current) => {
-        const filtered = current.filter((entry) => entry.id !== id)
+      setNews(current => {
+        const filtered = current.filter(entry => entry.id !== id)
         if (filtered.length === current.length) {
           return current
         }
         writeCache(filtered, etagRef.current)
         newsRef.current = filtered
-        setActiveIndex((prev) => {
+        setActiveIndex(prev => {
           if (filtered.length === 0) return 0
           return Math.min(prev, filtered.length - 1)
         })
@@ -261,7 +270,7 @@ export const NewsSection = () => {
           <time className="news-date" dateTime={activeItem.createdAt}>
             {new Date(activeItem.createdAt).toLocaleDateString('ru-RU', {
               day: '2-digit',
-              month: 'long'
+              month: 'long',
             })}
           </time>
           <h3>{activeItem.title}</h3>
@@ -289,7 +298,12 @@ export const NewsSection = () => {
       </article>
 
       {modalState ? (
-        <div className="news-modal" role="dialog" aria-modal="true" aria-label={modalState.item.title}>
+        <div
+          className="news-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={modalState.item.title}
+        >
           <div className="news-modal-content">
             <header>
               <time className="news-date" dateTime={modalState.item.createdAt}>
@@ -297,7 +311,7 @@ export const NewsSection = () => {
                   day: '2-digit',
                   month: 'long',
                   hour: '2-digit',
-                  minute: '2-digit'
+                  minute: '2-digit',
                 })}
               </time>
               <h3>{modalState.item.title}</h3>

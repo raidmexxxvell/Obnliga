@@ -5,7 +5,7 @@ import {
   adminPut,
   applyPlayerTransfers,
   fetchClubPlayers,
-  PlayerTransferInput
+  PlayerTransferInput,
 } from '../../api/adminClient'
 import { useAdminStore } from '../../store/adminStore'
 import { Club, Disqualification, Person } from '../../types'
@@ -41,7 +41,7 @@ const defaultEditPersonForm: EditPersonFormState = {
   firstName: '',
   lastName: '',
   isPlayer: true,
-  transferClubId: ''
+  transferClubId: '',
 }
 
 const defaultDisqualificationForm: DisqualificationFormState = {
@@ -49,7 +49,7 @@ const defaultDisqualificationForm: DisqualificationFormState = {
   clubId: '',
   reason: 'RED_CARD',
   banDurationMatches: '',
-  sanctionDate: new Date().toISOString().slice(0, 10)
+  sanctionDate: new Date().toISOString().slice(0, 10),
 }
 
 const formatDisqualificationReason = (reason: Disqualification['reason']) => {
@@ -66,21 +66,16 @@ const formatDisqualificationReason = (reason: Disqualification['reason']) => {
 }
 
 export const PlayersTab = () => {
-  const {
-    token,
-    data,
-    fetchDictionaries,
-    fetchDisqualifications,
-    loading,
-    error
-  } = useAdminStore((state) => ({
-    token: state.token,
-    data: state.data,
-    fetchDictionaries: state.fetchDictionaries,
-    fetchDisqualifications: state.fetchDisqualifications,
-    loading: state.loading,
-    error: state.error
-  }))
+  const { token, data, fetchDictionaries, fetchDisqualifications, loading, error } = useAdminStore(
+    state => ({
+      token: state.token,
+      data: state.data,
+      fetchDictionaries: state.fetchDictionaries,
+      fetchDisqualifications: state.fetchDisqualifications,
+      loading: state.loading,
+      error: state.error,
+    })
+  )
 
   const [editPersonForm, setEditPersonForm] = useState<EditPersonFormState>(defaultEditPersonForm)
   const [disqualificationForm, setDisqualificationForm] = useState<DisqualificationFormState>(
@@ -109,7 +104,8 @@ export const PlayersTab = () => {
   }, [token, fetchDictionaries, fetchDisqualifications])
 
   useEffect(() => {
-    const clubId = typeof disqualificationForm.clubId === 'number' ? disqualificationForm.clubId : undefined
+    const clubId =
+      typeof disqualificationForm.clubId === 'number' ? disqualificationForm.clubId : undefined
     if (!clubId) {
       setClubPlayers([])
       setClubPlayersLoading(false)
@@ -131,7 +127,7 @@ export const PlayersTab = () => {
       try {
         const data = await fetchClubPlayers(token, clubId)
         if (cancelled) return
-        const players = data.map((entry) => entry.person).filter((person) => person.isPlayer)
+        const players = data.map(entry => entry.person).filter(person => person.isPlayer)
         clubPlayersCacheRef.current.set(clubId, players)
         setClubPlayers(players)
       } catch (err) {
@@ -162,19 +158,20 @@ export const PlayersTab = () => {
       handleFeedback('Выберите игрока для перехода', 'error')
       return
     }
-    const targetClubId = typeof editPersonForm.transferClubId === 'number' ? editPersonForm.transferClubId : null
+    const targetClubId =
+      typeof editPersonForm.transferClubId === 'number' ? editPersonForm.transferClubId : null
     if (!targetClubId) {
       handleFeedback('Выберите клуб для перехода', 'error')
       return
     }
 
-    const person = data.persons.find((item) => item.id === editPersonForm.id)
+    const person = data.persons.find(item => item.id === editPersonForm.id)
     if (!person) {
       handleFeedback('Выбранный игрок не найден', 'error')
       return
     }
 
-    const toClub = data.clubs.find((club) => club.id === targetClubId)
+    const toClub = data.clubs.find(club => club.id === targetClubId)
     if (!toClub) {
       handleFeedback('Клуб для перехода не найден', 'error')
       return
@@ -189,11 +186,11 @@ export const PlayersTab = () => {
     const payload: PlayerTransferInput = {
       personId: person.id,
       toClubId: toClub.id,
-      fromClubId: fromClub?.id ?? null
+      fromClubId: fromClub?.id ?? null,
     }
 
-    setTransferDrafts((previous) => {
-      const filtered = previous.filter((draft) => draft.payload.personId !== person.id)
+    setTransferDrafts(previous => {
+      const filtered = previous.filter(draft => draft.payload.personId !== person.id)
       transferCounterRef.current += 1
       const draftId = `transfer-${transferCounterRef.current}-${person.id}`
       return [
@@ -203,16 +200,16 @@ export const PlayersTab = () => {
           payload,
           person,
           fromClub,
-          toClub
-        }
+          toClub,
+        },
       ]
     })
-    setEditPersonForm((form) => ({ ...form, transferClubId: '' }))
+    setEditPersonForm(form => ({ ...form, transferClubId: '' }))
     handleFeedback('Переход добавлен в список', 'success')
   }
 
   const handleRemoveDraft = (draftId: string) => {
-    setTransferDrafts((previous) => previous.filter((draft) => draft.id !== draftId))
+    setTransferDrafts(previous => previous.filter(draft => draft.id !== draftId))
   }
 
   const handleApplyTransfers = async () => {
@@ -222,7 +219,7 @@ export const PlayersTab = () => {
     }
     setTransferProcessing(true)
     try {
-      const payload = { transfers: transferDrafts.map((draft) => draft.payload) }
+      const payload = { transfers: transferDrafts.map(draft => draft.payload) }
       const result = await applyPlayerTransfers(token, payload)
       let message: string
       if (result.movedCount) {
@@ -246,7 +243,7 @@ export const PlayersTab = () => {
   }
 
   const filteredPersons = useMemo(() => {
-    return data.persons.filter((person) => {
+    return data.persons.filter(person => {
       if (showPlayersOnly && !person.isPlayer) return false
       if (!filter) return true
       const target = `${person.lastName} ${person.firstName}`.toLowerCase()
@@ -257,7 +254,10 @@ export const PlayersTab = () => {
   const limitedPersons = useMemo(() => filteredPersons.slice(0, 5), [filteredPersons])
   const hasMorePersons = filteredPersons.length > limitedPersons.length
   const selectedPerson = useMemo(
-    () => (typeof editPersonForm.id === 'number' ? data.persons.find((item) => item.id === editPersonForm.id) : undefined),
+    () =>
+      typeof editPersonForm.id === 'number'
+        ? data.persons.find(item => item.id === editPersonForm.id)
+        : undefined,
     [data.persons, editPersonForm.id]
   )
 
@@ -271,7 +271,7 @@ export const PlayersTab = () => {
       await adminPut(token, `/api/admin/persons/${editPersonForm.id}`, {
         firstName: editPersonForm.firstName.trim() || undefined,
         lastName: editPersonForm.lastName.trim() || undefined,
-        isPlayer: editPersonForm.isPlayer
+        isPlayer: editPersonForm.isPlayer,
       })
       handleFeedback('Данные игрока обновлены', 'success')
       setEditPersonForm(defaultEditPersonForm)
@@ -295,20 +295,21 @@ export const PlayersTab = () => {
   }
 
   const handleSelectPersonToEdit = (personId: number) => {
-    const person = data.persons.find((item) => item.id === personId)
+    const person = data.persons.find(item => item.id === personId)
     if (!person) return
     setEditPersonForm({
       id: person.id,
       firstName: person.firstName,
       lastName: person.lastName,
       isPlayer: person.isPlayer,
-      transferClubId: ''
+      transferClubId: '',
     })
   }
 
   const handleDisqualificationSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const clubId = typeof disqualificationForm.clubId === 'number' ? disqualificationForm.clubId : undefined
+    const clubId =
+      typeof disqualificationForm.clubId === 'number' ? disqualificationForm.clubId : undefined
     if (!clubId || !disqualificationForm.personId || !disqualificationForm.banDurationMatches) {
       handleFeedback('Выберите клуб, игрока и срок дисквалификации', 'error')
       return
@@ -319,7 +320,7 @@ export const PlayersTab = () => {
         clubId,
         reason: disqualificationForm.reason,
         banDurationMatches: Number(disqualificationForm.banDurationMatches),
-        sanctionDate: disqualificationForm.sanctionDate
+        sanctionDate: disqualificationForm.sanctionDate,
       })
       handleFeedback('Дисквалификация создана', 'success')
       setDisqualificationForm(defaultDisqualificationForm)
@@ -330,7 +331,10 @@ export const PlayersTab = () => {
     }
   }
 
-  const handleDisqualificationUpdate = async (entry: Disqualification, updates: Partial<Disqualification>) => {
+  const handleDisqualificationUpdate = async (
+    entry: Disqualification,
+    updates: Partial<Disqualification>
+  ) => {
     try {
       await adminPut(token, `/api/admin/disqualifications/${entry.id}`, updates)
       handleFeedback('Запись обновлена', 'success')
@@ -353,8 +357,8 @@ export const PlayersTab = () => {
     }
   }
 
-  const activeDisqualifications = data.disqualifications.filter((entry) => entry.isActive)
-  const historyDisqualifications = data.disqualifications.filter((entry) => !entry.isActive)
+  const activeDisqualifications = data.disqualifications.filter(entry => entry.isActive)
+  const historyDisqualifications = data.disqualifications.filter(entry => !entry.isActive)
 
   return (
     <div className="tab-sections">
@@ -394,7 +398,7 @@ export const PlayersTab = () => {
                 </tr>
               </thead>
               <tbody>
-                {transferDrafts.map((draft) => (
+                {transferDrafts.map(draft => (
                   <tr key={draft.id}>
                     <td>
                       {draft.person.lastName} {draft.person.firstName}
@@ -402,7 +406,11 @@ export const PlayersTab = () => {
                     <td>{draft.fromClub ? draft.fromClub.shortName : 'Свободный агент'}</td>
                     <td>{draft.toClub.shortName}</td>
                     <td className="table-actions">
-                      <button type="button" onClick={() => handleRemoveDraft(draft.id)} disabled={transferProcessing}>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveDraft(draft.id)}
+                        disabled={transferProcessing}
+                      >
                         Удалить
                       </button>
                     </td>
@@ -411,7 +419,9 @@ export const PlayersTab = () => {
               </tbody>
             </table>
           ) : (
-            <p className="muted">Список пуст. Выберите игрока, задайте клуб перехода и добавьте запись.</p>
+            <p className="muted">
+              Список пуст. Выберите игрока, задайте клуб перехода и добавьте запись.
+            </p>
           )}
           <div className="form-actions">
             <button
@@ -443,14 +453,14 @@ export const PlayersTab = () => {
               Игрок
               <select
                 value={editPersonForm.id}
-                onChange={(event) => {
+                onChange={event => {
                   const value = event.target.value ? Number(event.target.value) : ''
-                  setEditPersonForm((form) => ({ ...form, id: value }))
+                  setEditPersonForm(form => ({ ...form, id: value }))
                   if (value) handleSelectPersonToEdit(Number(value))
                 }}
               >
                 <option value="">—</option>
-                {data.persons.map((person) => (
+                {data.persons.map(person => (
                   <option key={person.id} value={person.id}>
                     {person.lastName} {person.firstName}
                   </option>
@@ -459,20 +469,23 @@ export const PlayersTab = () => {
             </label>
             {selectedPerson ? (
               <p className="muted">
-                Текущий клуб: {selectedPerson.currentClub ? selectedPerson.currentClub.shortName : 'Свободный агент'}
+                Текущий клуб:{' '}
+                {selectedPerson.currentClub
+                  ? selectedPerson.currentClub.shortName
+                  : 'Свободный агент'}
               </p>
             ) : null}
             <label>
               Клуб перехода
               <select
                 value={editPersonForm.transferClubId}
-                onChange={(event) => {
+                onChange={event => {
                   const value = event.target.value ? Number(event.target.value) : ''
-                  setEditPersonForm((form) => ({ ...form, transferClubId: value }))
+                  setEditPersonForm(form => ({ ...form, transferClubId: value }))
                 }}
               >
                 <option value="">—</option>
-                {data.clubs.map((club) => (
+                {data.clubs.map(club => (
                   <option key={club.id} value={club.id}>
                     {club.shortName}
                   </option>
@@ -483,21 +496,27 @@ export const PlayersTab = () => {
               Фамилия
               <input
                 value={editPersonForm.lastName}
-                onChange={(event) => setEditPersonForm((form) => ({ ...form, lastName: event.target.value }))}
+                onChange={event =>
+                  setEditPersonForm(form => ({ ...form, lastName: event.target.value }))
+                }
               />
             </label>
             <label>
               Имя
               <input
                 value={editPersonForm.firstName}
-                onChange={(event) => setEditPersonForm((form) => ({ ...form, firstName: event.target.value }))}
+                onChange={event =>
+                  setEditPersonForm(form => ({ ...form, firstName: event.target.value }))
+                }
               />
             </label>
             <label className="checkbox">
               <input
                 type="checkbox"
                 checked={editPersonForm.isPlayer}
-                onChange={(event) => setEditPersonForm((form) => ({ ...form, isPlayer: event.target.checked }))}
+                onChange={event =>
+                  setEditPersonForm(form => ({ ...form, isPlayer: event.target.checked }))
+                }
               />
               Игрок
             </label>
@@ -506,7 +525,9 @@ export const PlayersTab = () => {
                 className="button-primary"
                 type="button"
                 onClick={handleAddTransferDraft}
-                disabled={!editPersonForm.id || !editPersonForm.transferClubId || transferProcessing}
+                disabled={
+                  !editPersonForm.id || !editPersonForm.transferClubId || transferProcessing
+                }
               >
                 Добавить в список
               </button>
@@ -535,15 +556,15 @@ export const PlayersTab = () => {
               Клуб
               <select
                 value={disqualificationForm.clubId}
-                onChange={(event) => {
+                onChange={event => {
                   const value = event.target.value ? Number(event.target.value) : ''
                   setFeedback(null)
-                  setDisqualificationForm((form) => ({ ...form, clubId: value, personId: '' }))
+                  setDisqualificationForm(form => ({ ...form, clubId: value, personId: '' }))
                 }}
                 required
               >
                 <option value="">Выберите клуб</option>
-                {data.clubs.map((club) => (
+                {data.clubs.map(club => (
                   <option key={club.id} value={club.id}>
                     {club.shortName}
                   </option>
@@ -554,16 +575,23 @@ export const PlayersTab = () => {
               Игрок
               <select
                 value={disqualificationForm.personId}
-                onChange={(event) =>
-                  setDisqualificationForm((form) => ({ ...form, personId: event.target.value ? Number(event.target.value) : '' }))
+                onChange={event =>
+                  setDisqualificationForm(form => ({
+                    ...form,
+                    personId: event.target.value ? Number(event.target.value) : '',
+                  }))
                 }
                 disabled={clubPlayersLoading || !disqualificationForm.clubId}
                 required
               >
                 <option value="">
-                  {clubPlayersLoading ? 'Загружаем…' : disqualificationForm.clubId ? 'Выберите игрока' : 'Сначала выберите клуб'}
+                  {clubPlayersLoading
+                    ? 'Загружаем…'
+                    : disqualificationForm.clubId
+                      ? 'Выберите игрока'
+                      : 'Сначала выберите клуб'}
                 </option>
-                {clubPlayers.map((person) => (
+                {clubPlayers.map(person => (
                   <option key={person.id} value={person.id}>
                     {person.lastName} {person.firstName}
                   </option>
@@ -577,8 +605,11 @@ export const PlayersTab = () => {
               Причина
               <select
                 value={disqualificationForm.reason}
-                onChange={(event) =>
-                  setDisqualificationForm((form) => ({ ...form, reason: event.target.value as Disqualification['reason'] }))
+                onChange={event =>
+                  setDisqualificationForm(form => ({
+                    ...form,
+                    reason: event.target.value as Disqualification['reason'],
+                  }))
                 }
               >
                 <option value="RED_CARD">Красная карточка</option>
@@ -591,8 +622,8 @@ export const PlayersTab = () => {
               <input
                 type="date"
                 value={disqualificationForm.sanctionDate}
-                onChange={(event) =>
-                  setDisqualificationForm((form) => ({ ...form, sanctionDate: event.target.value }))
+                onChange={event =>
+                  setDisqualificationForm(form => ({ ...form, sanctionDate: event.target.value }))
                 }
                 required
               />
@@ -603,10 +634,10 @@ export const PlayersTab = () => {
                 type="number"
                 min={1}
                 value={disqualificationForm.banDurationMatches}
-                onChange={(event) =>
-                  setDisqualificationForm((form) => ({
+                onChange={event =>
+                  setDisqualificationForm(form => ({
                     ...form,
-                    banDurationMatches: event.target.value ? Number(event.target.value) : ''
+                    banDurationMatches: event.target.value ? Number(event.target.value) : '',
                   }))
                 }
                 required
@@ -626,10 +657,19 @@ export const PlayersTab = () => {
         </header>
         <div className="toolbar">
           <label>
-            <input type="search" placeholder="Поиск" value={filter} onChange={(event) => setFilter(event.target.value)} />
+            <input
+              type="search"
+              placeholder="Поиск"
+              value={filter}
+              onChange={event => setFilter(event.target.value)}
+            />
           </label>
           <label className="checkbox">
-            <input type="checkbox" checked={showPlayersOnly} onChange={(event) => setShowPlayersOnly(event.target.checked)} />
+            <input
+              type="checkbox"
+              checked={showPlayersOnly}
+              onChange={event => setShowPlayersOnly(event.target.checked)}
+            />
             Только игроки
           </label>
         </div>
@@ -644,7 +684,7 @@ export const PlayersTab = () => {
             </tr>
           </thead>
           <tbody>
-            {limitedPersons.map((person) => (
+            {limitedPersons.map(person => (
               <tr key={person.id}>
                 <td>{person.lastName}</td>
                 <td>{person.firstName}</td>
@@ -654,7 +694,11 @@ export const PlayersTab = () => {
                   <button type="button" onClick={() => handleSelectPersonToEdit(person.id)}>
                     Изм.
                   </button>
-                  <button type="button" className="danger" onClick={() => handlePersonDelete(person)}>
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={() => handlePersonDelete(person)}
+                  >
                     Удал.
                   </button>
                 </td>
@@ -663,7 +707,9 @@ export const PlayersTab = () => {
           </tbody>
         </table>
         {!filteredPersons.length ? <p className="muted">Список пуст.</p> : null}
-        {hasMorePersons ? <p className="muted">Показаны первые 5 записей, уточните поиск.</p> : null}
+        {hasMorePersons ? (
+          <p className="muted">Показаны первые 5 записей, уточните поиск.</p>
+        ) : null}
       </section>
 
       <section className="card" style={{ gridColumn: '1 / -1' }}>
@@ -684,7 +730,7 @@ export const PlayersTab = () => {
             </tr>
           </thead>
           <tbody>
-            {activeDisqualifications.map((entry) => (
+            {activeDisqualifications.map(entry => (
               <tr key={entry.id}>
                 <td>
                   {entry.person.lastName} {entry.person.firstName}
@@ -700,17 +746,24 @@ export const PlayersTab = () => {
                     onClick={() =>
                       handleDisqualificationUpdate(entry, {
                         matchesMissed: entry.matchesMissed + 1,
-                        isActive: entry.matchesMissed + 1 < entry.banDurationMatches
+                        isActive: entry.matchesMissed + 1 < entry.banDurationMatches,
                       })
                     }
                     disabled={entry.matchesRemaining <= 0}
                   >
                     +1 матч
                   </button>
-                  <button type="button" onClick={() => handleDisqualificationUpdate(entry, { isActive: false })}>
+                  <button
+                    type="button"
+                    onClick={() => handleDisqualificationUpdate(entry, { isActive: false })}
+                  >
                     Снять
                   </button>
-                  <button type="button" className="danger" onClick={() => handleDisqualificationDelete(entry)}>
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={() => handleDisqualificationDelete(entry)}
+                  >
                     Удал.
                   </button>
                 </td>
@@ -718,7 +771,9 @@ export const PlayersTab = () => {
             ))}
           </tbody>
         </table>
-        {!activeDisqualifications.length ? <p className="muted">Активных дисквалификаций нет.</p> : null}
+        {!activeDisqualifications.length ? (
+          <p className="muted">Активных дисквалификаций нет.</p>
+        ) : null}
       </section>
 
       <section className="card" style={{ gridColumn: '1 / -1' }}>
@@ -738,7 +793,7 @@ export const PlayersTab = () => {
             </tr>
           </thead>
           <tbody>
-            {historyDisqualifications.map((entry) => (
+            {historyDisqualifications.map(entry => (
               <tr key={entry.id}>
                 <td>
                   {entry.person.lastName} {entry.person.firstName}
@@ -748,7 +803,11 @@ export const PlayersTab = () => {
                 <td>{entry.banDurationMatches}</td>
                 <td>{entry.matchesMissed}</td>
                 <td className="table-actions">
-                  <button type="button" className="danger" onClick={() => handleDisqualificationDelete(entry)}>
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={() => handleDisqualificationDelete(entry)}
+                  >
                     Удал.
                   </button>
                 </td>

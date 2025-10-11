@@ -10,14 +10,14 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@shared': path.resolve(__dirname, '../shared')
-    }
+      '@shared': path.resolve(__dirname, '../shared'),
+    },
   },
   server: {
     port: 5183,
-    host: '0.0.0.0'
+    host: '0.0.0.0',
   },
   preview: {
-    port: 4183
-  }
+    port: 4183,
+  },
 })

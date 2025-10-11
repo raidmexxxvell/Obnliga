@@ -9,7 +9,7 @@ import {
   judgeUpdateEvent,
   judgeUpdateScore,
   JudgeEventPayload,
-  JudgeScorePayload
+  JudgeScorePayload,
 } from '../api/judgeClient'
 import { translateAdminError } from '../api/adminClient'
 
@@ -59,40 +59,40 @@ export const useJudgeStore = create<JudgeState>((set, get) => ({
   loading: {},
   error: undefined,
   async loadMatches(token) {
-    set((state) => ({
+    set(state => ({
       status: 'loading',
       loading: { ...state.loading, matches: true },
-      error: undefined
+      error: undefined,
     }))
 
     try {
       const matches = await fetchJudgeMatches(token)
       const firstMatch = matches[0]
 
-      set((state) => ({
+      set(state => ({
         matches,
         status: 'ready',
         loading: { ...state.loading, matches: false },
         selectedMatchId: firstMatch ? firstMatch.id : undefined,
         events: firstMatch ? state.events : [],
-        lineup: firstMatch ? state.lineup : []
+        lineup: firstMatch ? state.lineup : [],
       }))
 
       if (firstMatch) {
         await get().selectMatch(token, firstMatch.id)
       } else {
-        set((state) => ({
+        set(state => ({
           loading: { ...state.loading, events: false, lineup: false },
           events: [],
-          lineup: []
+          lineup: [],
         }))
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : translateAdminError('request_failed')
-      set((state) => ({
+      set(state => ({
         status: 'error',
         loading: { ...state.loading, matches: false },
-        error: message
+        error: message,
       }))
     }
   },
@@ -101,7 +101,7 @@ export const useJudgeStore = create<JudgeState>((set, get) => ({
       const matches = await fetchJudgeMatches(token)
       const { selectedMatchId } = get()
       set({ matches })
-      if (selectedMatchId && matches.some((match) => match.id === selectedMatchId)) {
+      if (selectedMatchId && matches.some(match => match.id === selectedMatchId)) {
         return
       }
       const first = matches[0]
@@ -116,76 +116,79 @@ export const useJudgeStore = create<JudgeState>((set, get) => ({
     }
   },
   async selectMatch(token, matchId) {
-    set((state) => ({
+    set(state => ({
       selectedMatchId: matchId,
       loading: { ...state.loading, events: true, lineup: true },
       lineup: [],
-      error: undefined
+      error: undefined,
     }))
     try {
       const [events, lineup] = await Promise.all([
         fetchJudgeEvents(token, matchId),
-        fetchJudgeLineup(token, matchId)
+        fetchJudgeLineup(token, matchId),
       ])
-      set((state) => ({
+      set(state => ({
         events: sortEvents(events),
         lineup,
-        loading: { ...state.loading, events: false, lineup: false }
+        loading: { ...state.loading, events: false, lineup: false },
       }))
     } catch (err) {
       const message = err instanceof Error ? err.message : translateAdminError('request_failed')
-      set((state) => ({
+      set(state => ({
         loading: { ...state.loading, events: false, lineup: false },
         lineup: [],
-        error: message
+        error: message,
       }))
     }
   },
   async createEvent(token, matchId, payload) {
-    set((state) => ({ loading: { ...state.loading, action: true }, error: undefined }))
+    set(state => ({ loading: { ...state.loading, action: true }, error: undefined }))
     try {
       const event = await judgeCreateEvent(token, matchId, payload)
-      set((state) => ({
+      set(state => ({
         events: sortEvents([...state.events, event]),
-        loading: { ...state.loading, action: false }
+        loading: { ...state.loading, action: false },
       }))
     } catch (err) {
-      const message = err instanceof Error ? err.message : translateAdminError('event_create_failed')
-      set((state) => ({ loading: { ...state.loading, action: false }, error: message }))
+      const message =
+        err instanceof Error ? err.message : translateAdminError('event_create_failed')
+      set(state => ({ loading: { ...state.loading, action: false }, error: message }))
     }
   },
   async updateEvent(token, matchId, eventId, payload) {
-    set((state) => ({ loading: { ...state.loading, action: true }, error: undefined }))
+    set(state => ({ loading: { ...state.loading, action: true }, error: undefined }))
     try {
       const updated = await judgeUpdateEvent(token, matchId, eventId, payload)
-      set((state) => ({
-        events: sortEvents(state.events.map((event) => (event.id === updated.id ? updated : event))),
-        loading: { ...state.loading, action: false }
+      set(state => ({
+        events: sortEvents(state.events.map(event => (event.id === updated.id ? updated : event))),
+        loading: { ...state.loading, action: false },
       }))
     } catch (err) {
-      const message = err instanceof Error ? err.message : translateAdminError('event_update_failed')
-      set((state) => ({ loading: { ...state.loading, action: false }, error: message }))
+      const message =
+        err instanceof Error ? err.message : translateAdminError('event_update_failed')
+      set(state => ({ loading: { ...state.loading, action: false }, error: message }))
     }
   },
   async deleteEvent(token, matchId, eventId) {
-    set((state) => ({ loading: { ...state.loading, action: true }, error: undefined }))
+    set(state => ({ loading: { ...state.loading, action: true }, error: undefined }))
     try {
       await judgeDeleteEvent(token, matchId, eventId)
-      set((state) => ({
-        events: state.events.filter((event) => event.id !== eventId),
-        loading: { ...state.loading, action: false }
+      set(state => ({
+        events: state.events.filter(event => event.id !== eventId),
+        loading: { ...state.loading, action: false },
       }))
     } catch (err) {
-      const message = err instanceof Error ? err.message : translateAdminError('event_delete_failed')
-      set((state) => ({ loading: { ...state.loading, action: false }, error: message }))
+      const message =
+        err instanceof Error ? err.message : translateAdminError('event_delete_failed')
+      set(state => ({ loading: { ...state.loading, action: false }, error: message }))
     }
   },
   async updateScore(token, matchId, payload) {
-    set((state) => ({ loading: { ...state.loading, action: true }, error: undefined }))
+    set(state => ({ loading: { ...state.loading, action: true }, error: undefined }))
     try {
       const result = await judgeUpdateScore(token, matchId, payload)
-      set((state) => ({
-        matches: state.matches.map((match) =>
+      set(state => ({
+        matches: state.matches.map(match =>
           match.id === result.id
             ? {
                 ...match,
@@ -194,15 +197,16 @@ export const useJudgeStore = create<JudgeState>((set, get) => ({
                 awayScore: result.awayScore,
                 hasPenaltyShootout: result.hasPenaltyShootout,
                 penaltyHomeScore: result.penaltyHomeScore,
-                penaltyAwayScore: result.penaltyAwayScore
+                penaltyAwayScore: result.penaltyAwayScore,
               }
             : match
         ),
-        loading: { ...state.loading, action: false }
+        loading: { ...state.loading, action: false },
       }))
     } catch (err) {
-      const message = err instanceof Error ? err.message : translateAdminError('match_update_failed')
-      set((state) => ({ loading: { ...state.loading, action: false }, error: message }))
+      const message =
+        err instanceof Error ? err.message : translateAdminError('match_update_failed')
+      set(state => ({ loading: { ...state.loading, action: false }, error: message }))
     }
   },
   reset() {
@@ -213,12 +217,12 @@ export const useJudgeStore = create<JudgeState>((set, get) => ({
       lineup: [],
       selectedMatchId: undefined,
       loading: {},
-      error: undefined
+      error: undefined,
     })
   },
   clearError() {
     if (get().error) {
       set({ error: undefined })
     }
-  }
+  },
 }))

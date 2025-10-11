@@ -36,7 +36,10 @@ export class WSClient {
     if (!this.canConnect()) {
       return
     }
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
+    ) {
       return
     }
     this.manualClose = false
@@ -56,7 +59,10 @@ export class WSClient {
     this.reconnectAttempts = 0
     this.clearReconnect()
     this.stopHeartbeat()
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
+    ) {
       this.ws.close()
     }
     this.cleanupSocket()
@@ -94,7 +100,7 @@ export class WSClient {
   off(type: string, cb: Handler) {
     const list = this.handlers.get(type)
     if (!list) return
-    const next = list.filter((handler) => handler !== cb)
+    const next = list.filter(handler => handler !== cb)
     if (next.length === 0) {
       this.handlers.delete(type)
     } else {
@@ -252,7 +258,8 @@ export class WSClient {
   }
 }
 
-const token = typeof window !== 'undefined' ? (localStorage.getItem('session') || undefined) : undefined
+const token =
+  typeof window !== 'undefined' ? localStorage.getItem('session') || undefined : undefined
 
 // Resolve WS URL from Vite env or derive from BACKEND_URL / location
 const metaEnv: any = (import.meta as any).env || {}

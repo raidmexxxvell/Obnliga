@@ -7,7 +7,7 @@ const server = Fastify({ logger: true })
 // Register CORS to allow frontend requests from different origin
 server.register(cors, {
   origin: true, // Allow all origins in development, configure specifically for production
-  credentials: true
+  credentials: true,
 })
 
 server.get('/health', async () => {
@@ -26,7 +26,7 @@ server.get('/', async (request, reply) => {
 
 // start Telegram bot if available
 import { startBot } from './bot'
-startBot().catch((e) => {
+startBot().catch(e => {
   server.log.warn({ err: e }, 'bot start failed')
 })
 

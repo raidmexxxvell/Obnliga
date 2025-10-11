@@ -238,7 +238,12 @@ export interface MatchEventEntry {
   team: Club
 }
 
-export type MatchStatisticMetric = 'totalShots' | 'shotsOnTarget' | 'corners' | 'yellowCards' | 'redCards'
+export type MatchStatisticMetric =
+  | 'totalShots'
+  | 'shotsOnTarget'
+  | 'corners'
+  | 'yellowCards'
+  | 'redCards'
 
 export interface MatchStatisticEntry {
   matchId: string

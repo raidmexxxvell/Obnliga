@@ -1,6 +1,6 @@
 module.exports = {
   root: true,
- env: {
+  env: {
     browser: true,
     es2020: true,
     node: true,
@@ -17,19 +17,13 @@ module.exports = {
     sourceType: 'module',
     project: './tsconfig.json',
   },
-  plugins: [
-    'react-refresh',
-    '@typescript-eslint',
-  ],
+  plugins: ['react-refresh', '@typescript-eslint'],
   rules: {
-    'react-refresh/only-export-components': [
-      'warn',
-      { allowConstantExport: true },
-    ],
-    'semi': ['error', 'never'],
-    'quotes': ['error', 'single'],
-    'comma-dangle': ['error', 'only-multiline'],
-    'indent': ['error', 2],
+    'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    semi: ['error', 'never'],
+    quotes: ['error', 'single'],
+  'comma-dangle': ['error', 'only-multiline'],
+  indent: 'off',
     'object-curly-spacing': ['error', 'always'],
     'array-bracket-spacing': ['error', 'never'],
     'eol-last': ['error', 'always'],
@@ -46,10 +40,5 @@ module.exports = {
       version: 'detect',
     },
   },
-  ignorePatterns: [
-    'dist/',
-    'node_modules/',
-    'build/',
-    '.eslintrc.cjs',
-  ],
+  ignorePatterns: ['dist/', 'node_modules/', 'build/', '.eslintrc.cjs'],
 }

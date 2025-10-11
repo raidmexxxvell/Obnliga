@@ -26,8 +26,8 @@ const loadNews = async (): Promise<NewsView[]> => {
       content: true,
       coverUrl: true,
       sendToTelegram: true,
-      createdAt: true
-    }
+      createdAt: true,
+    },
   })
   return serializePrisma(rows) as NewsView[]
 }
@@ -36,7 +36,11 @@ const buildEtag = (version: number) => `W/"news-${version}"`
 
 export default async function newsRoutes(server: FastifyInstance) {
   server.get('/api/news', async (request, reply) => {
-    const { value, version } = await defaultCache.getWithMeta(NEWS_CACHE_KEY, loadNews, NEWS_CACHE_TTL_SECONDS)
+    const { value, version } = await defaultCache.getWithMeta(
+      NEWS_CACHE_KEY,
+      loadNews,
+      NEWS_CACHE_TTL_SECONDS
+    )
     const etag = buildEtag(version)
     const ifNoneMatch = request.headers['if-none-match']
 

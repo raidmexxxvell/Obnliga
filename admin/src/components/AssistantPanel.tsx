@@ -6,7 +6,7 @@ import type {
   MatchEventEntry,
   MatchLineupEntry,
   MatchStatisticEntry,
-  MatchStatisticMetric
+  MatchStatisticMetric,
 } from '../types'
 import './assistant.css'
 
@@ -19,17 +19,23 @@ const EVENT_OPTIONS: Array<{ value: MatchEventEntry['eventType']; label: string 
   { value: 'SECOND_YELLOW_CARD', label: 'Вторая жёлтая' },
   { value: 'RED_CARD', label: 'Красная карточка' },
   { value: 'SUB_IN', label: 'Замена (вышел)' },
-  { value: 'SUB_OUT', label: 'Замена (ушёл)' }
+  { value: 'SUB_OUT', label: 'Замена (ушёл)' },
 ]
 
-const STATISTIC_ORDER: MatchStatisticMetric[] = ['totalShots', 'shotsOnTarget', 'corners', 'yellowCards', 'redCards']
+const STATISTIC_ORDER: MatchStatisticMetric[] = [
+  'totalShots',
+  'shotsOnTarget',
+  'corners',
+  'yellowCards',
+  'redCards',
+]
 
 const STATISTIC_LABELS: Record<MatchStatisticMetric, string> = {
   totalShots: 'Удары',
   shotsOnTarget: 'Удары в створ',
   corners: 'Угловые',
   yellowCards: 'Жёлтые карточки',
-  redCards: 'Красные карточки'
+  redCards: 'Красные карточки',
 }
 
 type ScoreFormState = {
@@ -57,7 +63,7 @@ const createScoreForm = (match: AssistantMatchSummary | undefined): ScoreFormSta
     hasPenaltyShootout: Boolean(match?.hasPenaltyShootout),
     penaltyHomeScore: match ? String(match.penaltyHomeScore ?? 0) : '0',
     penaltyAwayScore: match ? String(match.penaltyAwayScore ?? 0) : '0',
-    status: baseStatus
+    status: baseStatus,
   }
 }
 
@@ -66,7 +72,7 @@ const createEventDraft = (match: AssistantMatchSummary | undefined): EventDraft 
   eventType: 'GOAL',
   teamId: match ? String(match.homeClub.id) : '',
   playerId: '',
-  relatedPlayerId: ''
+  relatedPlayerId: '',
 })
 
 const parseNumber = (value: string): number => {
@@ -93,14 +99,14 @@ const createStatisticSnapshot = (
   }
   return {
     home: map.get(homeClubId),
-    away: map.get(awayClubId)
+    away: map.get(awayClubId),
   }
 }
 
 export const AssistantPanel = () => {
-  const { logout, assistantToken } = useAdminStore((state) => ({
+  const { logout, assistantToken } = useAdminStore(state => ({
     logout: state.logout,
-    assistantToken: state.assistantToken
+    assistantToken: state.assistantToken,
   }))
 
   const {
@@ -122,8 +128,8 @@ export const AssistantPanel = () => {
     updateScore,
     adjustStatistic,
     reset,
-    clearError
-  } = useAssistantStore((state) => ({
+    clearError,
+  } = useAssistantStore(state => ({
     status: state.status,
     matches: state.matches,
     selectedMatchId: state.selectedMatchId,
@@ -142,17 +148,19 @@ export const AssistantPanel = () => {
     updateScore: state.updateScore,
     adjustStatistic: state.adjustStatistic,
     reset: state.reset,
-    clearError: state.clearError
+    clearError: state.clearError,
   }))
 
   const selectedMatch = useMemo(
-    () => matches.find((match) => match.id === selectedMatchId),
+    () => matches.find(match => match.id === selectedMatchId),
     [matches, selectedMatchId]
   )
 
   const [scoreForm, setScoreForm] = useState<ScoreFormState>(() => createScoreForm(selectedMatch))
   const [pendingFinishConfirmation, setPendingFinishConfirmation] = useState(false)
-  const [newEventForm, setNewEventForm] = useState<EventDraft>(() => createEventDraft(selectedMatch))
+  const [newEventForm, setNewEventForm] = useState<EventDraft>(() =>
+    createEventDraft(selectedMatch)
+  )
   const [editingEventId, setEditingEventId] = useState<string | null>(null)
   const [editingDraft, setEditingDraft] = useState<EventDraft | null>(null)
 
@@ -183,11 +191,11 @@ export const AssistantPanel = () => {
 
   useEffect(() => {
     if (!penaltyEligible && scoreForm.hasPenaltyShootout) {
-      setScoreForm((prev) => ({
+      setScoreForm(prev => ({
         ...prev,
         hasPenaltyShootout: false,
         penaltyHomeScore: '0',
-        penaltyAwayScore: '0'
+        penaltyAwayScore: '0',
       }))
     }
   }, [penaltyEligible, scoreForm.hasPenaltyShootout])
@@ -216,7 +224,8 @@ export const AssistantPanel = () => {
   }, [lineup])
 
   const statisticSnapshot = useMemo(
-    () => createStatisticSnapshot(statistics, selectedMatch?.homeClub.id, selectedMatch?.awayClub.id),
+    () =>
+      createStatisticSnapshot(statistics, selectedMatch?.homeClub.id, selectedMatch?.awayClub.id),
     [statistics, selectedMatch]
   )
 
@@ -252,14 +261,14 @@ export const AssistantPanel = () => {
     const teamId = Number(newEventForm.teamId)
     if (!teamId) {
       if (newEventForm.playerId) {
-        setNewEventForm((prev) => ({ ...prev, playerId: '' }))
+        setNewEventForm(prev => ({ ...prev, playerId: '' }))
       }
       return
     }
     const options = lineupByClub.get(teamId) || []
     if (!options.length) return
     if (newEventForm.playerId) return
-    setNewEventForm((prev) => {
+    setNewEventForm(prev => {
       if (!prev.teamId || Number(prev.teamId) !== teamId || prev.playerId) {
         return prev
       }
@@ -274,7 +283,7 @@ export const AssistantPanel = () => {
     const options = lineupByClub.get(teamId) || []
     if (!options.length) return
     if (editingDraft.playerId) return
-    setEditingDraft((prev) => {
+    setEditingDraft(prev => {
       if (!prev) return prev
       if (!prev.teamId || Number(prev.teamId) !== teamId || prev.playerId) {
         return prev
@@ -297,7 +306,7 @@ export const AssistantPanel = () => {
   }
 
   const handleScoreChange = (field: keyof ScoreFormState, value: string | boolean) => {
-    setScoreForm((prev) => {
+    setScoreForm(prev => {
       if (field === 'status') {
         const nextStatus = value as ScoreFormState['status']
         if (nextStatus !== 'FINISHED') {
@@ -311,12 +320,12 @@ export const AssistantPanel = () => {
           ...prev,
           hasPenaltyShootout: enabled,
           penaltyHomeScore: enabled ? prev.penaltyHomeScore : '0',
-          penaltyAwayScore: enabled ? prev.penaltyAwayScore : '0'
+          penaltyAwayScore: enabled ? prev.penaltyAwayScore : '0',
         }
       }
       return {
         ...prev,
-        [field]: String(value)
+        [field]: String(value),
       }
     })
   }
@@ -336,7 +345,7 @@ export const AssistantPanel = () => {
       hasPenaltyShootout: scoreForm.hasPenaltyShootout,
       penaltyHomeScore: parseNumber(scoreForm.penaltyHomeScore),
       penaltyAwayScore: parseNumber(scoreForm.penaltyAwayScore),
-      status: scoreForm.status
+      status: scoreForm.status,
     })
     setPendingFinishConfirmation(false)
   }
@@ -350,7 +359,9 @@ export const AssistantPanel = () => {
       teamId: parseNumber(newEventForm.teamId),
       playerId: parseNumber(newEventForm.playerId),
       eventType: newEventForm.eventType,
-      relatedPlayerId: newEventForm.relatedPlayerId ? parseNumber(newEventForm.relatedPlayerId) : undefined
+      relatedPlayerId: newEventForm.relatedPlayerId
+        ? parseNumber(newEventForm.relatedPlayerId)
+        : undefined,
     })
     setNewEventForm(createEventDraft(selectedMatch))
   }
@@ -362,7 +373,7 @@ export const AssistantPanel = () => {
       eventType: entry.eventType,
       teamId: String(entry.teamId),
       playerId: String(entry.playerId),
-      relatedPlayerId: entry.relatedPlayerId ? String(entry.relatedPlayerId) : ''
+      relatedPlayerId: entry.relatedPlayerId ? String(entry.relatedPlayerId) : '',
     })
   }
 
@@ -380,7 +391,9 @@ export const AssistantPanel = () => {
       teamId: parseNumber(editingDraft.teamId),
       playerId: parseNumber(editingDraft.playerId),
       eventType: editingDraft.eventType,
-      relatedPlayerId: editingDraft.relatedPlayerId ? parseNumber(editingDraft.relatedPlayerId) : undefined
+      relatedPlayerId: editingDraft.relatedPlayerId
+        ? parseNumber(editingDraft.relatedPlayerId)
+        : undefined,
     })
     cancelEdit()
   }
@@ -390,7 +403,11 @@ export const AssistantPanel = () => {
     await deleteEvent(assistantToken, selectedMatch.id, eventId)
   }
 
-  const handleAdjustStatistic = async (clubId: number, metric: MatchStatisticMetric, delta: number) => {
+  const handleAdjustStatistic = async (
+    clubId: number,
+    metric: MatchStatisticMetric,
+    delta: number
+  ) => {
     if (!assistantToken || !selectedMatch) return
     await adjustStatistic(assistantToken, selectedMatch.id, { clubId, metric, delta })
   }
@@ -420,10 +437,17 @@ export const AssistantPanel = () => {
       <header className="assistant-header">
         <div>
           <h1>Панель Помощника</h1>
-          <p className="assistant-meta">Управление ходом матча, статистикой и событиями в режиме реального времени.</p>
+          <p className="assistant-meta">
+            Управление ходом матча, статистикой и событиями в режиме реального времени.
+          </p>
         </div>
         <div className="assistant-actions">
-          <button className="button-secondary" type="button" onClick={handleRefresh} disabled={isLoadingMatches}>
+          <button
+            className="button-secondary"
+            type="button"
+            onClick={handleRefresh}
+            disabled={isLoadingMatches}
+          >
             Обновить
           </button>
           <button className="button-ghost" type="button" onClick={logout}>
@@ -439,10 +463,12 @@ export const AssistantPanel = () => {
           <h2>Матчи</h2>
           {isLoadingMatches ? <p className="assistant-placeholder">Загружаем матчи…</p> : null}
           {!isLoadingMatches && matches.length === 0 ? (
-            <p className="assistant-placeholder">Нет доступных матчей. Проверьте расписание или статус матча.</p>
+            <p className="assistant-placeholder">
+              Нет доступных матчей. Проверьте расписание или статус матча.
+            </p>
           ) : null}
           <ul>
-            {matches.map((match) => {
+            {matches.map(match => {
               const isSelected = match.id === selectedMatchId
               const scoreLabel = `${match.homeScore}:${match.awayScore}`
               return (
@@ -459,8 +485,12 @@ export const AssistantPanel = () => {
                       <span className="club-name club-away">{match.awayClub.name}</span>
                     </div>
                     <div className="match-meta">
-                      <span className={`status status-${match.status.toLowerCase()}`}>{matchStatusLabel(match)}</span>
-                      <span className="match-date">{new Date(match.matchDateTime).toLocaleString('ru-RU')}</span>
+                      <span className={`status status-${match.status.toLowerCase()}`}>
+                        {matchStatusLabel(match)}
+                      </span>
+                      <span className="match-date">
+                        {new Date(match.matchDateTime).toLocaleString('ru-RU')}
+                      </span>
                     </div>
                   </button>
                 </li>
@@ -484,7 +514,7 @@ export const AssistantPanel = () => {
                           type="number"
                           min={0}
                           value={scoreForm.homeScore}
-                          onChange={(event) => handleScoreChange('homeScore', event.target.value)}
+                          onChange={event => handleScoreChange('homeScore', event.target.value)}
                         />
                       </div>
                     </div>
@@ -496,24 +526,30 @@ export const AssistantPanel = () => {
                           type="number"
                           min={0}
                           value={scoreForm.awayScore}
-                          onChange={(event) => handleScoreChange('awayScore', event.target.value)}
+                          onChange={event => handleScoreChange('awayScore', event.target.value)}
                         />
                       </div>
                     </div>
                   </div>
 
-                  <label className={penaltyToggleDisabled ? 'penalty-toggle disabled' : 'penalty-toggle'}>
+                  <label
+                    className={penaltyToggleDisabled ? 'penalty-toggle disabled' : 'penalty-toggle'}
+                  >
                     <input
                       type="checkbox"
                       checked={scoreForm.hasPenaltyShootout}
                       disabled={penaltyToggleDisabled}
-                      onChange={(event) => handleScoreChange('hasPenaltyShootout', event.target.checked)}
+                      onChange={event =>
+                        handleScoreChange('hasPenaltyShootout', event.target.checked)
+                      }
                     />
                     Пенальти
                   </label>
 
                   {penaltyHintVisible ? (
-                    <p className="penalty-hint">Пенальти доступны только при ничейном счёте в режиме «Идёт».</p>
+                    <p className="penalty-hint">
+                      Пенальти доступны только при ничейном счёте в режиме «Идёт».
+                    </p>
                   ) : null}
 
                   {scoreForm.hasPenaltyShootout ? (
@@ -525,7 +561,9 @@ export const AssistantPanel = () => {
                           min={0}
                           value={scoreForm.penaltyHomeScore}
                           disabled={penaltyInputsDisabled}
-                          onChange={(event) => handleScoreChange('penaltyHomeScore', event.target.value)}
+                          onChange={event =>
+                            handleScoreChange('penaltyHomeScore', event.target.value)
+                          }
                         />
                       </div>
                       <div>
@@ -535,7 +573,9 @@ export const AssistantPanel = () => {
                           min={0}
                           value={scoreForm.penaltyAwayScore}
                           disabled={penaltyInputsDisabled}
-                          onChange={(event) => handleScoreChange('penaltyAwayScore', event.target.value)}
+                          onChange={event =>
+                            handleScoreChange('penaltyAwayScore', event.target.value)
+                          }
                         />
                       </div>
                     </div>
@@ -546,7 +586,7 @@ export const AssistantPanel = () => {
                       <label>Статус матча</label>
                       <select
                         value={scoreForm.status}
-                        onChange={(event) => handleScoreChange('status', event.target.value)}
+                        onChange={event => handleScoreChange('status', event.target.value)}
                       >
                         <option value="LIVE">Идёт</option>
                         <option value="FINISHED">Завершён</option>
@@ -555,7 +595,9 @@ export const AssistantPanel = () => {
                     <div className="status-hint">
                       <span>Текущий статус: {matchStatusLabel(selectedMatch)}</span>
                       {pendingFinishConfirmation ? (
-                        <span className="confirm-hint">Нажмите отправить ещё раз для подтверждения завершения.</span>
+                        <span className="confirm-hint">
+                          Нажмите отправить ещё раз для подтверждения завершения.
+                        </span>
                       ) : null}
                     </div>
                   </div>
@@ -577,16 +619,23 @@ export const AssistantPanel = () => {
                         min={1}
                         max={150}
                         value={newEventForm.minute}
-                        onChange={(event) => setNewEventForm((prev) => ({ ...prev, minute: event.target.value }))}
+                        onChange={event =>
+                          setNewEventForm(prev => ({ ...prev, minute: event.target.value }))
+                        }
                       />
                     </div>
                     <div>
                       <label>Тип</label>
                       <select
                         value={newEventForm.eventType}
-                        onChange={(event) => setNewEventForm((prev) => ({ ...prev, eventType: event.target.value as MatchEventEntry['eventType'] }))}
+                        onChange={event =>
+                          setNewEventForm(prev => ({
+                            ...prev,
+                            eventType: event.target.value as MatchEventEntry['eventType'],
+                          }))
+                        }
                       >
-                        {EVENT_OPTIONS.map((option) => (
+                        {EVENT_OPTIONS.map(option => (
                           <option key={option.value} value={option.value}>
                             {option.label}
                           </option>
@@ -597,21 +646,29 @@ export const AssistantPanel = () => {
                       <label>Команда</label>
                       <select
                         value={newEventForm.teamId}
-                        onChange={(event) => setNewEventForm((prev) => ({ ...prev, teamId: event.target.value }))}
+                        onChange={event =>
+                          setNewEventForm(prev => ({ ...prev, teamId: event.target.value }))
+                        }
                       >
                         <option value="">—</option>
-                        <option value={String(selectedMatch.homeClub.id)}>{selectedMatch.homeClub.name}</option>
-                        <option value={String(selectedMatch.awayClub.id)}>{selectedMatch.awayClub.name}</option>
+                        <option value={String(selectedMatch.homeClub.id)}>
+                          {selectedMatch.homeClub.name}
+                        </option>
+                        <option value={String(selectedMatch.awayClub.id)}>
+                          {selectedMatch.awayClub.name}
+                        </option>
                       </select>
                     </div>
                     <div>
                       <label>Игрок</label>
                       <select
                         value={newEventForm.playerId}
-                        onChange={(event) => setNewEventForm((prev) => ({ ...prev, playerId: event.target.value }))}
+                        onChange={event =>
+                          setNewEventForm(prev => ({ ...prev, playerId: event.target.value }))
+                        }
                       >
                         <option value="">—</option>
-                        {allPlayers.map((player) => (
+                        {allPlayers.map(player => (
                           <option key={player.personId} value={String(player.personId)}>
                             {formatPlayerLabel(player)}
                           </option>
@@ -622,10 +679,15 @@ export const AssistantPanel = () => {
                       <label>Второй игрок (опционально)</label>
                       <select
                         value={newEventForm.relatedPlayerId}
-                        onChange={(event) => setNewEventForm((prev) => ({ ...prev, relatedPlayerId: event.target.value }))}
+                        onChange={event =>
+                          setNewEventForm(prev => ({
+                            ...prev,
+                            relatedPlayerId: event.target.value,
+                          }))
+                        }
                       >
                         <option value="">—</option>
-                        {allPlayers.map((player) => (
+                        {allPlayers.map(player => (
                           <option key={player.personId} value={String(player.personId)}>
                             {formatPlayerLabel(player)}
                           </option>
@@ -639,11 +701,13 @@ export const AssistantPanel = () => {
                 </form>
 
                 <ul className="event-list">
-                  {isEventsLoading ? <li className="assistant-placeholder">Обновляем события…</li> : null}
+                  {isEventsLoading ? (
+                    <li className="assistant-placeholder">Обновляем события…</li>
+                  ) : null}
                   {!isEventsLoading && events.length === 0 ? (
                     <li className="assistant-placeholder">События не найдены.</li>
                   ) : null}
-                  {events.map((entry) => {
+                  {events.map(entry => {
                     const isEditing = editingEventId === entry.id
                     if (isEditing && editingDraft) {
                       return (
@@ -654,15 +718,27 @@ export const AssistantPanel = () => {
                               min={1}
                               max={150}
                               value={editingDraft.minute}
-                              onChange={(event) => setEditingDraft((prev) => (prev ? { ...prev, minute: event.target.value } : prev))}
+                              onChange={event =>
+                                setEditingDraft(prev =>
+                                  prev ? { ...prev, minute: event.target.value } : prev
+                                )
+                              }
                             />
                             <select
                               value={editingDraft.eventType}
-                              onChange={(event) =>
-                                setEditingDraft((prev) => (prev ? { ...prev, eventType: event.target.value as MatchEventEntry['eventType'] } : prev))
+                              onChange={event =>
+                                setEditingDraft(prev =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        eventType: event.target
+                                          .value as MatchEventEntry['eventType'],
+                                      }
+                                    : prev
+                                )
                               }
                             >
-                              {EVENT_OPTIONS.map((option) => (
+                              {EVENT_OPTIONS.map(option => (
                                 <option key={option.value} value={option.value}>
                                   {option.label}
                                 </option>
@@ -670,20 +746,28 @@ export const AssistantPanel = () => {
                             </select>
                             <select
                               value={editingDraft.teamId}
-                              onChange={(event) =>
-                                setEditingDraft((prev) => (prev ? { ...prev, teamId: event.target.value } : prev))
+                              onChange={event =>
+                                setEditingDraft(prev =>
+                                  prev ? { ...prev, teamId: event.target.value } : prev
+                                )
                               }
                             >
-                              <option value={String(selectedMatch.homeClub.id)}>{selectedMatch.homeClub.name}</option>
-                              <option value={String(selectedMatch.awayClub.id)}>{selectedMatch.awayClub.name}</option>
+                              <option value={String(selectedMatch.homeClub.id)}>
+                                {selectedMatch.homeClub.name}
+                              </option>
+                              <option value={String(selectedMatch.awayClub.id)}>
+                                {selectedMatch.awayClub.name}
+                              </option>
                             </select>
                             <select
                               value={editingDraft.playerId}
-                              onChange={(event) =>
-                                setEditingDraft((prev) => (prev ? { ...prev, playerId: event.target.value } : prev))
+                              onChange={event =>
+                                setEditingDraft(prev =>
+                                  prev ? { ...prev, playerId: event.target.value } : prev
+                                )
                               }
                             >
-                              {allPlayers.map((player) => (
+                              {allPlayers.map(player => (
                                 <option key={player.personId} value={String(player.personId)}>
                                   {formatPlayerLabel(player)}
                                 </option>
@@ -691,12 +775,14 @@ export const AssistantPanel = () => {
                             </select>
                             <select
                               value={editingDraft.relatedPlayerId}
-                              onChange={(event) =>
-                                setEditingDraft((prev) => (prev ? { ...prev, relatedPlayerId: event.target.value } : prev))
+                              onChange={event =>
+                                setEditingDraft(prev =>
+                                  prev ? { ...prev, relatedPlayerId: event.target.value } : prev
+                                )
                               }
                             >
                               <option value="">—</option>
-                              {allPlayers.map((player) => (
+                              {allPlayers.map(player => (
                                 <option key={player.personId} value={String(player.personId)}>
                                   {formatPlayerLabel(player)}
                                 </option>
@@ -719,14 +805,27 @@ export const AssistantPanel = () => {
                       <li key={entry.id} className="event-item">
                         <div className="event-row">
                           <span className="event-minute">{entry.minute}&apos;</span>
-                          <span className="event-type">{EVENT_OPTIONS.find((option) => option.value === entry.eventType)?.label || entry.eventType}</span>
+                          <span className="event-type">
+                            {EVENT_OPTIONS.find(option => option.value === entry.eventType)
+                              ?.label || entry.eventType}
+                          </span>
                           <span className="event-team">{entry.team.name}</span>
-                          <span className="event-player">{`${entry.player.lastName} ${entry.player.firstName}`.trim()}</span>
+                          <span className="event-player">
+                            {`${entry.player.lastName} ${entry.player.firstName}`.trim()}
+                          </span>
                           <div className="event-controls">
-                            <button className="button-secondary" type="button" onClick={() => beginEditEvent(entry)}>
+                            <button
+                              className="button-secondary"
+                              type="button"
+                              onClick={() => beginEditEvent(entry)}
+                            >
                               Править
                             </button>
-                            <button className="button-danger" type="button" onClick={() => handleDeleteEvent(entry.id)}>
+                            <button
+                              className="button-danger"
+                              type="button"
+                              onClick={() => handleDeleteEvent(entry.id)}
+                            >
                               Удалить
                             </button>
                           </div>
@@ -740,9 +839,7 @@ export const AssistantPanel = () => {
               <article className="assistant-card">
                 <h2>Статистика матча</h2>
                 <div className="statistics-header">
-                  <span>
-                    Версия: {statisticsVersion ?? '—'}
-                  </span>
+                  <span>Версия: {statisticsVersion ?? '—'}</span>
                   <button
                     className="button-secondary"
                     type="button"
@@ -756,7 +853,7 @@ export const AssistantPanel = () => {
                   <section>
                     <h3>{selectedMatch.homeClub.name}</h3>
                     <ul>
-                      {STATISTIC_ORDER.map((metric) => {
+                      {STATISTIC_ORDER.map(metric => {
                         const value = statisticSnapshot.home ? statisticSnapshot.home[metric] : 0
                         return (
                           <li key={metric}>
@@ -764,7 +861,9 @@ export const AssistantPanel = () => {
                             <div>
                               <button
                                 type="button"
-                                onClick={() => handleAdjustStatistic(selectedMatch.homeClub.id, metric, -1)}
+                                onClick={() =>
+                                  handleAdjustStatistic(selectedMatch.homeClub.id, metric, -1)
+                                }
                                 disabled={isAdjustBusy}
                               >
                                 −
@@ -772,7 +871,9 @@ export const AssistantPanel = () => {
                               <span className="stat-value">{value}</span>
                               <button
                                 type="button"
-                                onClick={() => handleAdjustStatistic(selectedMatch.homeClub.id, metric, 1)}
+                                onClick={() =>
+                                  handleAdjustStatistic(selectedMatch.homeClub.id, metric, 1)
+                                }
                                 disabled={isAdjustBusy}
                               >
                                 +
@@ -786,7 +887,7 @@ export const AssistantPanel = () => {
                   <section>
                     <h3>{selectedMatch.awayClub.name}</h3>
                     <ul>
-                      {STATISTIC_ORDER.map((metric) => {
+                      {STATISTIC_ORDER.map(metric => {
                         const value = statisticSnapshot.away ? statisticSnapshot.away[metric] : 0
                         return (
                           <li key={metric}>
@@ -794,7 +895,9 @@ export const AssistantPanel = () => {
                             <div>
                               <button
                                 type="button"
-                                onClick={() => handleAdjustStatistic(selectedMatch.awayClub.id, metric, -1)}
+                                onClick={() =>
+                                  handleAdjustStatistic(selectedMatch.awayClub.id, metric, -1)
+                                }
                                 disabled={isAdjustBusy}
                               >
                                 −
@@ -802,7 +905,9 @@ export const AssistantPanel = () => {
                               <span className="stat-value">{value}</span>
                               <button
                                 type="button"
-                                onClick={() => handleAdjustStatistic(selectedMatch.awayClub.id, metric, 1)}
+                                onClick={() =>
+                                  handleAdjustStatistic(selectedMatch.awayClub.id, metric, 1)
+                                }
                                 disabled={isAdjustBusy}
                               >
                                 +
@@ -818,17 +923,23 @@ export const AssistantPanel = () => {
 
               <article className="assistant-card">
                 <h2>Составы</h2>
-                {isLineupLoading ? <p className="assistant-placeholder">Загружаем составы…</p> : null}
+                {isLineupLoading ? (
+                  <p className="assistant-placeholder">Загружаем составы…</p>
+                ) : null}
                 {!isLineupLoading ? (
                   <div className="assistant-lineup-columns">
                     <section>
                       <h3>{selectedMatch.homeClub.name}</h3>
                       <ul>
-                        {homePlayers.map((entry) => (
+                        {homePlayers.map(entry => (
                           <li key={`${entry.clubId}-${entry.personId}`}>
-                            <span className="lineup-number">{entry.shirtNumber ? `#${entry.shirtNumber}` : '—'}</span>
+                            <span className="lineup-number">
+                              {entry.shirtNumber ? `#${entry.shirtNumber}` : '—'}
+                            </span>
                             <span className="lineup-name">{formatPlayerLabel(entry)}</span>
-                            <span className="lineup-role">{entry.role === 'STARTER' ? 'Старт' : 'Запас'}</span>
+                            <span className="lineup-role">
+                              {entry.role === 'STARTER' ? 'Старт' : 'Запас'}
+                            </span>
                           </li>
                         ))}
                       </ul>
@@ -836,11 +947,15 @@ export const AssistantPanel = () => {
                     <section>
                       <h3>{selectedMatch.awayClub.name}</h3>
                       <ul>
-                        {awayPlayers.map((entry) => (
+                        {awayPlayers.map(entry => (
                           <li key={`${entry.clubId}-${entry.personId}`}>
-                            <span className="lineup-number">{entry.shirtNumber ? `#${entry.shirtNumber}` : '—'}</span>
+                            <span className="lineup-number">
+                              {entry.shirtNumber ? `#${entry.shirtNumber}` : '—'}
+                            </span>
                             <span className="lineup-name">{formatPlayerLabel(entry)}</span>
-                            <span className="lineup-role">{entry.role === 'STARTER' ? 'Старт' : 'Запас'}</span>
+                            <span className="lineup-role">
+                              {entry.role === 'STARTER' ? 'Старт' : 'Запас'}
+                            </span>
                           </li>
                         ))}
                       </ul>

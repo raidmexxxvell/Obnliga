@@ -11,28 +11,28 @@ import { ScrollToTopButton } from './ScrollToTopButton'
 const tabMeta: Record<AdminTab, { title: string; description: string }> = {
   teams: {
     title: 'Команды',
-    description: 'Справочники: клубы, люди, стадионы и соревнования.'
+    description: 'Справочники: клубы, люди, стадионы и соревнования.',
   },
   matches: {
     title: 'Матчи',
-    description: 'Сезоны, участники, серии, расписание и фиксация результатов.'
+    description: 'Сезоны, участники, серии, расписание и фиксация результатов.',
   },
   stats: {
     title: 'Статистика',
-    description: 'Таблица и индивидуальная статистика по сезонам и карьере.'
+    description: 'Таблица и индивидуальная статистика по сезонам и карьере.',
   },
   players: {
     title: 'Ростеры и дисквалификации',
-    description: 'Регистрация составов по сезонам, контроль заявок и санкций.'
+    description: 'Регистрация составов по сезонам, контроль заявок и санкций.',
   },
   news: {
     title: 'Новости',
-    description: 'Публикация новостей, предпросмотр и отправка в Telegram.'
+    description: 'Публикация новостей, предпросмотр и отправка в Telegram.',
   },
   users: {
     title: 'Пользователи и активность',
-    description: 'Управление пользователями, прогнозами и достижениями.'
-  }
+    description: 'Управление пользователями, прогнозами и достижениями.',
+  },
 }
 
 const tabsOrder: AdminTab[] = ['teams', 'matches', 'stats', 'players', 'news', 'users']
@@ -43,7 +43,7 @@ export const DashboardLayout = () => {
   const { logout, activeTab, setTab } = useAdminStore((state: StoreState) => ({
     logout: state.logout,
     activeTab: state.activeTab,
-    setTab: state.setTab
+    setTab: state.setTab,
   }))
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -65,7 +65,7 @@ export const DashboardLayout = () => {
     setMenuOpen(false)
   }
 
-  const toggleMenu = () => setMenuOpen((value) => !value)
+  const toggleMenu = () => setMenuOpen(value => !value)
 
   const closeMenu = () => setMenuOpen(false)
 
@@ -112,7 +112,7 @@ export const DashboardLayout = () => {
           </div>
         </div>
         <div id="admin-tabs" className={`tab-list${menuOpen ? ' open' : ''}`}>
-          {tabsOrder.map((tab) => (
+          {tabsOrder.map(tab => (
             <button
               key={tab}
               className={`tab-button${activeTab === tab ? ' active' : ''}`}

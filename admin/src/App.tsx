@@ -9,7 +9,10 @@ import { AssistantPanel } from './components/AssistantPanel'
 
 export const App = () => {
   type StoreState = ReturnType<typeof useAdminStore.getState>
-  const { status, mode } = useAdminStore((state: StoreState) => ({ status: state.status, mode: state.mode }))
+  const { status, mode } = useAdminStore((state: StoreState) => ({
+    status: state.status,
+    mode: state.mode,
+  }))
 
   const isAuthenticated = status === 'authenticated'
 

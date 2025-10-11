@@ -1,10 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { formatPlayersCount } from '@shared/utils/wordForms'
-import {
-  lineupFetchMatches,
-  lineupFetchRoster,
-  lineupUpdateRoster
-} from '../api/adminClient'
+import { lineupFetchMatches, lineupFetchRoster, lineupUpdateRoster } from '../api/adminClient'
 import { useAdminStore } from '../store/adminStore'
 import type { LineupPortalMatch, LineupPortalRosterEntry } from '../types'
 import '../lineup.css'
@@ -13,7 +9,7 @@ const statusLabels: Record<LineupPortalMatch['status'], string> = {
   SCHEDULED: 'Запланирован',
   LIVE: 'В игре',
   FINISHED: 'Завершён',
-  POSTPONED: 'Перенесён'
+  POSTPONED: 'Перенесён',
 }
 
 const formatKickoff = (iso: string) =>
@@ -21,7 +17,7 @@ const formatKickoff = (iso: string) =>
     day: 'numeric',
     month: 'long',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   })
 
 const formatMatchesRemaining = (count: number) => {
@@ -29,13 +25,12 @@ const formatMatchesRemaining = (count: number) => {
   const remainder10 = absCount % 10
   const remainder100 = absCount % 100
   if (remainder10 === 1 && remainder100 !== 11) return `${absCount} матч`
-  if (remainder10 >= 2 && remainder10 <= 4 && (remainder100 < 10 || remainder100 >= 20)) return `${absCount} матча`
+  if (remainder10 >= 2 && remainder10 <= 4 && (remainder100 < 10 || remainder100 >= 20))
+    return `${absCount} матча`
   return `${absCount} матчей`
 }
 
-const getDisqualificationReasonLabel = (
-  info: LineupPortalRosterEntry['disqualification']
-) => {
+const getDisqualificationReasonLabel = (info: LineupPortalRosterEntry['disqualification']) => {
   if (!info) return null
   switch (info.reason) {
     case 'RED_CARD':
@@ -69,9 +64,9 @@ const mapError = (code: string) => {
 }
 
 export const LineupPortalView = () => {
-  const { lineupToken, logout } = useAdminStore((state) => ({
+  const { lineupToken, logout } = useAdminStore(state => ({
     lineupToken: state.lineupToken,
-    logout: state.logout
+    logout: state.logout,
   }))
 
   const [matches, setMatches] = useState<LineupPortalMatch[]>([])
@@ -108,12 +103,12 @@ export const LineupPortalView = () => {
     setModalOpen(false)
   }
 
-  const handleUnauthorized = () => {
+  const handleUnauthorized = useCallback(() => {
     setPortalError('Сессия истекла. Авторизуйтесь заново.')
     logout()
-  }
+  }, [logout])
 
-  const fetchMatches = async (options?: { preserveMessage?: boolean }) => {
+  const fetchMatches = useCallback(async (options?: { preserveMessage?: boolean }) => {
     if (!lineupToken) return
     setMatchesLoading(true)
     setPortalError(null)
@@ -136,13 +131,13 @@ export const LineupPortalView = () => {
     } finally {
       setMatchesLoading(false)
     }
-  }
+  }, [lineupToken, handleUnauthorized])
 
   useEffect(() => {
-      if (lineupToken) {
-        void fetchMatches()
-      }
-  }, [lineupToken])
+    if (lineupToken) {
+      void fetchMatches()
+    }
+  }, [lineupToken, fetchMatches])
 
   const openMatchModal = (match: LineupPortalMatch) => {
     setActiveMatch(match)
@@ -169,7 +164,7 @@ export const LineupPortalView = () => {
         setRoster(data)
         const selected: Record<number, boolean> = {}
         const numbers: Record<number, string> = {}
-        data.forEach((entry) => {
+        data.forEach(entry => {
           selected[entry.personId] = entry.disqualification ? false : entry.selected
           numbers[entry.personId] = entry.shirtNumber ? String(entry.shirtNumber) : ''
         })
@@ -189,11 +184,11 @@ export const LineupPortalView = () => {
     }
 
     void loadRoster()
-  }, [modalOpen, lineupToken, activeMatch, activeClubId])
+  }, [modalOpen, lineupToken, activeMatch, activeClubId, handleUnauthorized])
 
   const handlePlayerToggle = (personId: number) => {
     if (saving) return
-    const entry = roster.find((item) => item.personId === personId)
+    const entry = roster.find(item => item.personId === personId)
     if (!entry) return
 
     if (entry.disqualification) {
@@ -208,8 +203,11 @@ export const LineupPortalView = () => {
       return
     }
 
-    setModalError((previous) => (previous && previous.includes('пропускает матч') ? null : previous))
-    setSelectedPlayers((prev: Record<number, boolean>) => ({ ...prev, [personId]: !prev[personId] }))
+    setModalError(previous => (previous && previous.includes('пропускает матч') ? null : previous))
+    setSelectedPlayers((prev: Record<number, boolean>) => ({
+      ...prev,
+      [personId]: !prev[personId],
+    }))
   }
 
   const updateShirtNumber = (personId: number, value: string) => {
@@ -222,9 +220,9 @@ export const LineupPortalView = () => {
     const selectedEntries: LineupPortalRosterEntry[] = roster.filter(
       (entry: LineupPortalRosterEntry) => selectedPlayers[entry.personId]
     )
-    const payloadIds = selectedEntries.map((entry) => entry.personId)
+    const payloadIds = selectedEntries.map(entry => entry.personId)
 
-    const missingNumber = selectedEntries.some((entry) => {
+    const missingNumber = selectedEntries.some(entry => {
       const raw = shirtNumbers[entry.personId]
       return !raw || raw.trim() === ''
     })
@@ -234,14 +232,19 @@ export const LineupPortalView = () => {
       return
     }
 
-    const numberAssignments: Array<{ personId: number; shirtNumber: number }> = selectedEntries.map((entry) => ({
-      personId: entry.personId,
-      shirtNumber: Number(shirtNumbers[entry.personId])
-    }))
+    const numberAssignments: Array<{ personId: number; shirtNumber: number }> = selectedEntries.map(
+      entry => ({
+        personId: entry.personId,
+        shirtNumber: Number(shirtNumbers[entry.personId]),
+      })
+    )
 
     const hasInvalidNumber = numberAssignments.some(
       ({ shirtNumber }) =>
-        !Number.isFinite(shirtNumber) || !Number.isInteger(shirtNumber) || shirtNumber <= 0 || shirtNumber > 999
+        !Number.isFinite(shirtNumber) ||
+        !Number.isInteger(shirtNumber) ||
+        shirtNumber <= 0 ||
+        shirtNumber > 999
     )
 
     if (hasInvalidNumber) {
@@ -263,10 +266,15 @@ export const LineupPortalView = () => {
       await lineupUpdateRoster(lineupToken, activeMatch.id, {
         clubId: activeClubId,
         personIds: payloadIds,
-        numbers: numberAssignments
+        numbers: numberAssignments,
       })
-      const clubName = activeMatch.homeClub.id === activeClubId ? activeMatch.homeClub.name : activeMatch.awayClub.name
-      setPortalMessage(`${clubName}: Состав сохранён. В заявке: ${formatPlayersCount(payloadIds.length)}.`)
+      const clubName =
+        activeMatch.homeClub.id === activeClubId
+          ? activeMatch.homeClub.name
+          : activeMatch.awayClub.name
+      setPortalMessage(
+        `${clubName}: Состав сохранён. В заявке: ${formatPlayersCount(payloadIds.length)}.`
+      )
       closeModal()
       void fetchMatches({ preserveMessage: true })
     } catch (error) {
@@ -300,13 +308,18 @@ export const LineupPortalView = () => {
       <aside className="portal-card">
         <header className="portal-card-header">
           <h2>Ближайшие матчи</h2>
-          <button type="button" className="portal-ghost" onClick={() => void fetchMatches()} disabled={matchesLoading}>
+          <button
+            type="button"
+            className="portal-ghost"
+            onClick={() => void fetchMatches()}
+            disabled={matchesLoading}
+          >
             {matchesLoading ? 'Обновляем…' : 'Обновить'}
           </button>
         </header>
         <p className="portal-sub">Отображаются игры в ближайшие 24 часа.</p>
         <ul className="portal-match-list">
-          {matches.map((match) => {
+          {matches.map(match => {
             const title = `${match.homeClub.name} vs ${match.awayClub.name}`
             const roundLabel = match.round?.label ? match.round.label : 'Без стадии'
             const isActive = activeMatch?.id === match.id
@@ -322,7 +335,9 @@ export const LineupPortalView = () => {
             )
           })}
         </ul>
-        {matches.length === 0 ? <p className="portal-hint">Нет матчей для подтверждения состава.</p> : null}
+        {matches.length === 0 ? (
+          <p className="portal-hint">Нет матчей для подтверждения состава.</p>
+        ) : null}
       </aside>
 
       <section className="portal-card">
@@ -335,9 +350,13 @@ export const LineupPortalView = () => {
         <ol className="portal-steps">
           <li>Выберите матч слева. Доступны игры, которые начнутся в ближайшие сутки.</li>
           <li>Определите свою команду (дом или гости) в открывшемся окне.</li>
-          <li>Отметьте игроков, которые выйдут на поле. Менять состав можно до стартового свистка.</li>      
+          <li>
+            Отметьте игроков, которые выйдут на поле. Менять состав можно до стартового свистка.
+          </li>
         </ol>
-        <p className="portal-hint">Если состав меняется в последний момент, обновите список перед стартом матча.</p>
+        <p className="portal-hint">
+          Если состав меняется в последний момент, обновите список перед стартом матча.
+        </p>
       </section>
     </div>
   )
@@ -354,7 +373,8 @@ export const LineupPortalView = () => {
             <div>
               <h3>Подтверждение состава</h3>
               <p>
-                {formatKickoff(activeMatch.matchDateTime)} · {activeMatch.homeClub.name} vs {activeMatch.awayClub.name}
+                {formatKickoff(activeMatch.matchDateTime)} · {activeMatch.homeClub.name} vs{' '}
+                {activeMatch.awayClub.name}
               </p>
             </div>
             <button type="button" className="portal-ghost" onClick={closeModal}>
@@ -383,7 +403,7 @@ export const LineupPortalView = () => {
             {modalError ? <div className="portal-feedback error in-modal">{modalError}</div> : null}
             {rosterLoading ? <p className="portal-hint">Загружаем заявку клуба…</p> : null}
             <div className="portal-roster-grid">
-              {roster.map((entry) => {
+              {roster.map(entry => {
                 const checked = Boolean(selectedPlayers[entry.personId])
                 const surname = `${entry.person.lastName} ${entry.person.firstName}`.trim()
                 const disqualified = Boolean(entry.disqualification)
@@ -399,7 +419,7 @@ export const LineupPortalView = () => {
                         type="number"
                         className="player-number-input"
                         value={shirtNumbers[entry.personId] ?? ''}
-                        onChange={(event) => updateShirtNumber(entry.personId, event.target.value)}
+                        onChange={event => updateShirtNumber(entry.personId, event.target.value)}
                         min={1}
                         max={999}
                         inputMode="numeric"
@@ -424,7 +444,8 @@ export const LineupPortalView = () => {
                         <span className="player-name">{surname}</span>
                         {disqualified && reasonLabel ? (
                           <span className="player-badge">
-                            {reasonLabel} · осталось {formatMatchesRemaining(entry.disqualification!.matchesRemaining)}
+                            {reasonLabel} · осталось{' '}
+                            {formatMatchesRemaining(entry.disqualification!.matchesRemaining)}
                           </span>
                         ) : null}
                       </span>
@@ -434,7 +455,9 @@ export const LineupPortalView = () => {
               })}
             </div>
             <footer className="portal-actions">
-              <span>Отмечено: {selectedCount} из {roster.length}</span>
+              <span>
+                Отмечено: {selectedCount} из {roster.length}
+              </span>
               <button type="submit" className="portal-primary" disabled={saving}>
                 {saving ? 'Сохраняем…' : `Сохранить состав (${selectedCount})`}
               </button>

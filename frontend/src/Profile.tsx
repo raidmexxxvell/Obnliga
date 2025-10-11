@@ -26,9 +26,9 @@ export default function Profile() {
 
     const userTopic = `user:${user.telegramId}`
     const profileTopic = 'profile' // Глобальные обновления профилей
-    
+
     console.log(`Subscribing to topics: ${userTopic}, ${profileTopic}`)
-    
+
     // Подписываемся на персональный топик пользователя
     wsClient.subscribe(userTopic)
     // Подписываемся на общий топик профилей
@@ -38,7 +38,7 @@ export default function Profile() {
     const handlePatch = (msg: any) => {
       if (msg.type === 'patch') {
         const { topic, payload } = msg
-        
+
         // Персональные обновления пользователя
         if (topic === userTopic && payload.telegramId === user.telegramId) {
           console.log('Received user patch:', payload)
@@ -49,7 +49,7 @@ export default function Profile() {
             return updated
           })
         }
-        
+
         // Глобальные обновления профилей (если касаются текущего пользователя)
         if (topic === profileTopic && payload.telegramId === user.telegramId) {
           console.log('Received profile patch:', payload)
@@ -93,7 +93,7 @@ export default function Profile() {
       const entry: CacheEntry = {
         data,
         timestamp: Date.now(),
-        etag
+        etag,
       }
       localStorage.setItem(CACHE_KEY, JSON.stringify(entry))
     } catch {
@@ -114,7 +114,7 @@ export default function Profile() {
     const metaEnv: any = (import.meta as any).env || {}
     const backend = metaEnv.VITE_BACKEND_URL || ''
     const meUrl = backend ? `${backend.replace(/\/$/, '')}/api/auth/me` : '/api/auth/me'
-    
+
     // 1) Check if we're inside Telegram WebApp first and try to authenticate
     try {
       // @ts-ignore
@@ -122,37 +122,40 @@ export default function Profile() {
       if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
         console.log('Telegram user data:', tg.initDataUnsafe.user)
         const unsafe = tg.initDataUnsafe.user
-        const fallbackName = unsafe.username || [unsafe.first_name, unsafe.last_name].filter(Boolean).join(' ').trim()
+        const fallbackName =
+          unsafe.username || [unsafe.first_name, unsafe.last_name].filter(Boolean).join(' ').trim()
         if (!user) {
           setUser({
             telegramId: unsafe.id,
             username: unsafe.username,
             firstName: unsafe.first_name,
             photoUrl: unsafe.photo_url,
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
           })
         }
-        
+
         // Try to send initData to backend
-        const initUrl = backend ? `${backend.replace(/\/$/, '')}/api/auth/telegram-init` : '/api/auth/telegram-init'
-        
+        const initUrl = backend
+          ? `${backend.replace(/\/$/, '')}/api/auth/telegram-init`
+          : '/api/auth/telegram-init'
+
         // Prepare initData - use the raw initData string if available
         let initDataValue = tg.initData
         if (!initDataValue) {
           // Fallback: construct from initDataUnsafe
           const user = tg.initDataUnsafe.user
-          initDataValue = JSON.stringify({ 
+          initDataValue = JSON.stringify({
             user: {
               id: user.id,
               first_name: user.first_name,
               last_name: user.last_name,
               username: user.username,
               photo_url: user.photo_url,
-              language_code: user.language_code
-            }
+              language_code: user.language_code,
+            },
           })
         }
-        
+
         console.log('Sending initData to backend')
         const headers: Record<string, string> = { 'Content-Type': 'application/json' }
         if (typeof initDataValue === 'string' && initDataValue.length > 0) {
@@ -167,9 +170,9 @@ export default function Profile() {
           method: 'POST',
           headers,
           credentials: 'include',
-          body: JSON.stringify({ initData: initDataValue })
+          body: JSON.stringify({ initData: initDataValue }),
         })
-        
+
         if (r.status === 304) {
           // Используем кэшированные данные
           if (cached?.data) {
@@ -209,14 +212,14 @@ export default function Profile() {
     try {
       const token = localStorage.getItem('session')
       if (token) {
-        const headers: any = { 'Authorization': `Bearer ${token}` }
+        const headers: any = { Authorization: `Bearer ${token}` }
         // Добавляем ETag из кэша если есть
         if (cached?.etag) {
           headers['If-None-Match'] = cached.etag
         }
-        
+
         const resp = await fetch(meUrl, { headers, credentials: 'include' })
-        
+
         if (resp.status === 304) {
           // Используем кэшированные данные
           if (cached?.data) {
@@ -255,28 +258,28 @@ export default function Profile() {
       <div className="profile-header">
         <div className="avatar-section">
           {user && user.photoUrl ? (
-            <img src={user.photoUrl} alt={user.username || user.firstName || 'avatar'} className="profile-avatar" />
+            <img
+              src={user.photoUrl}
+              alt={user.username || user.firstName || 'avatar'}
+              className="profile-avatar"
+            />
           ) : (
             <div className="profile-avatar placeholder">{loading ? '⏳' : '👤'}</div>
           )}
           <div className="status-indicator online"></div>
         </div>
-        
+
         <div className="profile-info">
           <h1 className="profile-name">
             {loading ? 'Загрузка...' : user?.username || user?.firstName || 'Гость'}
           </h1>
-          {user?.telegramId && (
-            <div className="profile-id">ID: {user.telegramId}</div>
-          )}
+          {user?.telegramId && <div className="profile-id">ID: {user.telegramId}</div>}
           {user?.createdAt && (
-            <div className="profile-joined">
-              Участник с {formatDate(user.createdAt)}
-            </div>
+            <div className="profile-joined">Участник с {formatDate(user.createdAt)}</div>
           )}
         </div>
       </div>
-      
+
       <div className="profile-stats">
         <div className="stat-item">
           <div className="stat-value">0</div>
@@ -291,7 +294,6 @@ export default function Profile() {
           <div className="stat-label">Рейтинг</div>
         </div>
       </div>
-
     </div>
   )
 }

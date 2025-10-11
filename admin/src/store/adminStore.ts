@@ -1,5 +1,11 @@
 import { create } from 'zustand'
-import { adminGet, adminLogin, adminRequestWithMeta, lineupLogin, translateAdminError } from '../api/adminClient'
+import {
+  adminGet,
+  adminLogin,
+  adminRequestWithMeta,
+  lineupLogin,
+  translateAdminError,
+} from '../api/adminClient'
 import { assistantLogin } from '../api/assistantClient'
 import { judgeLogin } from '../api/judgeClient'
 import type { NewsItem } from '@shared/types'
@@ -20,7 +26,7 @@ import {
   Prediction,
   Season,
   Stadium,
-  UserAchievement
+  UserAchievement,
 } from '../types'
 import { useAssistantStore } from './assistantStore'
 
@@ -86,11 +92,11 @@ const initialMode: AuthMode | undefined = initialAdminToken
   ? 'admin'
   : initialJudgeToken
     ? 'judge'
-  : initialAssistantToken
-    ? 'assistant'
-    : initialLineupToken
-      ? 'lineup'
-      : undefined
+    : initialAssistantToken
+      ? 'assistant'
+      : initialLineupToken
+        ? 'lineup'
+        : undefined
 
 const initialStatus: AdminState['status'] = initialMode ? 'authenticated' : 'idle'
 
@@ -152,7 +158,10 @@ interface AdminState {
   refreshTab(tab?: AdminTab): Promise<void>
 }
 
-type Setter = (partial: Partial<AdminState> | ((state: AdminState) => Partial<AdminState>), replace?: boolean) => void
+type Setter = (
+  partial: Partial<AdminState> | ((state: AdminState) => Partial<AdminState>),
+  replace?: boolean
+) => void
 type Getter = () => AdminState
 
 type FetchKey =
@@ -183,7 +192,7 @@ const FETCH_TTL: Record<FetchKey, number> = {
   predictions: 60_000,
   achievements: 120_000,
   disqualifications: 30_000,
-  news: 60_000
+  news: 60_000,
 }
 
 const createEmptyData = (): AdminData => ({
@@ -204,7 +213,7 @@ const createEmptyData = (): AdminData => ({
   achievementTypes: [],
   userAchievements: [],
   disqualifications: [],
-  news: []
+  news: [],
 })
 
 const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
@@ -213,8 +222,8 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
 
   const composeCacheKey = (scope: FetchKey, parts: Array<string | number | undefined>) => {
     const extras = parts
-      .filter((part) => part !== undefined && part !== null && part !== '')
-      .map((part) => (typeof part === 'number' ? part.toString() : String(part)))
+      .filter(part => part !== undefined && part !== null && part !== '')
+      .map(part => (typeof part === 'number' ? part.toString() : String(part)))
     return [scope, ...extras].join('|')
   }
 
@@ -232,19 +241,19 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
   }
 
   const run = async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
-    set((state) => ({
+    set(state => ({
       loading: { ...state.loading, [key]: true },
-      error: undefined
+      error: undefined,
     }))
     try {
       const result = await fn()
-      set((state) => ({ loading: { ...state.loading, [key]: false } }))
+      set(state => ({ loading: { ...state.loading, [key]: false } }))
       return result
     } catch (err) {
       const message = err instanceof Error ? err.message : 'request_failed'
-      set((state) => ({
+      set(state => ({
         loading: { ...state.loading, [key]: false },
-        error: message
+        error: message,
       }))
       throw err
     }
@@ -324,7 +333,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
             lineupToken: undefined,
             judgeToken: undefined,
             assistantToken: undefined,
-            error: undefined
+            error: undefined,
           })
           useAssistantStore.getState().reset()
           try {
@@ -359,7 +368,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
             assistantToken: undefined,
             error: undefined,
             data: createEmptyData(),
-            loading: {}
+            loading: {},
           })
           useAssistantStore.getState().reset()
           return
@@ -390,7 +399,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
             assistantToken: assistantResult.token,
             error: undefined,
             data: createEmptyData(),
-            loading: {}
+            loading: {},
           })
           return
         }
@@ -425,7 +434,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           assistantToken: undefined,
           error: undefined,
           data: createEmptyData(),
-          loading: {}
+          loading: {},
         })
       } catch (err) {
         const rawMessage = err instanceof Error ? err.message : 'auth_failed'
@@ -446,7 +455,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           judgeToken: undefined,
           assistantToken: undefined,
           data: createEmptyData(),
-          loading: {}
+          loading: {},
         })
       }
     },
@@ -471,7 +480,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         newsVersion: undefined,
         error: undefined,
         data: createEmptyData(),
-        loading: {}
+        loading: {},
       })
     },
     setTab(tab: AdminTab) {
@@ -492,7 +501,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       set({ selectedCompetitionId: competitionId })
       const seasons = get().data.seasons
       if (competitionId) {
-        const firstSeason = seasons.find((season) => season.competitionId === competitionId)
+        const firstSeason = seasons.find(season => season.competitionId === competitionId)
         if (firstSeason) {
           get().setSelectedSeason(firstSeason.id)
           return
@@ -504,17 +513,17 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     setSelectedSeason(seasonId?: number) {
       if (get().mode !== 'admin') return
       const seasons = get().data.seasons
-      const season = seasons.find((item) => item.id === seasonId)
+      const season = seasons.find(item => item.id === seasonId)
       set({
         selectedSeasonId: seasonId,
-        selectedCompetitionId: season ? season.competitionId : get().selectedCompetitionId
+        selectedCompetitionId: season ? season.competitionId : get().selectedCompetitionId,
       })
       void (async () => {
         try {
           await Promise.all([
             get().fetchSeries(seasonId),
             get().fetchMatches(seasonId),
-            get().fetchStats(seasonId, season?.competitionId)
+            get().fetchStats(seasonId, season?.competitionId),
           ])
         } catch (err) {
           // Ошибка уже зафиксирована в стейте run()
@@ -527,34 +536,34 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         'dictionaries',
         [],
         async () => {
-        const token = ensureToken()
-        const [clubs, persons, stadiums, competitions] = await Promise.all([
-          adminGet<Club[]>(token, '/api/admin/clubs'),
-          adminGet<Person[]>(token, '/api/admin/persons'),
-          adminGet<Stadium[]>(token, '/api/admin/stadiums'),
-          adminGet<Competition[]>(token, '/api/admin/competitions')
-        ])
-        set((state) => {
-          let selectedCompetitionId = state.selectedCompetitionId
-          if (
-            selectedCompetitionId &&
-            !competitions.some((competition) => competition.id === selectedCompetitionId)
-          ) {
-            selectedCompetitionId = competitions[0]?.id
-          }
+          const token = ensureToken()
+          const [clubs, persons, stadiums, competitions] = await Promise.all([
+            adminGet<Club[]>(token, '/api/admin/clubs'),
+            adminGet<Person[]>(token, '/api/admin/persons'),
+            adminGet<Stadium[]>(token, '/api/admin/stadiums'),
+            adminGet<Competition[]>(token, '/api/admin/competitions'),
+          ])
+          set(state => {
+            let selectedCompetitionId = state.selectedCompetitionId
+            if (
+              selectedCompetitionId &&
+              !competitions.some(competition => competition.id === selectedCompetitionId)
+            ) {
+              selectedCompetitionId = competitions[0]?.id
+            }
 
-          return {
-            data: {
-              ...state.data,
-              clubs,
-              persons,
-              stadiums,
-              competitions
-            },
-            selectedCompetitionId
-          }
-        })
-      },
+            return {
+              data: {
+                ...state.data,
+                clubs,
+                persons,
+                stadiums,
+                competitions,
+              },
+              selectedCompetitionId,
+            }
+          })
+        },
         options?.force ? 0 : undefined
       )
     },
@@ -564,18 +573,18 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         'seasons',
         [],
         async () => {
-        const token = ensureToken()
-        const seasons = await adminGet<Season[]>(token, '/api/admin/seasons')
-        set((state) => {
-          const nextSeason =
-            seasons.find((season) => season.id === state.selectedSeasonId) ?? seasons[0]
-          return {
-            data: { ...state.data, seasons },
-            selectedSeasonId: nextSeason?.id,
-            selectedCompetitionId: nextSeason?.competitionId ?? state.selectedCompetitionId
-          }
-        })
-      },
+          const token = ensureToken()
+          const seasons = await adminGet<Season[]>(token, '/api/admin/seasons')
+          set(state => {
+            const nextSeason =
+              seasons.find(season => season.id === state.selectedSeasonId) ?? seasons[0]
+            return {
+              data: { ...state.data, seasons },
+              selectedSeasonId: nextSeason?.id,
+              selectedCompetitionId: nextSeason?.competitionId ?? state.selectedCompetitionId,
+            }
+          })
+        },
         options?.force ? 0 : undefined
       )
     },
@@ -589,7 +598,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           const token = ensureToken()
           const query = activeSeason ? `?seasonId=${activeSeason}` : ''
           const series = await adminGet<MatchSeries[]>(token, `/api/admin/series${query}`)
-          set((state) => ({ data: { ...state.data, series } }))
+          set(state => ({ data: { ...state.data, series } }))
         },
         options?.force ? 0 : undefined
       )
@@ -604,7 +613,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           const token = ensureToken()
           const query = activeSeason ? `?seasonId=${activeSeason}` : ''
           const matches = await adminGet<MatchSummary[]>(token, `/api/admin/matches${query}`)
-          set((state) => ({ data: { ...state.data, matches } }))
+          set(state => ({ data: { ...state.data, matches } }))
         },
         options?.force ? 0 : undefined
       )
@@ -613,8 +622,11 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       if (get().mode !== 'admin') return
       await runCachedFetch('friendlyMatches', [], async () => {
         const token = ensureToken()
-        const friendlyMatches = await adminGet<FriendlyMatch[]>(token, '/api/admin/friendly-matches')
-        set((state) => ({ data: { ...state.data, friendlyMatches } }))
+        const friendlyMatches = await adminGet<FriendlyMatch[]>(
+          token,
+          '/api/admin/friendly-matches'
+        )
+        set(state => ({ data: { ...state.data, friendlyMatches } }))
       })
     },
     async fetchStats(seasonId?: number, competitionId?: number) {
@@ -623,7 +635,10 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       const activeCompetition = competitionId ?? get().selectedCompetitionId
       await runCachedFetch(
         'stats',
-        [activeSeason ? `season:${activeSeason}` : undefined, activeCompetition ? `competition:${activeCompetition}` : undefined],
+        [
+          activeSeason ? `season:${activeSeason}` : undefined,
+          activeCompetition ? `competition:${activeCompetition}` : undefined,
+        ],
         async () => {
           const token = ensureToken()
           const params = new URLSearchParams()
@@ -638,10 +653,10 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
             adminGet<ClubSeasonStats[]>(token, `/api/admin/stats/club-season${seasonQuery}`),
             adminGet<PlayerSeasonStats[]>(token, `/api/admin/stats/player-season${seasonQuery}`),
             adminGet<PlayerCareerStats[]>(token, `/api/admin/stats/player-career${careerQuery}`),
-            adminGet<ClubCareerTotals[]>(token, '/api/admin/stats/club-career')
+            adminGet<ClubCareerTotals[]>(token, '/api/admin/stats/club-career'),
           ])
-          set((state) => ({
-            data: { ...state.data, clubStats, playerStats, careerStats, clubCareerTotals }
+          set(state => ({
+            data: { ...state.data, clubStats, playerStats, careerStats, clubCareerTotals },
           }))
         }
       )
@@ -651,7 +666,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       await runCachedFetch('users', [], async () => {
         const token = ensureToken()
         const users = await adminGet<AppUser[]>(token, '/api/admin/users')
-        set((state) => ({ data: { ...state.data, users } }))
+        set(state => ({ data: { ...state.data, users } }))
       })
     },
     async fetchPredictions() {
@@ -659,7 +674,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       await runCachedFetch('predictions', [], async () => {
         const token = ensureToken()
         const predictions = await adminGet<Prediction[]>(token, '/api/admin/predictions')
-        set((state) => ({ data: { ...state.data, predictions } }))
+        set(state => ({ data: { ...state.data, predictions } }))
       })
     },
     async fetchAchievements() {
@@ -668,10 +683,10 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
         const token = ensureToken()
         const [achievementTypes, userAchievements] = await Promise.all([
           adminGet<AchievementType[]>(token, '/api/admin/achievements/types'),
-          adminGet<UserAchievement[]>(token, '/api/admin/achievements/users')
+          adminGet<UserAchievement[]>(token, '/api/admin/achievements/users'),
         ])
-        set((state) => ({
-          data: { ...state.data, achievementTypes, userAchievements }
+        set(state => ({
+          data: { ...state.data, achievementTypes, userAchievements },
         }))
       })
     },
@@ -679,8 +694,11 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
       if (get().mode !== 'admin') return
       await runCachedFetch('disqualifications', [], async () => {
         const token = ensureToken()
-        const disqualifications = await adminGet<Disqualification[]>(token, '/api/admin/disqualifications')
-        set((state) => ({ data: { ...state.data, disqualifications } }))
+        const disqualifications = await adminGet<Disqualification[]>(
+          token,
+          '/api/admin/disqualifications'
+        )
+        set(state => ({ data: { ...state.data, disqualifications } }))
       })
     },
     async fetchNews(options?: FetchOptions) {
@@ -697,13 +715,13 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
               cache: 'no-store',
               headers: {
                 'Cache-Control': 'no-cache',
-                Pragma: 'no-cache'
-              }
+                Pragma: 'no-cache',
+              },
             }
           )
-          set((state) => ({
+          set(state => ({
             data: { ...state.data, news },
-            newsVersion: version ?? state.newsVersion
+            newsVersion: version ?? state.newsVersion,
           }))
         },
         options?.force ? 0 : undefined
@@ -712,31 +730,31 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
     prependNews(item: NewsItem) {
       const cacheKey = composeCacheKey('news', [])
       fetchTimestamps[cacheKey] = Date.now()
-      set((state) => ({
+      set(state => ({
         data: {
           ...state.data,
-          news: [item, ...state.data.news.filter((existing) => existing.id !== item.id)]
-        }
+          news: [item, ...state.data.news.filter(existing => existing.id !== item.id)],
+        },
       }))
     },
     updateNews(item: NewsItem) {
       const cacheKey = composeCacheKey('news', [])
       fetchTimestamps[cacheKey] = Date.now()
-      set((state) => ({
+      set(state => ({
         data: {
           ...state.data,
-          news: state.data.news.map((existing) => (existing.id === item.id ? item : existing))
-        }
+          news: state.data.news.map(existing => (existing.id === item.id ? item : existing)),
+        },
       }))
     },
     removeNews(id: string) {
       const cacheKey = composeCacheKey('news', [])
       fetchTimestamps[cacheKey] = Date.now()
-      set((state) => ({
+      set(state => ({
         data: {
           ...state.data,
-          news: state.data.news.filter((existing) => existing.id !== id)
-        }
+          news: state.data.news.filter(existing => existing.id !== id),
+        },
       }))
     },
     async refreshTab(tab?: AdminTab) {
@@ -753,7 +771,7 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           await Promise.all([
             get().fetchSeries(season, { force: true }),
             get().fetchMatches(season, { force: true }),
-            get().fetchFriendlyMatches()
+            get().fetchFriendlyMatches(),
           ])
           break
         }
@@ -772,12 +790,16 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           await get().fetchNews({ force: true })
           break
         case 'users':
-          await Promise.all([get().fetchUsers(), get().fetchPredictions(), get().fetchAchievements()])
+          await Promise.all([
+            get().fetchUsers(),
+            get().fetchPredictions(),
+            get().fetchAchievements(),
+          ])
           break
         default:
           break
       }
-    }
+    },
   }
 
   if (initialMode === 'admin' && initialAdminToken) {

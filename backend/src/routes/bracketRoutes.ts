@@ -7,32 +7,32 @@ const includeConfig = {
   competition: true,
   participants: {
     include: {
-      club: true
-    }
+      club: true,
+    },
   },
   series: {
     include: {
       homeClub: true,
       awayClub: true,
-      winnerClub: true
+      winnerClub: true,
     },
     orderBy: {
-      stageName: 'asc'
-    }
+      stageName: 'asc',
+    },
   },
   matches: {
     where: {
       seriesId: {
-        not: null
-      }
+        not: null,
+      },
     },
     include: {
-      round: true
+      round: true,
     },
     orderBy: {
-      matchDateTime: 'asc'
-    }
-  }
+      matchDateTime: 'asc',
+    },
+  },
 } satisfies Prisma.SeasonInclude
 
 type SeasonWithRelations = Prisma.SeasonGetPayload<{ include: typeof includeConfig }>
@@ -74,10 +74,12 @@ const formatKickoff = (iso: Date): string =>
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   })
 
-const summarizeSeries = (seriesMatches: SeasonWithRelations['matches']): {
+const summarizeSeries = (
+  seriesMatches: SeasonWithRelations['matches']
+): {
   homeLabel: string
   awayLabel: string
   mode: 'wins' | 'score'
@@ -91,16 +93,18 @@ const summarizeSeries = (seriesMatches: SeasonWithRelations['matches']): {
     return {
       homeLabel: showScore ? String(single.homeScore) : '—',
       awayLabel: showScore ? String(single.awayScore) : '—',
-      mode: 'score'
+      mode: 'score',
     }
   }
-  const finished = seriesMatches.filter((match) => match.status === 'FINISHED' || match.status === 'LIVE')
-  const homeWins = finished.filter((match) => match.homeScore > match.awayScore).length
-  const awayWins = finished.filter((match) => match.awayScore > match.homeScore).length
+  const finished = seriesMatches.filter(
+    match => match.status === 'FINISHED' || match.status === 'LIVE'
+  )
+  const homeWins = finished.filter(match => match.homeScore > match.awayScore).length
+  const awayWins = finished.filter(match => match.awayScore > match.homeScore).length
   return {
     homeLabel: homeWins.toString(),
     awayLabel: awayWins.toString(),
-    mode: 'wins'
+    mode: 'wins',
   }
 }
 
@@ -166,7 +170,7 @@ const buildBracketPayload = (season: SeasonWithRelations) => {
     const existing = stageBuckets.get(series.stageName) ?? {
       stageName: series.stageName,
       rank: stageRank,
-      series: []
+      series: [],
     }
 
     existing.series.push({
@@ -187,11 +191,11 @@ const buildBracketPayload = (season: SeasonWithRelations) => {
           (match.seriesMatchNumber ? `Игра ${match.seriesMatchNumber}` : `Матч ${index + 1}`),
         kickoff: formatKickoff(match.matchDateTime),
         status: match.status,
-        scoreLabel: formatScoreLabel(match)
+        scoreLabel: formatScoreLabel(match),
       })),
       order: stageMatches[0]
         ? new Date(stageMatches[0].matchDateTime).getTime()
-        : Number.MAX_SAFE_INTEGER
+        : Number.MAX_SAFE_INTEGER,
     })
 
     stageBuckets.set(series.stageName, existing)
@@ -204,11 +208,11 @@ const buildBracketPayload = (season: SeasonWithRelations) => {
       }
       return left.stageName.localeCompare(right.stageName, 'ru')
     })
-    .map((stage) => ({
+    .map(stage => ({
       stageName: stage.stageName,
       series: stage.series
         .sort((left, right) => left.order - right.order)
-        .map((item) => ({
+        .map(item => ({
           id: item.id,
           stageName: item.stageName,
           seriesStatus: item.seriesStatus,
@@ -221,7 +225,7 @@ const buildBracketPayload = (season: SeasonWithRelations) => {
                 id: item.homeClub.id,
                 name: item.homeClub.name,
                 shortName: item.homeClub.shortName,
-                logoUrl: item.homeClub.logoUrl ?? null
+                logoUrl: item.homeClub.logoUrl ?? null,
               }
             : null,
           awayClub: item.awayClub
@@ -229,12 +233,12 @@ const buildBracketPayload = (season: SeasonWithRelations) => {
                 id: item.awayClub.id,
                 name: item.awayClub.name,
                 shortName: item.awayClub.shortName,
-                logoUrl: item.awayClub.logoUrl ?? null
+                logoUrl: item.awayClub.logoUrl ?? null,
               }
             : null,
           summary: item.summary,
-          matches: item.matches
-        }))
+          matches: item.matches,
+        })),
     }))
 
   return {
@@ -246,10 +250,10 @@ const buildBracketPayload = (season: SeasonWithRelations) => {
       competition: {
         id: season.competition.id,
         name: season.competition.name,
-        seriesFormat: season.competition.seriesFormat
-      }
+        seriesFormat: season.competition.seriesFormat,
+      },
     },
-    stages
+    stages,
   }
 }
 
@@ -257,7 +261,7 @@ const findSeasonForBracket = async (seasonId?: number): Promise<SeasonWithRelati
   if (seasonId) {
     return prisma.season.findUnique({
       where: { id: seasonId },
-      include: includeConfig
+      include: includeConfig,
     })
   }
 
@@ -265,18 +269,19 @@ const findSeasonForBracket = async (seasonId?: number): Promise<SeasonWithRelati
     where: {
       competition: {
         seriesFormat: {
-          in: [SeriesFormat.BEST_OF_N, SeriesFormat.DOUBLE_ROUND_PLAYOFF, SeriesFormat.PLAYOFF_BRACKET]
-        }
+          in: [
+            SeriesFormat.BEST_OF_N,
+            SeriesFormat.DOUBLE_ROUND_PLAYOFF,
+            SeriesFormat.PLAYOFF_BRACKET,
+          ],
+        },
       },
       series: {
-        some: {}
-      }
+        some: {},
+      },
     },
-    orderBy: [
-      { startDate: 'desc' },
-      { id: 'desc' }
-    ],
-    include: includeConfig
+    orderBy: [{ startDate: 'desc' }, { id: 'desc' }],
+    include: includeConfig,
   })
 }
 

@@ -18,13 +18,13 @@ const defaultJobOptions: JobsOptions = {
   attempts: 3,
   backoff: {
     type: 'exponential',
-    delay: 2000
+    delay: 2000,
   },
   removeOnComplete: {
     age: 3600,
-    count: 200
+    count: 200,
   },
-  removeOnFail: false
+  removeOnFail: false,
 }
 
 const getRedisUrl = () => process.env.REDIS_URL || process.env.REDIS
@@ -40,12 +40,12 @@ async function initQueue(): Promise<Queue<TelegramNewsJobPayload> | null> {
   }
 
   connection = new Redis(redisUrl, {
-    maxRetriesPerRequest: null
+    maxRetriesPerRequest: null,
   })
 
   queue = new Queue<TelegramNewsJobPayload>(NEWS_QUEUE_NAME, {
     connection,
-    defaultJobOptions
+    defaultJobOptions,
   })
 
   return queue
@@ -53,7 +53,7 @@ async function initQueue(): Promise<Queue<TelegramNewsJobPayload> | null> {
 
 export async function ensureNewsQueue(): Promise<Queue<TelegramNewsJobPayload> | null> {
   if (!initPromise) {
-    initPromise = initQueue().catch((err) => {
+    initPromise = initQueue().catch(err => {
       console.error('newsQueue:init failed', err)
       initPromise = null
       return null

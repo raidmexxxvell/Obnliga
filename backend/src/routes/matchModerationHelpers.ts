@@ -14,14 +14,19 @@ export class RequestError extends Error {
   }
 }
 
-export type MatchStatisticMetric = 'totalShots' | 'shotsOnTarget' | 'corners' | 'yellowCards' | 'redCards'
+export type MatchStatisticMetric =
+  | 'totalShots'
+  | 'shotsOnTarget'
+  | 'corners'
+  | 'yellowCards'
+  | 'redCards'
 
 export const MATCH_STATISTIC_METRICS: MatchStatisticMetric[] = [
   'totalShots',
   'shotsOnTarget',
   'corners',
   'yellowCards',
-  'redCards'
+  'redCards',
 ]
 export type EventStatisticAdjustments = Partial<Record<MatchStatisticMetric, number>>
 
@@ -41,16 +46,20 @@ export interface MatchEventUpdatePayload {
   relatedPlayerId?: number | null
 }
 
-export const eventStatisticAdjustments: Partial<Record<MatchEventType, EventStatisticAdjustments>> = {
-  YELLOW_CARD: { yellowCards: 1 },
-  RED_CARD: { redCards: 1 },
-  SECOND_YELLOW_CARD: { redCards: 1 }
-}
+export const eventStatisticAdjustments: Partial<Record<MatchEventType, EventStatisticAdjustments>> =
+  {
+    YELLOW_CARD: { yellowCards: 1 },
+    RED_CARD: { redCards: 1 },
+    SECOND_YELLOW_CARD: { redCards: 1 },
+  }
 
 const MATCH_STATS_CACHE_TTL_SECONDS = Number(process.env.ADMIN_CACHE_TTL_MATCH_STATS ?? '5')
 const MATCH_STATS_RETENTION_HOURS = Number(process.env.MATCH_STATS_RETENTION_HOURS ?? '3')
-const MATCH_STATS_RETENTION_MS = MATCH_STATS_RETENTION_HOURS > 0 ? MATCH_STATS_RETENTION_HOURS * 60 * 60 * 1000 : 0
-const MATCH_STATS_CLEANUP_INTERVAL_MS = Number(process.env.MATCH_STATS_CLEANUP_INTERVAL_MS ?? '300000')
+const MATCH_STATS_RETENTION_MS =
+  MATCH_STATS_RETENTION_HOURS > 0 ? MATCH_STATS_RETENTION_HOURS * 60 * 60 * 1000 : 0
+const MATCH_STATS_CLEANUP_INTERVAL_MS = Number(
+  process.env.MATCH_STATS_CLEANUP_INTERVAL_MS ?? '300000'
+)
 
 let lastMatchStatsCleanupAt = 0
 
@@ -73,16 +82,18 @@ export const cleanupExpiredMatchStatistics = async (now: Date): Promise<number> 
   const expired = await prisma.matchStatistic.findMany({
     where: { match: { matchDateTime: { lt: cutoff } } },
     select: { matchId: true },
-    distinct: ['matchId']
+    distinct: ['matchId'],
   })
   if (!expired.length) {
     return 0
   }
   await prisma.matchStatistic.deleteMany({
-    where: { matchId: { in: expired.map((entry) => entry.matchId) } }
+    where: { matchId: { in: expired.map(entry => entry.matchId) } },
   })
   await Promise.all(
-    expired.map((entry) => defaultCache.invalidate(matchStatsCacheKey(entry.matchId)).catch(() => undefined))
+    expired.map(entry =>
+      defaultCache.invalidate(matchStatsCacheKey(entry.matchId)).catch(() => undefined)
+    )
   )
   return expired.length
 }
@@ -101,7 +112,7 @@ export const applyStatisticDelta = async (
   }
 
   let entry = await tx.matchStatistic.findUnique({
-    where: { matchId_clubId: { matchId, clubId } }
+    where: { matchId_clubId: { matchId, clubId } },
   })
 
   if (!entry) {
@@ -111,8 +122,8 @@ export const applyStatisticDelta = async (
     entry = await tx.matchStatistic.create({
       data: {
         matchId,
-        clubId
-      }
+        clubId,
+      },
     })
   }
 
@@ -121,7 +132,7 @@ export const applyStatisticDelta = async (
     shotsOnTarget: entry.shotsOnTarget,
     corners: entry.corners,
     yellowCards: entry.yellowCards,
-    redCards: entry.redCards
+    redCards: entry.redCards,
   }
 
   const updates: Prisma.MatchStatisticUncheckedUpdateInput = {}
@@ -153,7 +164,7 @@ export const applyStatisticDelta = async (
 
   await tx.matchStatistic.update({
     where: { matchId_clubId: { matchId, clubId } },
-    data: updates
+    data: updates,
   })
 
   return true
@@ -170,7 +181,9 @@ export const applyStatisticAdjustments = async (
     return false
   }
   let changed = false
-  for (const [metric, amount] of Object.entries(adjustments) as Array<[MatchStatisticMetric, number]>) {
+  for (const [metric, amount] of Object.entries(adjustments) as Array<
+    [MatchStatisticMetric, number]
+  >) {
     if (!amount) continue
     const delta = amount * direction
     if (!delta) continue
@@ -215,10 +228,10 @@ const fetchMatchStatisticPayload = async (matchId: bigint): Promise<MatchStatist
       awayClub: { select: { id: true, name: true, shortName: true } },
       statistics: {
         include: {
-          club: { select: { id: true, name: true, shortName: true } }
-        }
-      }
-    }
+          club: { select: { id: true, name: true, shortName: true } },
+        },
+      },
+    },
   })
 
   if (!match) {
@@ -240,7 +253,7 @@ const fetchMatchStatisticPayload = async (matchId: bigint): Promise<MatchStatist
   const clubFallback = async (clubId: number) => {
     const fallback = await prisma.club.findUnique({
       where: { id: clubId },
-      select: { id: true, name: true, shortName: true }
+      select: { id: true, name: true, shortName: true },
     })
     if (!fallback) {
       throw new RequestError(404, 'match_club_not_found')
@@ -258,7 +271,7 @@ const fetchMatchStatisticPayload = async (matchId: bigint): Promise<MatchStatist
 
   const base = [
     { clubId: homeClub.id, club: homeClub },
-    { clubId: awayClub.id, club: awayClub }
+    { clubId: awayClub.id, club: awayClub },
   ]
 
   return base.map(({ clubId, club }) => {
@@ -276,14 +289,18 @@ const fetchMatchStatisticPayload = async (matchId: bigint): Promise<MatchStatist
       club: {
         id: club.id,
         name: club.name,
-        shortName: club.shortName
-      }
+        shortName: club.shortName,
+      },
     }
   })
 }
 
 export const getMatchStatisticsWithMeta = (matchId: bigint) =>
-  defaultCache.getWithMeta(matchStatsCacheKey(matchId), () => fetchMatchStatisticPayload(matchId), MATCH_STATS_CACHE_TTL_SECONDS)
+  defaultCache.getWithMeta(
+    matchStatsCacheKey(matchId),
+    () => fetchMatchStatisticPayload(matchId),
+    MATCH_STATS_CACHE_TTL_SECONDS
+  )
 
 export const broadcastMatchStatistics = async (server: FastifyInstance, matchId: bigint) => {
   await defaultCache.invalidate(matchStatsCacheKey(matchId)).catch(() => undefined)
@@ -308,7 +325,10 @@ export const broadcastMatchEvents = async (server: FastifyInstance, matchId: big
 }
 
 export const loadMatchEventsWithRoster = async (matchId: bigint) => {
-  const match = await prisma.match.findUnique({ where: { id: matchId }, select: { seasonId: true } })
+  const match = await prisma.match.findUnique({
+    where: { id: matchId },
+    select: { seasonId: true },
+  })
   if (!match) {
     throw new RequestError(404, 'match_not_found')
   }
@@ -319,8 +339,8 @@ export const loadMatchEventsWithRoster = async (matchId: bigint) => {
     include: {
       player: true,
       relatedPerson: true,
-      team: true
-    }
+      team: true,
+    },
   })
 
   if (events.length === 0) {
@@ -338,31 +358,33 @@ export const loadMatchEventsWithRoster = async (matchId: bigint) => {
   const rosterNumbers = await prisma.seasonRoster.findMany({
     where: {
       seasonId: match.seasonId,
-      personId: { in: Array.from(personIds) }
+      personId: { in: Array.from(personIds) },
     },
-    select: { personId: true, shirtNumber: true }
+    select: { personId: true, shirtNumber: true },
   })
 
   const shirtMap = new Map<number, number>()
-  rosterNumbers.forEach((entry) => {
+  rosterNumbers.forEach(entry => {
     shirtMap.set(entry.personId, entry.shirtNumber)
   })
 
-  return events.map((event) => {
+  return events.map(event => {
     const playerShirt = shirtMap.get(event.playerId) ?? null
-    const relatedShirt = event.relatedPlayerId ? shirtMap.get(event.relatedPlayerId) ?? null : null
+    const relatedShirt = event.relatedPlayerId
+      ? (shirtMap.get(event.relatedPlayerId) ?? null)
+      : null
     return {
       ...event,
       player: {
         ...event.player,
-        shirtNumber: playerShirt
+        shirtNumber: playerShirt,
       },
       relatedPerson: event.relatedPerson
         ? {
             ...event.relatedPerson,
-            shirtNumber: relatedShirt
+            shirtNumber: relatedShirt,
           }
-        : event.relatedPerson
+        : event.relatedPerson,
     }
   })
 }
@@ -371,7 +393,7 @@ export const createMatchEvent = async (
   matchId: bigint,
   payload: MatchEventPayload
 ): Promise<{ event: MatchEvent; statAdjusted: boolean }> => {
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async tx => {
     const event = await tx.matchEvent.create({
       data: {
         matchId,
@@ -379,8 +401,8 @@ export const createMatchEvent = async (
         teamId: payload.teamId,
         minute: payload.minute,
         eventType: payload.eventType,
-        relatedPlayerId: payload.relatedPlayerId ?? null
-      }
+        relatedPlayerId: payload.relatedPlayerId ?? null,
+      },
     })
 
     const adjustments = eventStatisticAdjustments[event.eventType]
@@ -394,7 +416,7 @@ export const updateMatchEvent = async (
   eventId: bigint,
   payload: MatchEventUpdatePayload
 ): Promise<{ event: MatchEvent; statAdjusted: boolean }> => {
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async tx => {
     const before = await tx.matchEvent.findUnique({ where: { id: eventId } })
     if (!before) {
       throw new RequestError(404, 'event_not_found')
@@ -407,8 +429,8 @@ export const updateMatchEvent = async (
         eventType: payload.eventType ?? undefined,
         teamId: payload.teamId ?? undefined,
         playerId: payload.playerId ?? undefined,
-        relatedPlayerId: payload.relatedPlayerId ?? undefined
-      }
+        relatedPlayerId: payload.relatedPlayerId ?? undefined,
+      },
     })
 
     let statAdjusted = false
@@ -417,12 +439,24 @@ export const updateMatchEvent = async (
 
     if (before.teamId !== event.teamId || before.eventType !== event.eventType) {
       if (beforeAdjustments) {
-        const changed = await applyStatisticAdjustments(tx, matchId, before.teamId, beforeAdjustments, -1)
+        const changed = await applyStatisticAdjustments(
+          tx,
+          matchId,
+          before.teamId,
+          beforeAdjustments,
+          -1
+        )
         statAdjusted = statAdjusted || changed
       }
 
       if (afterAdjustments) {
-        const changed = await applyStatisticAdjustments(tx, matchId, event.teamId, afterAdjustments, 1)
+        const changed = await applyStatisticAdjustments(
+          tx,
+          matchId,
+          event.teamId,
+          afterAdjustments,
+          1
+        )
         statAdjusted = statAdjusted || changed
       }
     }
@@ -435,7 +469,7 @@ export const deleteMatchEvent = async (
   matchId: bigint,
   eventId: bigint
 ): Promise<{ statAdjusted: boolean; deleted: true }> => {
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async tx => {
     const existing = await tx.matchEvent.findUnique({ where: { id: eventId } })
     if (!existing) {
       throw new RequestError(404, 'event_not_found')
@@ -462,9 +496,12 @@ export const ensureMatchForJudge = async (
   }
 ) => {
   const allowed = options?.allowedStatuses ?? [MatchStatus.LIVE, MatchStatus.FINISHED]
-  const defaultError = allowed.includes(MatchStatus.LIVE) && allowed.includes(MatchStatus.FINISHED) && allowed.length === 2
-    ? 'match_not_finished'
-    : 'match_not_available'
+  const defaultError =
+    allowed.includes(MatchStatus.LIVE) &&
+    allowed.includes(MatchStatus.FINISHED) &&
+    allowed.length === 2
+      ? 'match_not_finished'
+      : 'match_not_available'
   const errorCode = options?.errorCode ?? defaultError
 
   const match = await prisma.match.findUnique({
@@ -479,12 +516,12 @@ export const ensureMatchForJudge = async (
               id: true,
               name: true,
               type: true,
-              seriesFormat: true
-            }
-          }
-        }
-      }
-    }
+              seriesFormat: true,
+            },
+          },
+        },
+      },
+    },
   })
 
   if (!match) {
@@ -499,7 +536,10 @@ export const ensureMatchForJudge = async (
 }
 
 export const loadMatchLineupWithNumbers = async (matchId: bigint) => {
-  const match = await prisma.match.findUnique({ where: { id: matchId }, select: { seasonId: true } })
+  const match = await prisma.match.findUnique({
+    where: { id: matchId },
+    select: { seasonId: true },
+  })
   if (!match) {
     throw new RequestError(404, 'match_not_found')
   }
@@ -509,8 +549,8 @@ export const loadMatchLineupWithNumbers = async (matchId: bigint) => {
     orderBy: [{ role: 'asc' }, { personId: 'asc' }],
     include: {
       person: true,
-      club: true
-    }
+      club: true,
+    },
   })
 
   if (lineup.length === 0) {
@@ -520,25 +560,25 @@ export const loadMatchLineupWithNumbers = async (matchId: bigint) => {
   const rosterNumbers = await prisma.seasonRoster.findMany({
     where: {
       seasonId: match.seasonId,
-      personId: { in: lineup.map((entry) => entry.personId) }
+      personId: { in: lineup.map(entry => entry.personId) },
     },
-    select: { personId: true, shirtNumber: true }
+    select: { personId: true, shirtNumber: true },
   })
 
   const shirtMap = new Map<number, number>()
-  rosterNumbers.forEach((entry) => {
+  rosterNumbers.forEach(entry => {
     shirtMap.set(entry.personId, entry.shirtNumber)
   })
 
-  return lineup.map((entry) => {
+  return lineup.map(entry => {
     const shirtNumber = shirtMap.get(entry.personId) ?? null
     return {
       ...entry,
       shirtNumber,
       person: {
         ...entry.person,
-        shirtNumber
-      }
+        shirtNumber,
+      },
     }
   })
 }

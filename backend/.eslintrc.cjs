@@ -4,24 +4,19 @@ module.exports = {
     node: true,
     es2020: true,
   },
-  extends: [
-    'eslint:recommended',
-    'plugin:@typescript-eslint/recommended',
-  ],
+  extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended'],
   parser: '@typescript-eslint/parser',
   parserOptions: {
     ecmaVersion: 'latest',
     sourceType: 'module',
     project: './tsconfig.json',
   },
-  plugins: [
-    '@typescript-eslint',
-  ],
+  plugins: ['@typescript-eslint'],
   rules: {
-    'semi': ['error', 'never'],
-    'quotes': ['error', 'single'],
-    'comma-dangle': ['error', 'only-multiline'],
-    'indent': ['error', 2],
+    semi: ['error', 'never'],
+    quotes: ['error', 'single'],
+  'comma-dangle': ['error', 'only-multiline'],
+  indent: 'off',
     'object-curly-spacing': ['error', 'always'],
     'array-bracket-spacing': ['error', 'never'],
     'eol-last': ['error', 'always'],
@@ -38,9 +33,5 @@ module.exports = {
     'object-shorthand': 'error',
     'prefer-template': 'error',
   },
-  ignorePatterns: [
-    'dist/',
-    'node_modules/',
-    '.eslintrc.cjs',
-  ],
+  ignorePatterns: ['dist/', 'node_modules/', '.eslintrc.cjs'],
 }

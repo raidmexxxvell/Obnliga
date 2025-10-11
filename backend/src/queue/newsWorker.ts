@@ -8,7 +8,7 @@ import {
   enqueueTelegramNewsJob,
   getNewsQueueConnection,
   shutdownNewsQueue,
-  TelegramNewsJobPayload
+  TelegramNewsJobPayload,
 } from './newsQueue'
 
 const POLL_INTERVAL_MS = 60_000
@@ -69,15 +69,15 @@ export type DeliveryOutcome = {
   error?: unknown
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 const fetchRecipientChatIds = async (logger: FastifyBaseLogger): Promise<string[]> => {
   try {
     const users = await prisma.appUser.findMany({
-      select: { telegramId: true }
+      select: { telegramId: true },
     })
     return users
-      .map((user) => (user.telegramId ? user.telegramId.toString() : ''))
+      .map(user => (user.telegramId ? user.telegramId.toString() : ''))
       .filter((value): value is string => Boolean(value && value.length))
   } catch (err) {
     logger.error({ err }, 'news worker: failed to load telegram recipients')
@@ -119,12 +119,12 @@ const performTelegramSend = async (
         if (coverUrl) {
           await client.sendPhoto(chatId, coverUrl, {
             caption: message,
-            parse_mode: 'HTML'
+            parse_mode: 'HTML',
           })
         } else {
           await client.sendMessage(chatId, message, {
             parse_mode: 'HTML',
-            disable_web_page_preview: false
+            disable_web_page_preview: false,
           })
         }
         sentCount += 1
@@ -133,7 +133,10 @@ const performTelegramSend = async (
         if (isFloodError(err)) {
           attempt += 1
           const delay = resolveFloodRetryDelay(err)
-          logger.warn({ chatId, delay, attempt }, 'news worker: flood limit reached, retrying telegram send')
+          logger.warn(
+            { chatId, delay, attempt },
+            'news worker: flood limit reached, retrying telegram send'
+          )
           await sleep(delay)
           continue
         }
@@ -160,7 +163,7 @@ const performTelegramSend = async (
       {
         newsId: payload.newsId,
         sentCount,
-        failedCount
+        failedCount,
       },
       'news worker: telegram direct delivery completed'
     )
@@ -171,7 +174,7 @@ const performTelegramSend = async (
     sentCount,
     failedCount,
     reason: sentCount > 0 ? undefined : 'send_failed',
-    error: errors.length ? errors : undefined
+    error: errors.length ? errors : undefined,
   }
 }
 
@@ -198,7 +201,7 @@ const sendTelegramPayload = async (job: Job<TelegramNewsJobPayload>, logger: Fas
     {
       jobId: job.id,
       sentCount: outcome.sentCount,
-      failedCount: outcome.failedCount
+      failedCount: outcome.failedCount,
     },
     'news worker: telegram broadcast completed'
   )
@@ -222,12 +225,12 @@ const createWorker = (logger: FastifyBaseLogger): Worker<TelegramNewsJobPayload>
     concurrency: 1,
     limiter: {
       max: 1,
-      duration: 1000
+      duration: 1000,
     },
-    connection
+    connection,
   })
 
-  worker.on('completed', (job) => {
+  worker.on('completed', job => {
     logger.info({ jobId: job.id }, 'news worker: telegram broadcast completed')
   })
 
@@ -240,7 +243,7 @@ const createWorker = (logger: FastifyBaseLogger): Worker<TelegramNewsJobPayload>
     await stopWorker(logger)
   })
 
-  worker.on('error', (err) => {
+  worker.on('error', err => {
     logger.error({ err }, 'news worker: runtime error')
   })
 
@@ -278,7 +281,7 @@ const evaluateQueue = async (logger: FastifyBaseLogger) => {
   const [waiting, delayed, active] = await Promise.all([
     queue.getWaitingCount(),
     queue.getDelayedCount(),
-    queue.getActiveCount()
+    queue.getActiveCount(),
   ])
   const pending = waiting + delayed + active
   if (pending > 0) {
@@ -300,7 +303,7 @@ export async function startNewsWorkerSupervisor(logger: FastifyBaseLogger) {
       queueEvents = new QueueEvents(NEWS_QUEUE_NAME, { connection })
       await queueEvents.waitUntilReady()
       queueEvents.on('waiting', () => {
-        evaluateQueue(logger).catch((err) => logger.error({ err }, 'news worker: evaluate failed'))
+        evaluateQueue(logger).catch(err => logger.error({ err }, 'news worker: evaluate failed'))
       })
     } else {
       logger.warn('news worker: queue events connection unavailable')
@@ -313,7 +316,7 @@ export async function startNewsWorkerSupervisor(logger: FastifyBaseLogger) {
     clearInterval(pollTimer)
   }
   pollTimer = setInterval(() => {
-    evaluateQueue(logger).catch((err) => logger.error({ err }, 'news worker: evaluate failed'))
+    evaluateQueue(logger).catch(err => logger.error({ err }, 'news worker: evaluate failed'))
   }, POLL_INTERVAL_MS)
 }
 

@@ -37,12 +37,12 @@ const baseSeriesFormatOptions: Array<Competition['seriesFormat']> = [
   'BEST_OF_N',
   'DOUBLE_ROUND_PLAYOFF',
   'PLAYOFF_BRACKET',
-  'GROUP_SINGLE_ROUND_PLAYOFF'
+  'GROUP_SINGLE_ROUND_PLAYOFF',
 ]
 
 const competitionTypeLabels: Record<Competition['type'], string> = {
   LEAGUE: 'Лига',
-  CUP: 'Кубок'
+  CUP: 'Кубок',
 }
 
 const seriesFormatLabels: Record<Competition['seriesFormat'], string> = {
@@ -51,7 +51,7 @@ const seriesFormatLabels: Record<Competition['seriesFormat'], string> = {
   BEST_OF_N: '1 круг+плей-офф',
   DOUBLE_ROUND_PLAYOFF: '2 круга+плей-офф',
   PLAYOFF_BRACKET: 'Плей-офф сетка (рандом)',
-  GROUP_SINGLE_ROUND_PLAYOFF: 'Группы + плей-офф (1 круг)'
+  GROUP_SINGLE_ROUND_PLAYOFF: 'Группы + плей-офф (1 круг)',
 }
 
 const getSeriesFormatOptions = (type: Competition['type']): Array<Competition['seriesFormat']> => {
@@ -59,7 +59,7 @@ const getSeriesFormatOptions = (type: Competition['type']): Array<Competition['s
     return ['GROUP_SINGLE_ROUND_PLAYOFF', 'PLAYOFF_BRACKET']
   }
   return baseSeriesFormatOptions.filter(
-    (option) => option !== 'PLAYOFF_BRACKET' && option !== 'GROUP_SINGLE_ROUND_PLAYOFF'
+    option => option !== 'PLAYOFF_BRACKET' && option !== 'GROUP_SINGLE_ROUND_PLAYOFF'
   )
 }
 
@@ -69,17 +69,17 @@ const defaultStadiumForm: StadiumFormState = { name: '', city: '' }
 const defaultCompetitionForm: CompetitionFormState = {
   name: '',
   type: 'LEAGUE',
-  seriesFormat: 'SINGLE_MATCH'
+  seriesFormat: 'SINGLE_MATCH',
 }
 
 export const TeamsTab = () => {
-  const { token, data, fetchDictionaries, fetchSeasons, loading, error } = useAdminStore((state) => ({
+  const { token, data, fetchDictionaries, fetchSeasons, loading, error } = useAdminStore(state => ({
     token: state.token,
     data: state.data,
     fetchDictionaries: state.fetchDictionaries,
     fetchSeasons: state.fetchSeasons,
     loading: state.loading,
-    error: state.error
+    error: state.error,
   }))
 
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -95,7 +95,8 @@ export const TeamsTab = () => {
   const [stadiumForm, setStadiumForm] = useState<StadiumFormState>(defaultStadiumForm)
   const [editingStadiumId, setEditingStadiumId] = useState<number | null>(null)
 
-  const [competitionForm, setCompetitionForm] = useState<CompetitionFormState>(defaultCompetitionForm)
+  const [competitionForm, setCompetitionForm] =
+    useState<CompetitionFormState>(defaultCompetitionForm)
   const [editingCompetitionId, setEditingCompetitionId] = useState<number | null>(null)
   const [activeClub, setActiveClub] = useState<Club | null>(null)
 
@@ -134,10 +135,7 @@ export const TeamsTab = () => {
     }
     try {
       await fn()
-      await Promise.all([
-        fetchDictionaries({ force: true }),
-        fetchSeasons({ force: true })
-      ])
+      await Promise.all([fetchDictionaries({ force: true }), fetchSeasons({ force: true })])
       handleFeedback(successMessage, 'success')
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Не удалось выполнить операцию'
@@ -152,9 +150,9 @@ export const TeamsTab = () => {
   useEffect(() => {
     const options = getSeriesFormatOptions(competitionForm.type)
     if (!options.includes(competitionForm.seriesFormat)) {
-      setCompetitionForm((form) => ({
+      setCompetitionForm(form => ({
         ...form,
-        seriesFormat: options[0] ?? form.seriesFormat
+        seriesFormat: options[0] ?? form.seriesFormat,
       }))
     }
   }, [competitionForm.type, competitionForm.seriesFormat])
@@ -169,7 +167,7 @@ export const TeamsTab = () => {
       const payload = {
         name: clubForm.name.trim(),
         shortName: clubForm.shortName.trim(),
-        logoUrl: clubForm.logoUrl.trim() || undefined
+        logoUrl: clubForm.logoUrl.trim() || undefined,
       }
       if (editingClubId) {
         await adminPut(token, `/api/admin/clubs/${editingClubId}`, payload)
@@ -194,10 +192,9 @@ export const TeamsTab = () => {
 
   const handleRosterSaved = (_players: ClubPlayerLink[]) => {
     handleFeedback('Состав клуба обновлён', 'success')
-    void Promise.all([
-      fetchDictionaries({ force: true }),
-      fetchSeasons({ force: true })
-    ]).catch(() => undefined)
+    void Promise.all([fetchDictionaries({ force: true }), fetchSeasons({ force: true })]).catch(
+      () => undefined
+    )
   }
 
   const handlePersonSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -210,7 +207,7 @@ export const TeamsTab = () => {
       const payload = {
         firstName: personForm.firstName.trim(),
         lastName: personForm.lastName.trim(),
-        isPlayer: personForm.isPlayer
+        isPlayer: personForm.isPlayer,
       }
       if (editingPersonId) {
         await adminPut(token, `/api/admin/persons/${editingPersonId}`, payload)
@@ -224,7 +221,11 @@ export const TeamsTab = () => {
 
   const handlePersonEdit = (person: Person) => {
     setEditingPersonId(person.id)
-    setPersonForm({ firstName: person.firstName, lastName: person.lastName, isPlayer: person.isPlayer })
+    setPersonForm({
+      firstName: person.firstName,
+      lastName: person.lastName,
+      isPlayer: person.isPlayer,
+    })
   }
 
   const handlePersonDelete = async (person: Person) => {
@@ -242,7 +243,7 @@ export const TeamsTab = () => {
     await runWithRefresh(async () => {
       const payload = {
         name: stadiumForm.name.trim(),
-        city: stadiumForm.city.trim()
+        city: stadiumForm.city.trim(),
       }
       if (editingStadiumId) {
         await adminPut(token, `/api/admin/stadiums/${editingStadiumId}`, payload)
@@ -275,7 +276,7 @@ export const TeamsTab = () => {
       const payload = {
         name: competitionForm.name.trim(),
         type: competitionForm.type,
-        seriesFormat: competitionForm.seriesFormat
+        seriesFormat: competitionForm.seriesFormat,
       }
       if (editingCompetitionId) {
         await adminPut(token, `/api/admin/competitions/${editingCompetitionId}`, payload)
@@ -289,7 +290,11 @@ export const TeamsTab = () => {
 
   const handleCompetitionEdit = (competition: Competition) => {
     setEditingCompetitionId(competition.id)
-    setCompetitionForm({ name: competition.name, type: competition.type, seriesFormat: competition.seriesFormat })
+    setCompetitionForm({
+      name: competition.name,
+      type: competition.type,
+      seriesFormat: competition.seriesFormat,
+    })
   }
 
   const handleCompetitionDelete = async (competition: Competition) => {
@@ -303,7 +308,10 @@ export const TeamsTab = () => {
       <header className="tab-header">
         <div>
           <h3>Справочники</h3>
-          <p>Управляйте клубами, людьми, стадионами и соревнованиями. Все изменения немедленно отражаются в базе.</p>
+          <p>
+            Управляйте клубами, людьми, стадионами и соревнованиями. Все изменения немедленно
+            отражаются в базе.
+          </p>
         </div>
         <button
           className="button-ghost"
@@ -326,15 +334,28 @@ export const TeamsTab = () => {
           <form className="stacked" onSubmit={handleClubSubmit}>
             <label>
               Название
-              <input value={clubForm.name} onChange={(event) => setClubForm((form) => ({ ...form, name: event.target.value }))} required />
+              <input
+                value={clubForm.name}
+                onChange={event => setClubForm(form => ({ ...form, name: event.target.value }))}
+                required
+              />
             </label>
             <label>
               Короткое имя
-              <input value={clubForm.shortName} onChange={(event) => setClubForm((form) => ({ ...form, shortName: event.target.value }))} required />
+              <input
+                value={clubForm.shortName}
+                onChange={event =>
+                  setClubForm(form => ({ ...form, shortName: event.target.value }))
+                }
+                required
+              />
             </label>
             <label>
               Логотип (URL)
-              <input value={clubForm.logoUrl} onChange={(event) => setClubForm((form) => ({ ...form, logoUrl: event.target.value }))} />
+              <input
+                value={clubForm.logoUrl}
+                onChange={event => setClubForm(form => ({ ...form, logoUrl: event.target.value }))}
+              />
             </label>
             <div className="form-actions">
               <button className="button-primary" type="submit" disabled={isLoading}>
@@ -356,37 +377,45 @@ export const TeamsTab = () => {
           </form>
           <div className="table-scroll">
             <table className="data-table">
-            <thead>
-              <tr>
-                <th>Название</th>
-                <th>Коротко</th>
-                <th>Логотип</th>
-                <th aria-label="Действия" />
-              </tr>
-            </thead>
-            <tbody>
-              {data.clubs.map((club) => (
-                <tr key={club.id}>
-                  <td>
-                    <button type="button" className="link-button" onClick={() => setActiveClub(club)}>
-                      {club.name}
-                    </button>
-                  </td>
-                  <td>{club.shortName}</td>
-                  <td>{club.logoUrl ? <a href={club.logoUrl}>Ссылка</a> : '—'}</td>
-                  <td className="table-actions">
-                    <button type="button" onClick={() => handleClubEdit(club)}>
-                      Изм.
-                    </button>
-                    <button type="button" className="danger" onClick={() => handleClubDelete(club)}>
-                      Удал.
-                    </button>
-                  </td>
+              <thead>
+                <tr>
+                  <th>Название</th>
+                  <th>Коротко</th>
+                  <th>Логотип</th>
+                  <th aria-label="Действия" />
                 </tr>
-              ))}
-            </tbody>
-              </table>
-            </div>
+              </thead>
+              <tbody>
+                {data.clubs.map(club => (
+                  <tr key={club.id}>
+                    <td>
+                      <button
+                        type="button"
+                        className="link-button"
+                        onClick={() => setActiveClub(club)}
+                      >
+                        {club.name}
+                      </button>
+                    </td>
+                    <td>{club.shortName}</td>
+                    <td>{club.logoUrl ? <a href={club.logoUrl}>Ссылка</a> : '—'}</td>
+                    <td className="table-actions">
+                      <button type="button" onClick={() => handleClubEdit(club)}>
+                        Изм.
+                      </button>
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() => handleClubDelete(club)}
+                      >
+                        Удал.
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </article>
 
         <article className="card">
@@ -397,17 +426,31 @@ export const TeamsTab = () => {
           <form className="stacked" onSubmit={handlePersonSubmit}>
             <label>
               Имя
-              <input value={personForm.firstName} onChange={(event) => setPersonForm((form) => ({ ...form, firstName: event.target.value }))} required />
+              <input
+                value={personForm.firstName}
+                onChange={event =>
+                  setPersonForm(form => ({ ...form, firstName: event.target.value }))
+                }
+                required
+              />
             </label>
             <label>
               Фамилия
-              <input value={personForm.lastName} onChange={(event) => setPersonForm((form) => ({ ...form, lastName: event.target.value }))} required />
+              <input
+                value={personForm.lastName}
+                onChange={event =>
+                  setPersonForm(form => ({ ...form, lastName: event.target.value }))
+                }
+                required
+              />
             </label>
             <label className="checkbox">
               <input
                 type="checkbox"
                 checked={personForm.isPlayer}
-                onChange={(event) => setPersonForm((form) => ({ ...form, isPlayer: event.target.checked }))}
+                onChange={event =>
+                  setPersonForm(form => ({ ...form, isPlayer: event.target.checked }))
+                }
               />
               Игрок
             </label>
@@ -434,7 +477,7 @@ export const TeamsTab = () => {
               Поиск по базе
               <input
                 value={personSearch}
-                onChange={(event) => setPersonSearch(event.target.value)}
+                onChange={event => setPersonSearch(event.target.value)}
                 placeholder="Введите фамилию или имя"
               />
             </label>
@@ -446,7 +489,7 @@ export const TeamsTab = () => {
             <div>
               <h5>Игроки ({groupedPersons.players.length})</h5>
               <ul className="list">
-                {groupedPersons.players.map((person) => (
+                {groupedPersons.players.map(person => (
                   <li key={person.id}>
                     <span>
                       {person.lastName} {person.firstName}
@@ -455,7 +498,11 @@ export const TeamsTab = () => {
                       <button type="button" onClick={() => handlePersonEdit(person)}>
                         Изм.
                       </button>
-                      <button type="button" className="danger" onClick={() => handlePersonDelete(person)}>
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() => handlePersonDelete(person)}
+                      >
                         Удал.
                       </button>
                     </span>
@@ -466,7 +513,7 @@ export const TeamsTab = () => {
             <div>
               <h5>Тренеры и персонал ({groupedPersons.staff.length})</h5>
               <ul className="list">
-                {groupedPersons.staff.map((person) => (
+                {groupedPersons.staff.map(person => (
                   <li key={person.id}>
                     <span>
                       {person.lastName} {person.firstName}
@@ -475,7 +522,11 @@ export const TeamsTab = () => {
                       <button type="button" onClick={() => handlePersonEdit(person)}>
                         Изм.
                       </button>
-                      <button type="button" className="danger" onClick={() => handlePersonDelete(person)}>
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() => handlePersonDelete(person)}
+                      >
                         Удал.
                       </button>
                     </span>
@@ -494,11 +545,19 @@ export const TeamsTab = () => {
           <form className="stacked" onSubmit={handleStadiumSubmit}>
             <label>
               Название
-              <input value={stadiumForm.name} onChange={(event) => setStadiumForm((form) => ({ ...form, name: event.target.value }))} required />
+              <input
+                value={stadiumForm.name}
+                onChange={event => setStadiumForm(form => ({ ...form, name: event.target.value }))}
+                required
+              />
             </label>
             <label>
               Город
-              <input value={stadiumForm.city} onChange={(event) => setStadiumForm((form) => ({ ...form, city: event.target.value }))} required />
+              <input
+                value={stadiumForm.city}
+                onChange={event => setStadiumForm(form => ({ ...form, city: event.target.value }))}
+                required
+              />
             </label>
             <div className="form-actions">
               <button className="button-primary" type="submit" disabled={isLoading}>
@@ -520,31 +579,35 @@ export const TeamsTab = () => {
           </form>
           <div className="table-scroll">
             <table className="data-table">
-            <thead>
-              <tr>
-                <th>Стадион</th>
-                <th>Город</th>
-                <th aria-label="Действия" />
-              </tr>
-            </thead>
-            <tbody>
-              {data.stadiums.map((stadium) => (
-                <tr key={stadium.id}>
-                  <td>{stadium.name}</td>
-                  <td>{stadium.city}</td>
-                  <td className="table-actions">
-                    <button type="button" onClick={() => handleStadiumEdit(stadium)}>
-                      Изм.
-                    </button>
-                    <button type="button" className="danger" onClick={() => handleStadiumDelete(stadium)}>
-                      Удал.
-                    </button>
-                  </td>
+              <thead>
+                <tr>
+                  <th>Стадион</th>
+                  <th>Город</th>
+                  <th aria-label="Действия" />
                 </tr>
-              ))}
-            </tbody>
-              </table>
-            </div>
+              </thead>
+              <tbody>
+                {data.stadiums.map(stadium => (
+                  <tr key={stadium.id}>
+                    <td>{stadium.name}</td>
+                    <td>{stadium.city}</td>
+                    <td className="table-actions">
+                      <button type="button" onClick={() => handleStadiumEdit(stadium)}>
+                        Изм.
+                      </button>
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() => handleStadiumDelete(stadium)}
+                      >
+                        Удал.
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </article>
 
         <article className="card">
@@ -557,7 +620,9 @@ export const TeamsTab = () => {
               Название
               <input
                 value={competitionForm.name}
-                onChange={(event) => setCompetitionForm((form) => ({ ...form, name: event.target.value }))}
+                onChange={event =>
+                  setCompetitionForm(form => ({ ...form, name: event.target.value }))
+                }
                 required
               />
             </label>
@@ -565,11 +630,14 @@ export const TeamsTab = () => {
               Тип
               <select
                 value={competitionForm.type}
-                onChange={(event) =>
-                  setCompetitionForm((form) => ({ ...form, type: event.target.value as Competition['type'] }))
+                onChange={event =>
+                  setCompetitionForm(form => ({
+                    ...form,
+                    type: event.target.value as Competition['type'],
+                  }))
                 }
               >
-                {competitionTypeOptions.map((option) => (
+                {competitionTypeOptions.map(option => (
                   <option key={option} value={option}>
                     {competitionTypeLabels[option]}
                   </option>
@@ -580,10 +648,10 @@ export const TeamsTab = () => {
               Формат серий
               <select
                 value={competitionForm.seriesFormat}
-                onChange={(event) =>
-                  setCompetitionForm((form) => ({
+                onChange={event =>
+                  setCompetitionForm(form => ({
                     ...form,
-                    seriesFormat: event.target.value as Competition['seriesFormat']
+                    seriesFormat: event.target.value as Competition['seriesFormat'],
                   }))
                 }
               >
@@ -614,33 +682,37 @@ export const TeamsTab = () => {
           </form>
           <div className="table-scroll">
             <table className="data-table">
-            <thead>
-              <tr>
-                <th>Название</th>
-                <th>Тип</th>
-                <th>Формат</th>
-                <th aria-label="Действия" />
-              </tr>
-            </thead>
-            <tbody>
-              {data.competitions.map((competition) => (
-                <tr key={competition.id}>
-                  <td>{competition.name}</td>
-                  <td>{competitionTypeLabels[competition.type]}</td>
-                  <td>{seriesFormatLabels[competition.seriesFormat]}</td>
-                  <td className="table-actions">
-                    <button type="button" onClick={() => handleCompetitionEdit(competition)}>
-                      Изм.
-                    </button>
-                    <button type="button" className="danger" onClick={() => handleCompetitionDelete(competition)}>
-                      Удал.
-                    </button>
-                  </td>
+              <thead>
+                <tr>
+                  <th>Название</th>
+                  <th>Тип</th>
+                  <th>Формат</th>
+                  <th aria-label="Действия" />
                 </tr>
-              ))}
-            </tbody>
-              </table>
-            </div>
+              </thead>
+              <tbody>
+                {data.competitions.map(competition => (
+                  <tr key={competition.id}>
+                    <td>{competition.name}</td>
+                    <td>{competitionTypeLabels[competition.type]}</td>
+                    <td>{seriesFormatLabels[competition.seriesFormat]}</td>
+                    <td className="table-actions">
+                      <button type="button" onClick={() => handleCompetitionEdit(competition)}>
+                        Изм.
+                      </button>
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() => handleCompetitionDelete(competition)}
+                      >
+                        Удал.
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </article>
       </section>
       {activeClub ? (
@@ -648,7 +720,7 @@ export const TeamsTab = () => {
           club={activeClub}
           token={token}
           onClose={() => setActiveClub(null)}
-          onSaved={(players) => {
+          onSaved={players => {
             handleRosterSaved(players)
             setActiveClub(null)
           }}

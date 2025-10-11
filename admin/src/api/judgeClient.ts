@@ -24,9 +24,9 @@ export const judgeLogin = async (login: string, password: string): Promise<Judge
   const response = await fetch(`${API_BASE}/api/judge/login`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ login, password })
+    body: JSON.stringify({ login, password }),
   })
 
   const payload = (await response.json().catch(() => ({}))) as JudgeLoginResponse
@@ -35,14 +35,14 @@ export const judgeLogin = async (login: string, password: string): Promise<Judge
     return {
       ok: false,
       error: mapError(payload.errorCode || payload.error || 'invalid_credentials'),
-      errorCode: payload.errorCode || payload.error || 'invalid_credentials'
+      errorCode: payload.errorCode || payload.error || 'invalid_credentials',
     }
   }
 
   return {
     ok: true,
     token: payload.token,
-    expiresIn: payload.expiresIn
+    expiresIn: payload.expiresIn,
   }
 }
 
@@ -52,21 +52,27 @@ interface JudgeResponseEnvelope<T> {
   error?: string
 }
 
-const judgeRequest = async <T>(token: string | undefined, path: string, init: RequestInit = {}): Promise<T> => {
+const judgeRequest = async <T>(
+  token: string | undefined,
+  path: string,
+  init: RequestInit = {}
+): Promise<T> => {
   const safeToken = ensureJudgeToken(token)
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${safeToken}`,
-      ...(init.headers || {})
-    }
+      ...(init.headers || {}),
+    },
   })
 
   const raw = await response.text()
   let payload: JudgeResponseEnvelope<T>
   try {
-    payload = raw ? (JSON.parse(raw) as JudgeResponseEnvelope<T>) : ({ ok: response.ok } as JudgeResponseEnvelope<T>)
+    payload = raw
+      ? (JSON.parse(raw) as JudgeResponseEnvelope<T>)
+      : ({ ok: response.ok } as JudgeResponseEnvelope<T>)
   } catch (err) {
     payload = { ok: response.ok }
   }
@@ -82,7 +88,10 @@ const judgeRequest = async <T>(token: string | undefined, path: string, init: Re
 export const fetchJudgeMatches = async (token: string | undefined): Promise<JudgeMatchSummary[]> =>
   judgeRequest<JudgeMatchSummary[]>(token, '/api/judge/matches', { method: 'GET' })
 
-export const fetchJudgeEvents = async (token: string | undefined, matchId: string): Promise<MatchEventEntry[]> =>
+export const fetchJudgeEvents = async (
+  token: string | undefined,
+  matchId: string
+): Promise<MatchEventEntry[]> =>
   judgeRequest<MatchEventEntry[]>(token, `/api/judge/matches/${matchId}/events`, { method: 'GET' })
 
 export const fetchJudgeLineup = async (
@@ -106,7 +115,7 @@ export const judgeCreateEvent = async (
 ): Promise<MatchEventEntry> =>
   judgeRequest<MatchEventEntry>(token, `/api/judge/matches/${matchId}/events`, {
     method: 'POST',
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   })
 
 export const judgeUpdateEvent = async (
@@ -117,7 +126,7 @@ export const judgeUpdateEvent = async (
 ): Promise<MatchEventEntry> =>
   judgeRequest<MatchEventEntry>(token, `/api/judge/matches/${matchId}/events/${eventId}`, {
     method: 'PUT',
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   })
 
 export const judgeDeleteEvent = async (
@@ -151,10 +160,14 @@ export const judgeUpdateScore = async (
   matchId: string,
   payload: JudgeScorePayload
 ): Promise<JudgeScoreResult> => {
-  const data = await judgeRequest<any>(token, `/api/judge/matches/${matchId}/score`, {
+  const data = await judgeRequest<JudgeScoreResult>(
+    token,
+    `/api/judge/matches/${matchId}/score`,
+    {
     method: 'PUT',
-    body: JSON.stringify(payload)
-  })
+    body: JSON.stringify(payload),
+    }
+  )
 
   return {
     id: String(data.id ?? matchId),
@@ -163,6 +176,6 @@ export const judgeUpdateScore = async (
     awayScore: data.awayScore ?? 0,
     hasPenaltyShootout: Boolean(data.hasPenaltyShootout),
     penaltyHomeScore: data.penaltyHomeScore ?? 0,
-    penaltyAwayScore: data.penaltyAwayScore ?? 0
+    penaltyAwayScore: data.penaltyAwayScore ?? 0,
   }
 }
