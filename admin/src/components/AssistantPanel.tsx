@@ -156,6 +156,13 @@ export const AssistantPanel = () => {
   const [editingEventId, setEditingEventId] = useState<string | null>(null)
   const [editingDraft, setEditingDraft] = useState<EventDraft | null>(null)
 
+  const homeScoreValue = parseNumber(scoreForm.homeScore)
+  const awayScoreValue = parseNumber(scoreForm.awayScore)
+  const penaltyEligible = selectedMatch?.status === 'LIVE' && homeScoreValue === awayScoreValue
+  const penaltyToggleDisabled = !penaltyEligible
+  const penaltyInputsDisabled = !scoreForm.hasPenaltyShootout
+  const penaltyHintVisible = Boolean(selectedMatch) && penaltyToggleDisabled
+
   useEffect(() => {
     if (!assistantToken) {
       reset()
@@ -173,6 +180,17 @@ export const AssistantPanel = () => {
     setEditingEventId(null)
     setEditingDraft(null)
   }, [selectedMatch])
+
+  useEffect(() => {
+    if (!penaltyEligible && scoreForm.hasPenaltyShootout) {
+      setScoreForm((prev) => ({
+        ...prev,
+        hasPenaltyShootout: false,
+        penaltyHomeScore: '0',
+        penaltyAwayScore: '0'
+      }))
+    }
+  }, [penaltyEligible, scoreForm.hasPenaltyShootout])
 
   const lineupByClub = useMemo(() => {
     const map = new Map<number, MatchLineupEntry[]>()
@@ -288,7 +306,13 @@ export const AssistantPanel = () => {
         return { ...prev, status: nextStatus }
       }
       if (field === 'hasPenaltyShootout') {
-        return { ...prev, hasPenaltyShootout: Boolean(value) }
+        const enabled = Boolean(value)
+        return {
+          ...prev,
+          hasPenaltyShootout: enabled,
+          penaltyHomeScore: enabled ? prev.penaltyHomeScore : '0',
+          penaltyAwayScore: enabled ? prev.penaltyAwayScore : '0'
+        }
       }
       return {
         ...prev,
@@ -429,11 +453,15 @@ export const AssistantPanel = () => {
                     onClick={() => handleSelectMatch(match.id)}
                     disabled={isLoadingMatches}
                   >
-                    <span className="club-name">{match.homeClub.shortName || match.homeClub.name}</span>
-                    <span className="score">{scoreLabel}</span>
-                    <span className="club-name">{match.awayClub.shortName || match.awayClub.name}</span>
-                    <span className={`status status-${match.status.toLowerCase()}`}>{matchStatusLabel(match)}</span>
-                    <span className="match-date">{new Date(match.matchDateTime).toLocaleString('ru-RU')}</span>
+                    <div className="match-row">
+                      <span className="club-name club-home">{match.homeClub.name}</span>
+                      <span className="score">{scoreLabel}</span>
+                      <span className="club-name club-away">{match.awayClub.name}</span>
+                    </div>
+                    <div className="match-meta">
+                      <span className={`status status-${match.status.toLowerCase()}`}>{matchStatusLabel(match)}</span>
+                      <span className="match-date">{new Date(match.matchDateTime).toLocaleString('ru-RU')}</span>
+                    </div>
                   </button>
                 </li>
               )
@@ -474,14 +502,19 @@ export const AssistantPanel = () => {
                     </div>
                   </div>
 
-                  <label className="penalty-toggle">
+                  <label className={penaltyToggleDisabled ? 'penalty-toggle disabled' : 'penalty-toggle'}>
                     <input
                       type="checkbox"
                       checked={scoreForm.hasPenaltyShootout}
+                      disabled={penaltyToggleDisabled}
                       onChange={(event) => handleScoreChange('hasPenaltyShootout', event.target.checked)}
                     />
                     Пенальти
                   </label>
+
+                  {penaltyHintVisible ? (
+                    <p className="penalty-hint">Пенальти доступны только при ничейном счёте в режиме «Идёт».</p>
+                  ) : null}
 
                   {scoreForm.hasPenaltyShootout ? (
                     <div className="score-grid">
@@ -491,6 +524,7 @@ export const AssistantPanel = () => {
                           type="number"
                           min={0}
                           value={scoreForm.penaltyHomeScore}
+                          disabled={penaltyInputsDisabled}
                           onChange={(event) => handleScoreChange('penaltyHomeScore', event.target.value)}
                         />
                       </div>
@@ -500,6 +534,7 @@ export const AssistantPanel = () => {
                           type="number"
                           min={0}
                           value={scoreForm.penaltyAwayScore}
+                          disabled={penaltyInputsDisabled}
                           onChange={(event) => handleScoreChange('penaltyAwayScore', event.target.value)}
                         />
                       </div>
@@ -685,7 +720,7 @@ export const AssistantPanel = () => {
                         <div className="event-row">
                           <span className="event-minute">{entry.minute}&apos;</span>
                           <span className="event-type">{EVENT_OPTIONS.find((option) => option.value === entry.eventType)?.label || entry.eventType}</span>
-                          <span className="event-team">{entry.team.shortName || entry.team.name}</span>
+                          <span className="event-team">{entry.team.name}</span>
                           <span className="event-player">{`${entry.player.lastName} ${entry.player.firstName}`.trim()}</span>
                           <div className="event-controls">
                             <button className="button-secondary" type="button" onClick={() => beginEditEvent(entry)}>

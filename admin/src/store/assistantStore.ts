@@ -10,6 +10,7 @@ import {
   fetchAssistantMatches,
   fetchAssistantStatistics
 } from '../api/assistantClient'
+import { wsClient } from '../wsClient'
 import type {
   AssistantMatchSummary,
   MatchEventEntry,
@@ -124,6 +125,35 @@ const emptyState = () => ({
   statisticsVersion: undefined as number | undefined
 })
 
+const matchEventsTopic = (matchId: string) => `match:${matchId}:events`
+const matchStatsTopic = (matchId: string) => `match:${matchId}:stats`
+
+let subscribedMatchId: string | undefined
+
+const unsubscribeRealtime = (matchId?: string) => {
+  const target = matchId ?? subscribedMatchId
+  if (!target) return
+  wsClient.unsubscribe(matchEventsTopic(target))
+  wsClient.unsubscribe(matchStatsTopic(target))
+  if (!matchId || subscribedMatchId === matchId) {
+    subscribedMatchId = undefined
+  }
+}
+
+const subscribeRealtime = (matchId: string) => {
+  if (!matchId) return
+  if (subscribedMatchId && subscribedMatchId !== matchId) {
+    unsubscribeRealtime(subscribedMatchId)
+  }
+  subscribedMatchId = matchId
+  wsClient.subscribe(matchEventsTopic(matchId))
+  wsClient.subscribe(matchStatsTopic(matchId))
+}
+
+if (initialToken) {
+  wsClient.setToken(initialToken)
+}
+
 export const useAssistantStore = create<AssistantState>((set, get) => ({
   status: 'idle',
   token: initialToken,
@@ -133,14 +163,19 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
   setToken(token) {
     if (!token) {
       clearStorageToken()
-      set({ token: undefined, status: 'idle', error: undefined, ...emptyState() })
+      unsubscribeRealtime()
+      wsClient.setToken(undefined)
+      set({ token: undefined, status: 'idle', error: undefined, ...emptyState(), loading: {} })
       return
     }
-      writeStorageToken(token)
-      set({ token, status: 'idle', error: undefined })
+    writeStorageToken(token)
+    wsClient.setToken(token)
+    set({ token, status: 'idle', error: undefined })
   },
   reset() {
     clearStorageToken()
+    unsubscribeRealtime()
+    wsClient.setToken(undefined)
     set({ status: 'idle', token: undefined, error: undefined, ...emptyState(), loading: {} })
   },
   clearError() {
@@ -150,16 +185,41 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
   async fetchMatches(tokenOverride) {
     const token = tokenOverride ?? get().token
     if (!token) {
-      set({ status: 'idle', matches: [], selectedMatchId: undefined })
+      unsubscribeRealtime()
+      wsClient.setToken(undefined)
+      set({
+        status: 'idle',
+        matches: [],
+        selectedMatchId: undefined,
+        events: [],
+        lineup: [],
+        statistics: [],
+        statisticsVersion: undefined
+      })
       return
     }
-  set((state) => ({ loading: { ...state.loading, matches: true }, error: undefined, status: 'loading' }))
+    wsClient.setToken(token)
+    set((state) => ({ loading: { ...state.loading, matches: true }, error: undefined, status: 'loading' }))
     try {
       const entries = await fetchAssistantMatches(token)
-      set({ matches: entries, status: 'ready' })
-      if (entries.length === 0) {
-        set({ selectedMatchId: undefined, events: [], lineup: [], statistics: [], statisticsVersion: undefined })
+      const currentSelectedId = get().selectedMatchId
+      const hasSelected = currentSelectedId ? entries.some((match) => match.id === currentSelectedId) : true
+      const nextState: Partial<AssistantState> = { matches: entries, status: 'ready' }
+      if (entries.length === 0 || !hasSelected) {
+        if (currentSelectedId) {
+          unsubscribeRealtime(currentSelectedId)
+        } else {
+          unsubscribeRealtime()
+        }
+        Object.assign(nextState, {
+          selectedMatchId: undefined,
+          events: [],
+          lineup: [],
+          statistics: [],
+          statisticsVersion: undefined
+        })
       }
+      set(nextState)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Не удалось загрузить матчи'
       set({ error: message, status: 'idle' })
@@ -170,7 +230,10 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
   async selectMatch(tokenOverride, matchId) {
     const token = tokenOverride ?? get().token
     if (!token) return
+    wsClient.setToken(token)
+    wsClient.connect(token)
     set({ selectedMatchId: matchId })
+    subscribeRealtime(matchId)
     await Promise.all([
       get().loadEventsInternal(token, matchId),
       get().loadLineupInternal(token, matchId),
@@ -294,3 +357,32 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
     }
   }
 }))
+
+if (typeof window !== 'undefined') {
+  wsClient.on('patch', (message: any) => {
+    const topic = message?.topic as string | undefined
+    const payload = message?.payload
+    if (!topic || !payload) return
+
+    const { selectedMatchId } = useAssistantStore.getState()
+    if (!selectedMatchId) return
+
+    if (topic === matchEventsTopic(selectedMatchId)) {
+      if (payload.type === 'full' && Array.isArray(payload.data)) {
+        useAssistantStore.setState({ events: payload.data as MatchEventEntry[] })
+      }
+      return
+    }
+
+    if (topic === matchStatsTopic(selectedMatchId)) {
+      if (payload.type === 'full' && Array.isArray(payload.data)) {
+        const rawVersion = payload.version
+        const numericVersion = typeof rawVersion === 'number' ? rawVersion : Number(rawVersion)
+        useAssistantStore.setState((state) => ({
+          statistics: payload.data as MatchStatisticEntry[],
+          statisticsVersion: Number.isNaN(numericVersion) ? state.statisticsVersion : numericVersion
+        }))
+      }
+    }
+  })
+}

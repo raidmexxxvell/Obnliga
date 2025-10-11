@@ -7,6 +7,7 @@
 ---
 
 - `audit/context7/` — директория отсутствует. Необходимо запросить и выгрузить артефакты через mcp context7 перед началом активной разработки новых подсистем.
+- 11.10.2025: запрос «obnliga patch websocket assistant» через mcp context7 (top-5: внешние OSS библиотеки WebSocketSharp/OBS/Websocket.js, score < 0.75) — релевантных артефактов нет. Выполнен локальный поиск по репозиторию (`assistantRoutes`, `matchModerationHelpers`, `admin/src/store/assistantStore.ts`) и принято решение адаптировать текущую реализацию без создания нового temporary stub.
 - 11.10.2025: перед созданием портала деталей матча предпринята попытка найти артефакты по запросам «match portal», «assistant match control» через context7 — релевантных шаблонов не обнаружено. Новые маршруты и UI будут строиться на базе существующих модулей модерации матчей (`matchModerationHelpers`, `JudgePanel`) с пометкой **temporary stub** до синхронизации с исходными материалами.
 - 10.10.2025: для задачи по трансферам игроков в админке нет готовых шаблонов из прошлой версии. Зафиксировано требование получить артефакты по теме «player transfer workflow» (ожидаемые файлы: `backend/admin/player-transfer.ts`, `frontend/admin/transfers-panel.tsx`, `docs/player-history.md`). До получения материалов реализацию помечаем как **temporary stub** с последующей синхронизацией.
 - Для ближайшей задачи (админ-дэшборд и мультилиговая статистика) критичны референсы по следующим темам: admin-logger, RBAC flow, UI-шаблоны панелей, patch-based WS интеграция.

@@ -297,6 +297,16 @@ export const broadcastMatchStatistics = async (server: FastifyInstance, matchId:
   return { serialized, version }
 }
 
+export const broadcastMatchEvents = async (server: FastifyInstance, matchId: bigint) => {
+  const events = await loadMatchEventsWithRoster(matchId)
+  const serialized = serializePrisma(events)
+  const publish = (server as any).publishTopic
+  if (typeof publish === 'function') {
+    await publish(`match:${matchId.toString()}:events`, { type: 'full', data: serialized })
+  }
+  return serialized
+}
+
 export const loadMatchEventsWithRoster = async (matchId: bigint) => {
   const match = await prisma.match.findUnique({ where: { id: matchId }, select: { seasonId: true } })
   if (!match) {

@@ -26,18 +26,37 @@ export default async function registerRealtime(server: FastifyInstance) {
   server.get('/realtime', { websocket: true }, (connection: any, req: any) => {
     // fastify-websocket will set connection.socket
     const socket: any = connection.socket
-    // verify token
+    // verify token against known secrets (admin, assistant, judge, public)
     const token = (req.query && req.query.token) || (req.headers && req.headers['sec-websocket-protocol'])
-    const jwtSecret = process.env.JWT_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'dev-secret'
-    try {
-      if (!token) throw new Error('no token')
-      jwt.verify(String(token), jwtSecret)
-    } catch (e) {
+    const secretCandidates = [
+      process.env.JWT_SECRET,
+      process.env.ASSISTANT_JWT_SECRET,
+      process.env.ADMIN_JWT_SECRET,
+      process.env.JUDGE_JWT_SECRET,
+      process.env.TELEGRAM_BOT_TOKEN,
+      'dev-secret'
+    ].filter(Boolean) as string[]
+
+    let verified = false
+    if (token) {
+      const tokenStr = String(token)
+      for (const secret of secretCandidates) {
+        try {
+          jwt.verify(tokenStr, secret)
+          verified = true
+          break
+        } catch (err) {
+          // try next secret
+        }
+      }
+    }
+
+    if (!verified) {
       socket.close(4001, 'unauthorized')
       return
     }
 
-  socket.topics = new Set<string>()
+    socket.topics = new Set<string>()
 
     socket.on('message', async (raw: any) => {
       let msg: any

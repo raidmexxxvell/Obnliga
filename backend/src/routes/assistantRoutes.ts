@@ -15,6 +15,7 @@ import {
   createMatchEvent,
   deleteMatchEvent,
   updateMatchEvent,
+  broadcastMatchEvents,
   ensureMatchForJudge,
   getMatchStatisticsWithMeta,
   hasMatchStatisticsExpired,
@@ -256,6 +257,12 @@ export default async function assistantRoutes(server: FastifyInstance) {
             await broadcastMatchStatistics(request.server, matchId)
           }
 
+          try {
+            await broadcastMatchEvents(request.server, matchId)
+          } catch (err) {
+            request.log.warn({ err, matchId: matchId.toString() }, 'assistant events broadcast failed')
+          }
+
           return reply.send({ ok: true, data: serializePrisma(created.event) })
         } catch (err) {
           if (err instanceof RequestError) {
@@ -299,6 +306,12 @@ export default async function assistantRoutes(server: FastifyInstance) {
             await broadcastMatchStatistics(request.server, matchId)
           }
 
+          try {
+            await broadcastMatchEvents(request.server, matchId)
+          } catch (err) {
+            request.log.warn({ err, matchId: matchId.toString() }, 'assistant events broadcast failed')
+          }
+
           return reply.send({ ok: true, data: serializePrisma(updated.event) })
         } catch (err) {
           if (err instanceof RequestError) {
@@ -326,6 +339,11 @@ export default async function assistantRoutes(server: FastifyInstance) {
           const result = await deleteMatchEvent(matchId, eventId)
           if (result.statAdjusted) {
             await broadcastMatchStatistics(request.server, matchId)
+          }
+          try {
+            await broadcastMatchEvents(request.server, matchId)
+          } catch (err) {
+            request.log.warn({ err, matchId: matchId.toString(), eventId: eventId.toString() }, 'assistant events broadcast failed')
           }
           return reply.send({ ok: true })
         } catch (err) {

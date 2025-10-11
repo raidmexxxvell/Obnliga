@@ -175,5 +175,5 @@ Edge cases / Notes
   - Расположение: `admin/src/store/assistantStore.ts`, используется компонентом `AssistantPanel` для роли помощника матча.
   - Состояние: `status`, `token`, `matches`, `selectedMatchId`, `events`, `lineup`, `statistics`, `statisticsVersion`, `loading`, `error`.
   - Действия: `fetchMatches`, `selectMatch`, `refreshSelected`, `createEvent`, `updateEvent`, `deleteEvent`, `updateScore`, `adjustStatistic`, `reset`, `clearError`.
-  - Особенности: локально хранит токен в `obnliga-assistant-token`, поддерживает двойное подтверждение перевода матча в статус `FINISHED`, применяет контроль версий (`X-Resource-Version`) для статистики и готов к интеграции с patch WebSocket после синхронизации с Context7.
+  - Особенности: локально хранит токен в `obnliga-assistant-token`, поддерживает двойное подтверждение перевода матча в статус `FINISHED`, применяет контроль версий (`X-Resource-Version`) для статистики и подписывается на WebSocket-топики `match:{id}:events` и `match:{id}:stats` через `admin/src/wsClient.ts`; события и статистика обновляются в сторе по патчам без ручного рефреша.
 
