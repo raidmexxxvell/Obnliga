@@ -28,6 +28,11 @@ Stores (модули)
 - matchesStore
   - state: { items: Match[], byId: Record<number, Match>, loading: boolean, etag?: string }
   - actions: fetchMatches, fetchMatch, applyPatch
+- leagueStore (frontend/src/store/appStore.ts)
+  - state: { seasons: LeagueSeasonSummary[], tables: Record<seasonId, LeagueTableResponse>, selectedSeasonId?: number, activeSeasonId?: number, seasonsFetchedAt: number, tableFetchedAt: Record<number, number>, seasonsVersion?: string, tableVersions: Record<number, string | undefined>, loading: { seasons: boolean; table: boolean }, errors: { seasons?: string; table?: string }, leagueMenuOpen: boolean, leagueSubTab: 'table'|'schedule'|'results'|'stats', currentTab: UITab, lastLeagueTapAt: number }
+  - actions: setTab, tapLeagueNav (обрабатывает двойной тап по вкладке «Лига»), toggleLeagueMenu/closeLeagueMenu, setSelectedSeason, setLeagueSubTab, fetchLeagueSeasons(force?), fetchLeagueTable({ seasonId, force? }), applyRealtimeTable(table), ensureRealtime (подписка на topic `public:league:table`).
+  - SWR: seasons кэшируются 55 c, таблица — 240 c; сохраняем `X-Resource-Version` и stamp времени для повторного fetch. При `force: true` TTL обходится.
+  - WS: `ensureRealtime` открывает публичный сокет (без авторизации) и обновляет таблицу при получении `type: 'league.table'`; обновление также сбрасывает TTL и актуализирует `activeSeasonId`.
 - lineupStore
   - state: { lineups: Record<number, MatchLineup>, validationErrors: ValidationError[], saveSuccess: boolean }
   - actions: fetchLineup, saveLineup, setPlayerNumber, validateLineup
@@ -44,8 +49,10 @@ Stores (модули)
 UI / Navigation state
 - currentTab: 'home'|'league'|'predictions'|'leaderboard'|'shop'|'profile' — текущее активное представление.
 - Поведение:
-  - 'home' — основная страница с контентом (сейчас реализована).
-  - остальные значения — показывают placeholder ("Страница в разработке") до реализации реальных страниц.
+  - 'home' — основная страница с контентом (новости + лента).
+  - 'league' — полноценная страница с сайдбаром сезонов, подвкладками и таблицей; двойной тап по кнопке «Лига» открывает боковое меню и скрывает нижнюю навигацию, повторное нажатие закрывает.
+  - остальные значения — пока показывают placeholder ("Страница в разработке") до внедрения функционала.
+  - На touch-устройствах сайдбар автоматически раскрывается при первом открытии вкладки, на десктопе работает как постоянная панель.
 
 Пример добавления в фасад стора/контракта:
 

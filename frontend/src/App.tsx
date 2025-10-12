@@ -3,14 +3,17 @@ import './app.css'
 import Profile from './Profile'
 import { wsClient } from './wsClient'
 import { NewsSection } from './components/NewsSection'
+import LeaguePage from './pages/LeaguePage'
+import { useAppStore } from './store/appStore'
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true)
   const [progress, setProgress] = useState(0)
   const [isExiting, setIsExiting] = useState(false)
-  const [currentTab, setCurrentTab] = useState<
-    'home' | 'league' | 'predictions' | 'leaderboard' | 'shop' | 'profile'
-  >('home')
+  const currentTab = useAppStore(state => state.currentTab)
+  const setTab = useAppStore(state => state.setTab)
+  const tapLeagueNav = useAppStore(state => state.tapLeagueNav)
+  const leagueMenuOpen = useAppStore(state => state.leagueMenuOpen)
 
   useEffect(() => {
     const duration = 1600 // splash duration in ms
@@ -79,11 +82,11 @@ export default function App() {
     <div className="app-root main">
       <div className="content-wrapper">
         {currentTab === 'home' && <NewsSection />}
-
+        {currentTab === 'league' && <LeaguePage />}
         {currentTab === 'profile' ? (
           <Profile />
         ) : (
-          currentTab !== 'home' && (
+          currentTab !== 'home' && currentTab !== 'league' && (
             <div className="placeholder">
               <div className="placeholder-card">
                 <h2>Страница в разработке</h2>
@@ -94,51 +97,53 @@ export default function App() {
         )}
       </div>
 
-      <nav className="bottom-nav" role="navigation" aria-label="Основные вкладки">
-        <button
-          className={'tab' + (currentTab === 'home' ? ' active' : '')}
-          onClick={() => setCurrentTab('home')}
-          aria-current={currentTab === 'home'}
-        >
-          <span className="icon">🏠</span>
-          <span className="label">Главная</span>
-        </button>
-        <button
-          className={'tab' + (currentTab === 'league' ? ' active' : '')}
-          onClick={() => setCurrentTab('league')}
-        >
-          <span className="icon">🏆</span>
-          <span className="label">Лига</span>
-        </button>
-        <button
-          className={'tab' + (currentTab === 'predictions' ? ' active' : '')}
-          onClick={() => setCurrentTab('predictions')}
-        >
-          <span className="icon">📈</span>
-          <span className="label">Прогнозы</span>
-        </button>
-        <button
-          className={'tab' + (currentTab === 'leaderboard' ? ' active' : '')}
-          onClick={() => setCurrentTab('leaderboard')}
-        >
-          <span className="icon">🥇</span>
-          <span className="label">Лидерборд</span>
-        </button>
-        <button
-          className={'tab' + (currentTab === 'shop' ? ' active' : '')}
-          onClick={() => setCurrentTab('shop')}
-        >
-          <span className="icon">🛒</span>
-          <span className="label">Магазин</span>
-        </button>
-        <button
-          className={'tab' + (currentTab === 'profile' ? ' active' : '')}
-          onClick={() => setCurrentTab('profile')}
-        >
-          <span className="icon">👤</span>
-          <span className="label">Профиль</span>
-        </button>
-      </nav>
+      {!leagueMenuOpen && (
+        <nav className="bottom-nav" role="navigation" aria-label="Основные вкладки">
+          <button
+            className={'tab' + (currentTab === 'home' ? ' active' : '')}
+            onClick={() => setTab('home')}
+            aria-current={currentTab === 'home'}
+          >
+            <span className="icon">🏠</span>
+            <span className="label">Главная</span>
+          </button>
+          <button
+            className={'tab' + (currentTab === 'league' ? ' active' : '')}
+            onClick={() => tapLeagueNav(performance.now())}
+          >
+            <span className="icon">🏆</span>
+            <span className="label">Лига</span>
+          </button>
+          <button
+            className={'tab' + (currentTab === 'predictions' ? ' active' : '')}
+            onClick={() => setTab('predictions')}
+          >
+            <span className="icon">📈</span>
+            <span className="label">Прогнозы</span>
+          </button>
+          <button
+            className={'tab' + (currentTab === 'leaderboard' ? ' active' : '')}
+            onClick={() => setTab('leaderboard')}
+          >
+            <span className="icon">🥇</span>
+            <span className="label">Лидерборд</span>
+          </button>
+          <button
+            className={'tab' + (currentTab === 'shop' ? ' active' : '')}
+            onClick={() => setTab('shop')}
+          >
+            <span className="icon">🛒</span>
+            <span className="label">Магазин</span>
+          </button>
+          <button
+            className={'tab' + (currentTab === 'profile' ? ' active' : '')}
+            onClick={() => setTab('profile')}
+          >
+            <span className="icon">👤</span>
+            <span className="label">Профиль</span>
+          </button>
+        </nav>
+      )}
     </div>
   )
 }

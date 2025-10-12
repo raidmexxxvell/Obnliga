@@ -13,12 +13,6 @@ interface ProfileUser {
 
 type ProfilePatchPayload = Partial<ProfileUser> & { telegramId?: string }
 
-interface PatchMessage {
-  type: string
-  topic?: string
-  payload?: ProfilePatchPayload
-}
-
 interface CacheEntry {
   data: ProfileUser
   timestamp: number

@@ -289,7 +289,7 @@ if (VITE_WS_URL) {
   resolvedWsUrl = '/realtime'
 }
 
-export const wsClient = new WSClient(resolvedWsUrl)
+export const wsClient = new WSClient(resolvedWsUrl, { requireAuth: false })
 if (token) {
   wsClient.setToken(token)
 }

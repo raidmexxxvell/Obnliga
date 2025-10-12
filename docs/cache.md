@@ -49,6 +49,7 @@
 Каждый ответ админских статистических эндпоинтов возвращает `X-Resource-Version` и `meta.version`, чтобы клиенты могли сравнивать версии без повторной выборки при неизменном payload.
 
 ### 9. Public Aggregates (HTTP + WS)
+- `public:league:seasons` — 60 c (SWR 30 c, обновляется при смене активного сезона)
 - `public:league:table` — 300 c (SWR 45 c, WS topic `league:table`)
 - `public:league:top-scorers` — 300 c (SWR 60 c, WS topic `league:scorers`)
 - `public:league:form:{seasonId}` — 600 c (SWR 120 c, WS topic `league:form`)
@@ -58,6 +59,8 @@
 - `public:news:list` — 30 c (SWR 45 c, WS topic `home`)
 
 Версия ресурса передаётся через `X-Resource-Version` и `meta.version`, обновляется воркером `stats-aggregation` после пересчётов `handleMatchFinalization`.
+
+Публичный фронтенд (Zustand store `appStore`) использует локальный TTL: seasons — 55 c (обновление при `force: true` или просрочке), таблица — 240 c; при получении WS-сообщения `league.table` локальный TTL сбрасывается и запись считается свежей.
 
 ###	8.Защита от кэш-бомб
 -	Ограничение размера кэша на пользователя:
