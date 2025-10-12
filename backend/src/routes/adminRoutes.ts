@@ -2633,7 +2633,11 @@ export default async function (server: FastifyInstance) {
         })
 
         if (body.status === MatchStatus.FINISHED && existing.status !== MatchStatus.FINISHED) {
-          await handleMatchFinalization(matchId, request.server.log)
+          const publishTopic =
+            typeof request.server.publishTopic === 'function'
+              ? request.server.publishTopic.bind(request.server)
+              : undefined
+          await handleMatchFinalization(matchId, request.server.log, { publishTopic })
         }
 
         return sendSerialized(reply, updated)
@@ -2939,7 +2943,11 @@ export default async function (server: FastifyInstance) {
 
         const match = await prisma.match.findUnique({ where: { id: matchId } })
         if (match?.status === MatchStatus.FINISHED) {
-          await handleMatchFinalization(matchId, request.server.log)
+          const publishTopic =
+            typeof request.server.publishTopic === 'function'
+              ? request.server.publishTopic.bind(request.server)
+              : undefined
+          await handleMatchFinalization(matchId, request.server.log, { publishTopic })
         }
 
         return sendSerialized(reply, created.event)
@@ -2987,7 +2995,11 @@ export default async function (server: FastifyInstance) {
 
         const match = await prisma.match.findUnique({ where: { id: matchId } })
         if (match?.status === MatchStatus.FINISHED) {
-          await handleMatchFinalization(matchId, request.server.log)
+          const publishTopic =
+            typeof request.server.publishTopic === 'function'
+              ? request.server.publishTopic.bind(request.server)
+              : undefined
+          await handleMatchFinalization(matchId, request.server.log, { publishTopic })
         }
 
         return sendSerialized(reply, updated.event)
@@ -3021,7 +3033,11 @@ export default async function (server: FastifyInstance) {
 
         const match = await prisma.match.findUnique({ where: { id: matchId } })
         if (match?.status === MatchStatus.FINISHED) {
-          await handleMatchFinalization(matchId, request.server.log)
+          const publishTopic =
+            typeof request.server.publishTopic === 'function'
+              ? request.server.publishTopic.bind(request.server)
+              : undefined
+          await handleMatchFinalization(matchId, request.server.log, { publishTopic })
         }
 
         return reply.send({ ok: true })

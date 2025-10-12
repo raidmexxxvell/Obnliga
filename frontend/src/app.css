@@ -578,16 +578,16 @@ body {
   padding: 18px;
   box-shadow: 0 18px 40px rgba(3, 8, 18, 0.72);
   transition:
-    transform 220ms cubic-bezier(0.68, -0.55, 0.265, 1.55),
+    transform 260ms cubic-bezier(0.22, 0.9, 0.3, 1.2),
     opacity 220ms ease,
-    visibility 0s linear 220ms;
+    visibility 0s linear 260ms;
   transform: translateX(-110%);
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
   position: fixed;
-  top: 88px;
-  left: 18px;
+  top: 96px;
+  left: 24px;
   z-index: 60;
   max-height: calc(100vh - 140px);
   overflow-y: auto;
@@ -607,6 +607,7 @@ body {
   background: rgba(5, 12, 20, 0.65);
   backdrop-filter: blur(2px);
   z-index: 50;
+  cursor: pointer;
 }
 
 .league-content {
@@ -617,10 +618,25 @@ body {
   width: 100%;
   margin: 0 auto;
   max-width: min(920px, 100%);
+  position: relative;
 }
 
 .league-content.shifted {
   transform: translateX(12px);
+}
+
+.league-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.league-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .league-sidebar-header {
@@ -725,31 +741,9 @@ body {
   border: 1px dashed rgba(0, 240, 255, 0.22);
 }
 
-.season-context {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px 20px;
-  border-radius: 18px;
-  background: rgba(12, 20, 36, 0.82);
-  border: 1px solid rgba(0, 240, 255, 0.18);
-  box-shadow: 0 16px 38px rgba(3, 8, 18, 0.7);
-}
-
-.season-context h1 {
-  margin: 0;
-  font-size: 20px;
-  letter-spacing: 0.8px;
-}
-
-.season-actions {
-  display: flex;
-  gap: 10px;
-}
-
-.season-actions .button-secondary {
-  min-width: 120px;
+.season-toggle {
+  min-width: 140px;
+  white-space: nowrap;
 }
 
 .league-table-header {
@@ -771,19 +765,6 @@ body {
   color: rgba(230, 247, 255, 0.74);
 }
 
-.league-table-title {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.season-meta {
-  font-size: 12px;
-  letter-spacing: 0.4px;
-  color: rgba(230, 247, 255, 0.7);
-}
-
-
 .league-table {
   background: rgba(12, 20, 36, 0.82);
   border-radius: 18px;
@@ -793,22 +774,28 @@ body {
   width: 100%;
 }
 
+.league-table-scroll {
+  overflow-x: auto;
+  margin-top: 8px;
+  padding-bottom: 4px;
+}
+
 .league-table-grid {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  width: 100%;
+  gap: 10px;
+  min-width: 720px;
 }
 
 .league-table-row {
   display: grid;
-  grid-template-columns: minmax(72px, 0.8fr) minmax(180px, 2fr) minmax(220px, 1.6fr) minmax(120px, 1fr);
+  grid-template-columns: 46px 64px minmax(260px, 1.6fr) minmax(120px, 0.85fr) minmax(90px, 0.7fr) minmax(90px, 0.7fr);
   align-items: center;
-  padding: 14px 18px;
-  border-radius: 14px;
+  padding: 12px 16px;
+  border-radius: 12px;
   background: rgba(0, 240, 255, 0.04);
   border: 1px solid rgba(0, 240, 255, 0.08);
-  gap: 16px;
+  gap: 12px;
 }
 
 .league-table-row.head {
@@ -821,33 +808,12 @@ body {
 
 .league-table-row.empty {
   justify-content: center;
+}
+
+.col-logo {
   display: flex;
-  padding: 32px 18px;
-}
-
-.col-empty {
-  text-align: center;
-  font-size: 14px;
-  color: rgba(230, 247, 255, 0.78);
-}
-
-.col-meta {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  font-weight: 600;
-}
-
-.meta-position {
-  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
-  background: rgba(0, 240, 255, 0.12);
-  border: 1px solid rgba(0, 240, 255, 0.28);
-  font-size: 16px;
 }
 
 .club-logo {
@@ -867,9 +833,12 @@ body {
   font-weight: 600;
 }
 
+
 .col-club {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -879,65 +848,43 @@ body {
   gap: 4px;
   min-width: 0;
   word-break: break-word;
+  flex: 1 1 auto;
 }
 
 .club-name .muted {
   font-size: 11px;
-  color: rgba(230, 247, 255, 0.72);
 }
 
-.stat-group {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(56px, 1fr));
-  gap: 10px;
+.club-score,
+.club-score-label {
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.6px;
+}
+
+.club-score {
+  margin-left: auto;
+  min-width: 68px;
+  text-align: right;
+  color: #e6f7ff;
+  flex: 0 0 auto;
+}
+
+.club-score-label {
+  color: rgba(230, 247, 255, 0.7);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.col-form,
+.col-diff,
+.col-points {
   text-align: center;
-}
-
-.stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
   font-weight: 600;
 }
 
-.stat .muted {
-  font-size: 11px;
-  color: rgba(230, 247, 255, 0.72);
-  font-weight: 500;
-  text-transform: none;
-}
-
-.stat.diff {
-  font-variant-numeric: tabular-nums;
-}
-
-.stat.diff[data-positive='true'] {
+.col-diff[data-positive='true'] {
   color: #bfffad;
-}
-
-.stat.diff[data-positive='false'] {
-  color: #ff9f9f;
-}
-
-.col-points {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-.points {
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: 0.6px;
-}
-
-.points-label {
-  font-size: 11px;
-  color: rgba(230, 247, 255, 0.72);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
 }
 
 .league-table-placeholder {
@@ -948,99 +895,75 @@ body {
   padding: 20px;
 }
 
-@media (max-width: 960px) {
-  .league-table-row {
-    grid-template-columns: minmax(68px, 0.8fr) minmax(160px, 2fr) minmax(200px, 1.4fr) minmax(100px, 1fr);
-    padding: 12px 16px;
+@media (max-width: 1024px) {
+  .league-sidebar {
+    top: 82px;
+    left: 18px;
+    right: 18px;
+    width: auto;
   }
 
-  .stat-group {
-    grid-template-columns: repeat(3, minmax(64px, 1fr));
-    gap: 8px;
+  .league-table-grid {
+    min-width: 640px;
+  }
+
+  .league-table-row {
+    grid-template-columns: 42px 58px minmax(220px, 1.4fr) minmax(110px, 0.9fr) minmax(80px, 0.7fr) minmax(80px, 0.7fr);
   }
 }
 
 @media (max-width: 720px) {
   .league-table-row {
-    grid-template-columns: minmax(64px, 0.9fr) minmax(0, 1.3fr) minmax(160px, 1.2fr) minmax(90px, 1fr);
-    gap: 12px;
+    grid-template-columns: 32px 40px minmax(0, 1fr) minmax(100px, 0.9fr) minmax(70px, 0.7fr) minmax(70px, 0.7fr);
     font-size: 13px;
-  }
-
-  .stat-group {
-    grid-template-columns: repeat(3, minmax(70px, 1fr));
-    row-gap: 10px;
-    justify-items: center;
-  }
-
-  .col-points {
-    align-items: flex-end;
-  }
-
-  .season-context {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-
-  .season-actions {
-    align-self: stretch;
-  }
-}
-
-@media (max-width: 580px) {
-  .league-table {
-    padding: 16px 14px;
+    padding: 10px 12px;
   }
 
   .league-table-grid {
-    gap: 10px;
+    min-width: 100%;
   }
 
-  .league-table-row {
-    grid-template-columns: minmax(60px, 0.7fr) minmax(0, 1fr);
-    grid-template-rows: auto auto;
-    gap: 10px;
-    align-items: start;
+  .league-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
-  .league-table-row:not(.head) .col-meta {
-    grid-row: 1 / span 2;
-    align-self: stretch;
+  .league-toolbar-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 520px) {
+  .league-sidebar {
+    top: 72px;
+    left: 12px;
+    right: 12px;
   }
 
-  .league-table-row:not(.head) .stat-group {
-    grid-column: 2;
+  .club-score,
+  .club-score-label {
+    font-size: 12px;
+  }
+
+  .league-table-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .league-toolbar-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .season-toggle {
     width: 100%;
   }
 
-  .league-table-row:not(.head) .col-points {
-    grid-column: 2;
-    align-items: flex-end;
-  }
-
-  .league-table-row.head {
-    grid-template-columns: minmax(60px, 0.7fr) minmax(0, 1fr);
-    grid-template-rows: auto;
-  }
-
-  .stat-group {
-    grid-template-columns: repeat(2, minmax(72px, 1fr));
-  }
-
-  .col-meta {
-    gap: 10px;
-  }
-
-  .meta-position {
-    width: 32px;
-    height: 32px;
-    font-size: 15px;
-  }
-
-  .club-logo {
-    width: 32px;
-    height: 32px;
+  .league-table-row {
+    grid-template-columns: 28px 36px minmax(0, 1fr) 90px 64px 64px;
+    gap: 6px;
   }
 }
 
@@ -1757,6 +1680,15 @@ body {
 
   .season-actions .button-secondary {
     flex: 1;
+  }
+
+  .league-table-row {
+    grid-template-columns: 32px 48px minmax(140px, 1fr) repeat(4, minmax(60px, 0.8fr));
+    padding: 10px 12px;
+  }
+
+  .league-table-grid {
+    min-width: 540px;
   }
 }
 

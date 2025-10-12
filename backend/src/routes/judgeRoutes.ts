@@ -280,7 +280,11 @@ export default async function judgeRoutes(server: FastifyInstance) {
               await broadcastMatchStatistics(request.server, matchId)
             }
 
-            await handleMatchFinalization(matchId, request.server.log)
+            const publishTopic =
+              typeof request.server.publishTopic === 'function'
+                ? request.server.publishTopic.bind(request.server)
+                : undefined
+            await handleMatchFinalization(matchId, request.server.log, { publishTopic })
             return reply.send({ ok: true, data: serializePrisma(created.event) })
           } catch (err) {
             if (err instanceof RequestError) {
@@ -321,7 +325,11 @@ export default async function judgeRoutes(server: FastifyInstance) {
             await broadcastMatchStatistics(request.server, matchId)
           }
 
-          await handleMatchFinalization(matchId, request.server.log)
+          const publishTopic =
+            typeof request.server.publishTopic === 'function'
+              ? request.server.publishTopic.bind(request.server)
+              : undefined
+          await handleMatchFinalization(matchId, request.server.log, { publishTopic })
           return reply.send({ ok: true, data: serializePrisma(updated.event) })
         } catch (err) {
           if (err instanceof RequestError) {
@@ -356,7 +364,11 @@ export default async function judgeRoutes(server: FastifyInstance) {
           if (result.statAdjusted) {
             await broadcastMatchStatistics(request.server, matchId)
           }
-          await handleMatchFinalization(matchId, request.server.log)
+          const publishTopic =
+            typeof request.server.publishTopic === 'function'
+              ? request.server.publishTopic.bind(request.server)
+              : undefined
+          await handleMatchFinalization(matchId, request.server.log, { publishTopic })
           return reply.send({ ok: true })
         } catch (err) {
           if (err instanceof RequestError) {
@@ -442,7 +454,11 @@ export default async function judgeRoutes(server: FastifyInstance) {
             },
           })
 
-          await handleMatchFinalization(matchId, request.server.log)
+          const publishTopic =
+            typeof request.server.publishTopic === 'function'
+              ? request.server.publishTopic.bind(request.server)
+              : undefined
+          await handleMatchFinalization(matchId, request.server.log, { publishTopic })
           await broadcastMatchStatistics(request.server, matchId)
 
           return reply.send({ ok: true, data: serializePrisma(updated) })

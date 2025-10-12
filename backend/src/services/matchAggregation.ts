@@ -16,6 +16,7 @@ import {
 } from '@prisma/client'
 import prisma from '../db'
 import { defaultCache } from '../cache'
+import { buildLeagueTable } from './leagueTable'
 import {
   addDays,
   applyTimeToDate,
@@ -26,6 +27,8 @@ import {
 const YELLOW_CARD_LIMIT = 4
 const RED_CARD_BAN_MATCHES = 2
 const SECOND_YELLOW_BAN_MATCHES = 1
+const PUBLIC_LEAGUE_TABLE_KEY = 'public:league:table'
+const PUBLIC_LEAGUE_TABLE_TTL_SECONDS = 300
 
 type MatchOutcomeSource = Pick<
   Match,
@@ -54,7 +57,15 @@ const determineMatchWinnerClubId = (match: MatchOutcomeSource): number | null =>
   return null
 }
 
-export async function handleMatchFinalization(matchId: bigint, logger: FastifyBaseLogger) {
+type FinalizationOptions = {
+  publishTopic?: (topic: string, payload: unknown) => Promise<unknown>
+}
+
+export async function handleMatchFinalization(
+  matchId: bigint,
+  logger: FastifyBaseLogger,
+  options?: FinalizationOptions
+) {
   const match = await prisma.match.findUnique({
     where: { id: matchId },
     include: {
@@ -86,15 +97,15 @@ export async function handleMatchFinalization(matchId: bigint, logger: FastifyBa
     competitionFormat === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
   await prisma.$transaction(
     async tx => {
-      const includePlayoffRounds = isBracketFormat
-      await rebuildClubSeasonStats(seasonId, tx, { includePlayoffRounds })
-      await rebuildPlayerSeasonStats(seasonId, tx)
-      await rebuildPlayerCareerStats(seasonId, tx)
-      await processDisqualifications(match, tx)
-      await updatePredictions(match, tx)
-      await updateSeriesState(match, tx, logger)
+    const includePlayoffRounds = isBracketFormat
+    await rebuildClubSeasonStats(seasonId, tx, { includePlayoffRounds })
+    await rebuildPlayerSeasonStats(seasonId, tx)
+    await rebuildPlayerCareerStats(seasonId, tx)
+    await processDisqualifications(match, tx)
+    await updatePredictions(match, tx)
+    await updateSeriesState(match, tx, logger)
     },
-    { timeout: 30000 }
+    { timeout: 20000 }
   )
 
   // invalidate caches related to season/club summaries
@@ -119,10 +130,35 @@ export async function handleMatchFinalization(matchId: bigint, logger: FastifyBa
     'league:player-career',
     `match:${matchId.toString()}`,
     ...Array.from(impactedClubIds).map(clubId => `club:${clubId}:player-career`),
-      'public:league:table',
-      `public:league:table:${seasonId}`,
+    PUBLIC_LEAGUE_TABLE_KEY,
+    `${PUBLIC_LEAGUE_TABLE_KEY}:${seasonId}`,
   ]
   await Promise.all(cacheKeys.map(key => defaultCache.invalidate(key).catch(() => undefined)))
+
+  try {
+    const refreshedSeason = await prisma.season.findUnique({
+      where: { id: seasonId },
+      include: { competition: true },
+    })
+    if (refreshedSeason) {
+      const table = await buildLeagueTable(refreshedSeason)
+      await defaultCache.set(PUBLIC_LEAGUE_TABLE_KEY, table, PUBLIC_LEAGUE_TABLE_TTL_SECONDS)
+      await defaultCache.set(
+        `${PUBLIC_LEAGUE_TABLE_KEY}:${seasonId}`,
+        table,
+        PUBLIC_LEAGUE_TABLE_TTL_SECONDS
+      )
+      if (options?.publishTopic) {
+        await options.publishTopic(PUBLIC_LEAGUE_TABLE_KEY, {
+          type: 'league.table',
+          seasonId: table.season.id,
+          payload: table,
+        })
+      }
+    }
+  } catch (err) {
+    logger.warn({ err, matchId: matchId.toString() }, 'failed to refresh league table cache')
+  }
 }
 
 type PrismaTx = Prisma.TransactionClient
@@ -396,9 +432,7 @@ export async function rebuildCareerStatsForClubs(clubIds: number[], tx: PrismaTx
     },
   })
 
-  await tx.playerClubCareerStats.deleteMany({ where: { clubId: { in: clubIds } } })
-
-  const createdKeys = new Set<string>()
+  const recordMap = new Map<string, Prisma.PlayerClubCareerStatsCreateManyInput>()
 
   for (const aggregate of aggregates) {
     const sum = aggregate._sum ?? {}
@@ -409,34 +443,16 @@ export async function rebuildCareerStatsForClubs(clubIds: number[], tx: PrismaTx
     const redCards = sum.redCards ?? 0
     const totalMatches = sum.matchesPlayed ?? 0
 
-    await tx.playerClubCareerStats.upsert({
-      where: {
-        personId_clubId: {
-          personId: aggregate.personId,
-          clubId: aggregate.clubId,
-        },
-      },
-      create: {
-        personId: aggregate.personId,
-        clubId: aggregate.clubId,
-        totalGoals,
-        penaltyGoals: totalPenaltyGoals,
-        totalMatches,
-        totalAssists,
-        yellowCards,
-        redCards,
-      },
-      update: {
-        totalGoals,
-        penaltyGoals: totalPenaltyGoals,
-        totalMatches,
-        totalAssists,
-        yellowCards,
-        redCards,
-      },
+    recordMap.set(`${aggregate.personId}:${aggregate.clubId}`, {
+      personId: aggregate.personId,
+      clubId: aggregate.clubId,
+      totalGoals,
+      penaltyGoals: totalPenaltyGoals,
+      totalMatches,
+      totalAssists,
+      yellowCards,
+      redCards,
     })
-
-    createdKeys.add(`${aggregate.personId}:${aggregate.clubId}`)
   }
 
   const rosterLinks = await tx.clubPlayer.findMany({
@@ -446,16 +462,8 @@ export async function rebuildCareerStatsForClubs(clubIds: number[], tx: PrismaTx
 
   for (const link of rosterLinks) {
     const key = `${link.personId}:${link.clubId}`
-    if (createdKeys.has(key)) continue
-
-    await tx.playerClubCareerStats.upsert({
-      where: {
-        personId_clubId: {
-          personId: link.personId,
-          clubId: link.clubId,
-        },
-      },
-      create: {
+    if (!recordMap.has(key)) {
+      recordMap.set(key, {
         personId: link.personId,
         clubId: link.clubId,
         totalGoals: 0,
@@ -464,9 +472,15 @@ export async function rebuildCareerStatsForClubs(clubIds: number[], tx: PrismaTx
         totalAssists: 0,
         yellowCards: 0,
         redCards: 0,
-      },
-      update: {},
-    })
+      })
+    }
+  }
+
+  await tx.playerClubCareerStats.deleteMany({ where: { clubId: { in: clubIds } } })
+
+  const payload = Array.from(recordMap.values())
+  if (payload.length) {
+    await tx.playerClubCareerStats.createMany({ data: payload })
   }
 }
 

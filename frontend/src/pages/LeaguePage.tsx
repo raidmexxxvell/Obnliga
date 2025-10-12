@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { LeagueTableView } from '../components/league/LeagueTableView'
 import { LeagueSubTab, useAppStore } from '../store/appStore'
 
@@ -39,8 +39,14 @@ const LeaguePage: React.FC = () => {
   const tableErrors = useAppStore(state => state.errors.table)
   const leagueMenuOpen = useAppStore(state => state.leagueMenuOpen)
   const closeLeagueMenu = useAppStore(state => state.closeLeagueMenu)
+  const toggleLeagueMenu = useAppStore(state => state.toggleLeagueMenu)
   const tableFetchedAt = useAppStore(state => state.tableFetchedAt)
   const tables = useAppStore(state => state.tables)
+
+  const selectedSeason = useMemo(
+    () => seasons.find(season => season.id === selectedSeasonId),
+    [seasons, selectedSeasonId]
+  )
 
   const table = selectedSeasonId ? tables[selectedSeasonId] : undefined
   const lastUpdated = selectedSeasonId ? tableFetchedAt[selectedSeasonId] : undefined
@@ -55,6 +61,16 @@ const LeaguePage: React.FC = () => {
       void fetchTable({ seasonId: selectedSeasonId })
     }
   }, [selectedSeasonId, fetchTable])
+
+  useEffect(() => {
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeLeagueMenu()
+      }
+    }
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [closeLeagueMenu])
 
   const handleSeasonClick = (seasonId: number) => {
     setSelectedSeason(seasonId)
@@ -71,21 +87,13 @@ const LeaguePage: React.FC = () => {
     }
   }
 
-  useEffect(() => {
-    if (!leagueMenuOpen) {
-      return
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        closeLeagueMenu()
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [leagueMenuOpen, closeLeagueMenu])
+  const handleSeasonsButtonClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    toggleLeagueMenu(!leagueMenuOpen)
+  }
 
-  const handleContentPointerDown = () => {
-    if (leagueMenuOpen) {
+  const handleContentClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (leagueMenuOpen && event.target === event.currentTarget) {
       closeLeagueMenu()
     }
   }
@@ -120,25 +128,52 @@ const LeaguePage: React.FC = () => {
           )}
         </div>
       </aside>
-      {leagueMenuOpen && (
-        <div className="league-backdrop" role="button" tabIndex={-1} onClick={closeLeagueMenu} />
-      )}
+      {leagueMenuOpen && <div className="league-backdrop" role="button" tabIndex={-1} onClick={closeLeagueMenu} />}
+
       <div
         className={`league-content${leagueMenuOpen ? ' shifted' : ''}`}
-        onPointerDownCapture={handleContentPointerDown}
+        onClickCapture={handleContentClick}
       >
-        <nav className="league-subtabs" aria-label="Подвкладки лиги">
-          {(Object.keys(subTabLabels) as LeagueSubTab[]).map(key => (
-            <button
-              key={key}
-              type="button"
-              className={`subtab-button${leagueSubTab === key ? ' active' : ''}`}
-              onClick={() => handleSubTabClick(key)}
-            >
-              {subTabLabels[key]}
-            </button>
-          ))}
-        </nav>
+        <div className="league-toolbar">
+          <nav className="league-subtabs" aria-label="Подвкладки лиги">
+            {(Object.keys(subTabLabels) as LeagueSubTab[]).map(key => (
+              <button
+                key={key}
+                type="button"
+                className={`subtab-button${leagueSubTab === key ? ' active' : ''}`}
+                onClick={() => handleSubTabClick(key)}
+              >
+                {subTabLabels[key]}
+              </button>
+            ))}
+          </nav>
+          {selectedSeason && (
+            <div className="league-toolbar-actions">
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={handleRefreshClick}
+                disabled={loadingTable}
+              >
+                {loadingTable ? 'Обновляем…' : 'Обновить'}
+              </button>
+              <button
+                type="button"
+                className="button-secondary season-toggle"
+                onClick={handleSeasonsButtonClick}
+                aria-pressed={leagueMenuOpen}
+              >
+                {leagueMenuOpen ? 'Скрыть сезоны' : 'Сезоны'}
+              </button>
+            </div>
+          )}
+        </div>
+        {!selectedSeason && (
+          <div className="inline-feedback info" role="status">
+            Выберите сезон, чтобы посмотреть таблицу.
+          </div>
+        )}
+
         {leagueSubTab === 'table' ? (
           <LeagueTableView
             table={table}

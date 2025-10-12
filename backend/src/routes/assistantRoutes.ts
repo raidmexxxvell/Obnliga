@@ -504,7 +504,11 @@ export default async function assistantRoutes(server: FastifyInstance) {
           })
 
           if (statusUpdate === MatchStatus.FINISHED) {
-            await handleMatchFinalization(matchId, request.server.log)
+            const publishTopic =
+              typeof request.server.publishTopic === 'function'
+                ? request.server.publishTopic.bind(request.server)
+                : undefined
+            await handleMatchFinalization(matchId, request.server.log, { publishTopic })
           }
 
           return reply.send({ ok: true, data: serializePrisma(updated) })
