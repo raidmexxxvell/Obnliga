@@ -247,6 +247,7 @@ const buildBracketPayload = (season: SeasonWithRelations) => {
       name: season.name,
       startDate: season.startDate,
       endDate: season.endDate,
+      seriesFormat: season.seriesFormat ?? season.competition.seriesFormat,
       competition: {
         id: season.competition.id,
         name: season.competition.name,
@@ -267,15 +268,33 @@ const findSeasonForBracket = async (seasonId?: number): Promise<SeasonWithRelati
 
   return prisma.season.findFirst({
     where: {
-      competition: {
-        seriesFormat: {
-          in: [
-            SeriesFormat.BEST_OF_N,
-            SeriesFormat.DOUBLE_ROUND_PLAYOFF,
-            SeriesFormat.PLAYOFF_BRACKET,
+      OR: [
+        {
+          seriesFormat: {
+            in: [
+              SeriesFormat.BEST_OF_N,
+              SeriesFormat.DOUBLE_ROUND_PLAYOFF,
+              SeriesFormat.PLAYOFF_BRACKET,
+            ],
+          },
+        },
+        {
+          AND: [
+            { seriesFormat: null },
+            {
+              competition: {
+                seriesFormat: {
+                  in: [
+                    SeriesFormat.BEST_OF_N,
+                    SeriesFormat.DOUBLE_ROUND_PLAYOFF,
+                    SeriesFormat.PLAYOFF_BRACKET,
+                  ],
+                },
+              },
+            },
           ],
         },
-      },
+      ],
       series: {
         some: {},
       },

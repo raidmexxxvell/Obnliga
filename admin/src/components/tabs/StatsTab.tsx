@@ -307,7 +307,8 @@ export const StatsTab = () => {
 
   const groupStandings = useMemo(() => {
     if (!selectedSeason) return null
-    if (selectedSeason.competition.seriesFormat !== 'GROUP_SINGLE_ROUND_PLAYOFF') return null
+  const seasonFormat = selectedSeason.seriesFormat ?? selectedSeason.competition.seriesFormat
+  if (seasonFormat !== 'GROUP_SINGLE_ROUND_PLAYOFF') return null
     const groups = selectedSeason.groups ?? []
     if (!groups.length) return []
 
@@ -347,7 +348,8 @@ export const StatsTab = () => {
 
   const groupSeedPreview = useMemo(() => {
     if (!groupStandings || !selectedSeason) return null
-    if (selectedSeason.competition.seriesFormat !== 'GROUP_SINGLE_ROUND_PLAYOFF') return null
+  const seasonFormat = selectedSeason.seriesFormat ?? selectedSeason.competition.seriesFormat
+  if (seasonFormat !== 'GROUP_SINGLE_ROUND_PLAYOFF') return null
 
     const seeds: Array<{
       clubId: number

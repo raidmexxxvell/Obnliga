@@ -38,6 +38,12 @@ type MatchOutcomeSource = Pick<
   | 'penaltyAwayScore'
 >
 
+const resolveSeasonSeriesFormat = (season: {
+  seriesFormat?: SeriesFormat | null
+  competition: { seriesFormat: SeriesFormat }
+}): SeriesFormat =>
+  (season.seriesFormat as SeriesFormat | null | undefined) ?? season.competition.seriesFormat
+
 const determineMatchWinnerClubId = (match: MatchOutcomeSource): number | null => {
   if (match.homeScore > match.awayScore) return match.homeTeamId
   if (match.homeScore < match.awayScore) return match.awayTeamId
@@ -74,7 +80,7 @@ export async function handleMatchFinalization(matchId: bigint, logger: FastifyBa
   }
 
   const seasonId = match.seasonId
-  const competitionFormat = match.season.competition.seriesFormat
+  const competitionFormat = resolveSeasonSeriesFormat(match.season)
   const isBracketFormat =
     competitionFormat === ('PLAYOFF_BRACKET' as SeriesFormat) ||
     competitionFormat === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
@@ -642,7 +648,7 @@ async function updateSeriesState(match: SeriesMatch, tx: PrismaTx, logger: Fasti
   if (!series) return
   if (series.seriesStatus === SeriesStatus.FINISHED) return
 
-  const format = series.season.competition.seriesFormat
+  const format = resolveSeasonSeriesFormat(series.season)
   const isMultiMatchSeries =
     format === SeriesFormat.BEST_OF_N || format === SeriesFormat.DOUBLE_ROUND_PLAYOFF
   const isBracketFormat =

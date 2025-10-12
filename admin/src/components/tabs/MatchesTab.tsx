@@ -390,7 +390,8 @@ export const MatchesTab = () => {
     return map
   }, [data.clubs])
 
-  const competitionFormat: SeriesFormat | undefined = selectedSeason?.competition.seriesFormat
+  const competitionFormat: SeriesFormat | undefined =
+    selectedSeason?.seriesFormat ?? selectedSeason?.competition.seriesFormat
   const isBestOfFormat =
     competitionFormat === 'BEST_OF_N' || competitionFormat === 'DOUBLE_ROUND_PLAYOFF'
   const isPlayoffBracketFormat = competitionFormat === 'PLAYOFF_BRACKET'

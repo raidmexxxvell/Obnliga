@@ -1961,12 +1961,19 @@ export default async function (server: FastifyInstance) {
         if (!body?.competitionId || !body?.name || !body?.startDate || !body?.endDate) {
           return reply.status(400).send({ ok: false, error: 'season_fields_required' })
         }
+        const competition = await prisma.competition.findUnique({
+          where: { id: body.competitionId },
+        })
+        if (!competition) {
+          return reply.status(404).send({ ok: false, error: 'competition_not_found' })
+        }
         const season = await prisma.season.create({
           data: {
             competitionId: body.competitionId,
             name: body.name.trim(),
             startDate: new Date(body.startDate),
             endDate: new Date(body.endDate),
+            seriesFormat: competition.seriesFormat,
           },
         })
         return reply.send({ ok: true, data: season })

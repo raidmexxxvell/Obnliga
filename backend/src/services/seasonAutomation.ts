@@ -11,6 +11,11 @@ import { FastifyBaseLogger } from 'fastify'
 
 type ClubId = number
 
+const getSeasonSeriesFormat = (season: {
+  seriesFormat?: SeriesFormat | null
+  competition: { seriesFormat: SeriesFormat }
+}): SeriesFormat => (season.seriesFormat ?? season.competition.seriesFormat) as SeriesFormat
+
 type RoundRobinPair = {
   roundIndex: number
   homeClubId: ClubId
@@ -508,6 +513,7 @@ export const runSeasonAutomation = async (
         name: input.seasonName.trim(),
         startDate: kickoffDate,
         endDate: seasonEndDate,
+        seriesFormat: input.seriesFormat,
       },
     })
 
@@ -1187,12 +1193,12 @@ export const createSeasonPlayoffs = async (
     if (!season) {
       throw new Error('season_not_found')
     }
-    const isGroupPlayoffFormat =
-      season.competition.seriesFormat === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
+    const seasonFormat = getSeasonSeriesFormat(season)
+    const isGroupPlayoffFormat = seasonFormat === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
 
     if (
-      season.competition.seriesFormat !== SeriesFormat.BEST_OF_N &&
-      season.competition.seriesFormat !== SeriesFormat.DOUBLE_ROUND_PLAYOFF &&
+      seasonFormat !== SeriesFormat.BEST_OF_N &&
+      seasonFormat !== SeriesFormat.DOUBLE_ROUND_PLAYOFF &&
       !isGroupPlayoffFormat
     ) {
       throw new Error('playoffs_not_supported')
