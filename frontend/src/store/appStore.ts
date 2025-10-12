@@ -8,7 +8,7 @@ export type LeagueSubTab = 'table' | 'schedule' | 'results' | 'stats'
 
 const SEASONS_TTL_MS = 55_000
 const TABLE_TTL_MS = 240_000
-const DOUBLE_TAP_THRESHOLD_MS = 450
+const DOUBLE_TAP_THRESHOLD_MS = 600
 
 interface LoadingState {
   seasons: boolean
@@ -76,10 +76,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   setLeagueSubTab: view => set({ leagueSubTab: view }),
   toggleLeagueMenu: force => {
-    set(state => ({
-      leagueMenuOpen:
-        typeof force === 'boolean' ? force : (state.currentTab === 'league' ? !state.leagueMenuOpen : state.leagueMenuOpen),
-    }))
+    set(state => {
+      if (typeof force === 'boolean') {
+        return { leagueMenuOpen: force }
+      }
+      if (state.currentTab !== 'league') {
+        return { leagueMenuOpen: state.leagueMenuOpen }
+      }
+      return { leagueMenuOpen: !state.leagueMenuOpen }
+    })
   },
   tapLeagueNav: now => {
     const state = get()
@@ -87,9 +92,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ currentTab: 'league', lastLeagueTapAt: now, leagueMenuOpen: false })
       return
     }
+    if (state.leagueMenuOpen) {
+      set({ leagueMenuOpen: false, lastLeagueTapAt: now })
+      return
+    }
     const delta = now - state.lastLeagueTapAt
     if (delta > 0 && delta <= DOUBLE_TAP_THRESHOLD_MS) {
-      set({ leagueMenuOpen: !state.leagueMenuOpen, lastLeagueTapAt: now })
+      set({ leagueMenuOpen: true, lastLeagueTapAt: 0 })
       return
     }
     set({ lastLeagueTapAt: now })

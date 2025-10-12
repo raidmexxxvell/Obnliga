@@ -255,18 +255,45 @@ interface AdminResponseWithMeta<T> {
   version?: number
 }
 
+const normalizeHeaders = (input?: HeadersInit): Record<string, string> => {
+  if (!input) {
+    return {}
+  }
+  if (input instanceof Headers) {
+    return Array.from(input.entries()).reduce<Record<string, string>>((acc, [key, value]) => {
+      acc[key] = value
+      return acc
+    }, {})
+  }
+  if (Array.isArray(input)) {
+    return input.reduce<Record<string, string>>((acc, [key, value]) => {
+      acc[key] = value
+      return acc
+    }, {})
+  }
+  return { ...input }
+}
+
 export const adminRequestWithMeta = async <T>(
   token: string | undefined,
   path: string,
   init: RequestInit = {}
 ): Promise<AdminResponseWithMeta<T>> => {
   const safeToken = ensureToken(token)
+  const normalizedHeaders = normalizeHeaders(init.headers)
+  const hasExplicitContentType = Object.keys(normalizedHeaders).some(
+    header => header.toLowerCase() === 'content-type'
+  )
+
+  if (init.body !== undefined && !hasExplicitContentType) {
+    normalizedHeaders['Content-Type'] = 'application/json'
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
       Authorization: `Bearer ${safeToken}`,
-      ...(init.headers || {}),
+      ...normalizedHeaders,
     },
   })
 

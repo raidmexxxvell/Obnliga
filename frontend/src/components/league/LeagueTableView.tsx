@@ -30,6 +30,16 @@ const formatTime = (value?: number): string => {
   })
 }
 
+const formatDiff = (value: number): string => {
+  if (value > 0) {
+    return `+${value}`
+  }
+  if (value === 0) {
+    return '0'
+  }
+  return `${value}`
+}
+
 export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
   table,
   loading,
@@ -69,41 +79,57 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
 
   const { season, standings } = table
   const updatedLabel = lastUpdated ? `Обновлено в ${formatTime(lastUpdated)}` : 'Актуальные данные'
+  const seasonRange = `${formatDate(season.startDate)} — ${formatDate(season.endDate)}`
 
   return (
     <section className="league-table" aria-label="Турнирная таблица">
       <header className="league-table-header">
-        <div>
-          <h2>{season.name}</h2>
-          <p>
-            {season.competition.name} · {formatDate(season.startDate)} — {formatDate(season.endDate)}
-          </p>
+        <div className="league-table-title">
+          <h2>Турнирная таблица</h2>
+          <p>Сортировка: очки, личные встречи, разница голов.</p>
+          <span className="season-meta">
+            {season.competition.name} · {season.name} · {seasonRange}
+          </span>
         </div>
         <span className="muted">{updatedLabel}</span>
       </header>
       <div role="table" className="league-table-grid">
         <div role="row" className="league-table-row head">
-          <span role="columnheader" className="col-pos">
-            №
-          </span>
-          <span role="columnheader" className="col-club">
+          <div role="columnheader" className="col-meta">
+            <span className="meta-position">№</span>
+          </div>
+          <div role="columnheader" className="col-club">
             Клуб
-          </span>
-          <span role="columnheader" className="col-matches">
-            И
-          </span>
-          <span role="columnheader" className="col-points">
-            О
-          </span>
-          <span role="columnheader" className="col-goals">
-            Мячи
-          </span>
-          <span role="columnheader" className="col-diff">
-            Разн
-          </span>
-          <span role="columnheader" className="col-form">
-            В/Н/П
-          </span>
+          </div>
+          <div role="columnheader" className="stat-group">
+            <span className="stat">
+              <span>И</span>
+              <span className="muted">Матчи</span>
+            </span>
+            <span className="stat">
+              <span>В</span>
+              <span className="muted">Победы</span>
+            </span>
+            <span className="stat">
+              <span>Н</span>
+              <span className="muted">Ничьи</span>
+            </span>
+            <span className="stat">
+              <span>П</span>
+              <span className="muted">Поражения</span>
+            </span>
+            <span className="stat">
+              <span>Голы</span>
+              <span className="muted">Забито / пропущено</span>
+            </span>
+            <span className="stat diff">
+              <span>±</span>
+              <span className="muted">Разница</span>
+            </span>
+          </div>
+          <div role="columnheader" className="col-points">
+            <span className="points-label">Очки</span>
+          </div>
         </div>
         {standings.length === 0 ? (
           <div role="row" className="league-table-row empty">
@@ -112,42 +138,66 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
             </span>
           </div>
         ) : (
-          standings.map(entry => (
-            <div role="row" className="league-table-row" key={entry.clubId}>
-              <span role="cell" className="col-pos">
-                {entry.position}
-              </span>
-              <span role="cell" className="col-club">
-                {entry.clubLogoUrl ? (
-                  <img src={entry.clubLogoUrl} alt="Логотип клуба" className="club-logo" />
-                ) : (
-                  <span className="club-logo fallback" aria-hidden>
-                    {entry.clubShortName.slice(0, 2).toUpperCase()}
+          standings.map(entry => {
+            const fallbackLabel = entry.clubShortName || entry.clubName
+            const diffDisplay = formatDiff(entry.goalDifference)
+            return (
+              <div role="row" className="league-table-row" key={entry.clubId}>
+                <div role="cell" className="col-meta">
+                  <span className="meta-position">{entry.position}</span>
+                  {entry.clubLogoUrl ? (
+                    <img
+                      src={entry.clubLogoUrl}
+                      alt={`Логотип клуба ${entry.clubName}`}
+                      className="club-logo"
+                    />
+                  ) : (
+                    <span className="club-logo fallback" aria-hidden>
+                      {fallbackLabel.slice(0, 2).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div role="cell" className="col-club">
+                  <span className="club-name">
+                    <strong>{entry.clubName}</strong>
+                    <span className="muted">{fallbackLabel}</span>
                   </span>
-                )}
-                <span className="club-name">
-                  <strong>{entry.clubShortName}</strong>
-                  <span className="muted">{entry.clubName}</span>
-                </span>
-              </span>
-              <span role="cell" className="col-matches">
-                {entry.matchesPlayed}
-              </span>
-              <span role="cell" className="col-points">
-                {entry.points}
-              </span>
-              <span role="cell" className="col-goals">
-                {entry.goalsFor}:{entry.goalsAgainst}
-              </span>
-              <span role="cell" className="col-diff" data-positive={entry.goalDifference >= 0}>
-                {entry.goalDifference >= 0 ? '+' : ''}
-                {entry.goalDifference}
-              </span>
-              <span role="cell" className="col-form">
-                {entry.wins}/{entry.draws}/{entry.losses}
-              </span>
-            </div>
-          ))
+                </div>
+                <div role="cell" className="stat-group" aria-label={`Статистика клуба ${entry.clubName}`}>
+                  <span className="stat">
+                    <span>{entry.matchesPlayed}</span>
+                    <span className="muted">Матчи</span>
+                  </span>
+                  <span className="stat">
+                    <span>{entry.wins}</span>
+                    <span className="muted">Победы</span>
+                  </span>
+                  <span className="stat">
+                    <span>{entry.draws}</span>
+                    <span className="muted">Ничьи</span>
+                  </span>
+                  <span className="stat">
+                    <span>{entry.losses}</span>
+                    <span className="muted">Поражения</span>
+                  </span>
+                  <span className="stat">
+                    <span>
+                      {entry.goalsFor}:{entry.goalsAgainst}
+                    </span>
+                    <span className="muted">Голы</span>
+                  </span>
+                  <span className="stat diff" data-positive={entry.goalDifference >= 0}>
+                    <span>{diffDisplay}</span>
+                    <span className="muted">Разница</span>
+                  </span>
+                </div>
+                <div role="cell" className="col-points">
+                  <span className="points">{entry.points}</span>
+                  <span className="points-label">Очки</span>
+                </div>
+              </div>
+            )
+          })
         )}
       </div>
     </section>

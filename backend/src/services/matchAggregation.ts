@@ -84,15 +84,18 @@ export async function handleMatchFinalization(matchId: bigint, logger: FastifyBa
   const isBracketFormat =
     competitionFormat === ('PLAYOFF_BRACKET' as SeriesFormat) ||
     competitionFormat === SeriesFormat.GROUP_SINGLE_ROUND_PLAYOFF
-  await prisma.$transaction(async tx => {
-    const includePlayoffRounds = isBracketFormat
-    await rebuildClubSeasonStats(seasonId, tx, { includePlayoffRounds })
-    await rebuildPlayerSeasonStats(seasonId, tx)
-    await rebuildPlayerCareerStats(seasonId, tx)
-    await processDisqualifications(match, tx)
-    await updatePredictions(match, tx)
-    await updateSeriesState(match, tx, logger)
-  })
+  await prisma.$transaction(
+    async tx => {
+      const includePlayoffRounds = isBracketFormat
+      await rebuildClubSeasonStats(seasonId, tx, { includePlayoffRounds })
+      await rebuildPlayerSeasonStats(seasonId, tx)
+      await rebuildPlayerCareerStats(seasonId, tx)
+      await processDisqualifications(match, tx)
+      await updatePredictions(match, tx)
+      await updateSeriesState(match, tx, logger)
+    },
+    { timeout: 30000 }
+  )
 
   // invalidate caches related to season/club summaries
   const impactedClubIds = new Set<number>()

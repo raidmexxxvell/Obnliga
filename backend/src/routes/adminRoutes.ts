@@ -1904,7 +1904,7 @@ export default async function (server: FastifyInstance) {
             if (clubIds.length) {
               await rebuildCareerStatsForClubs(clubIds, tx)
             }
-          })
+          }, { timeout: 20000 })
           const cacheKeys = new Set<string>([
             `competition:${competitionId}:club-stats`,
             `competition:${competitionId}:player-stats`,
