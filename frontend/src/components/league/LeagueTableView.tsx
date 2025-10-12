@@ -9,18 +9,6 @@ type LeagueTableViewProps = {
   lastUpdated?: number
 }
 
-const formatDate = (value: string): string => {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-  return date.toLocaleDateString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  })
-}
-
 const formatTime = (value?: number): string => {
   if (!value) return ''
   const date = new Date(value)
@@ -75,9 +63,7 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
       <header className="league-table-header">
         <div>
           <h2>{season.name}</h2>
-          <p>
-            {season.competition.name} · {formatDate(season.startDate)} — {formatDate(season.endDate)}
-          </p>
+          <p>{season.competition.name}</p>
         </div>
         <span className="muted">{updatedLabel}</span>
       </header>

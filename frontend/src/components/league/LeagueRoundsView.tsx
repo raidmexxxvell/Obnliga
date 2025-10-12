@@ -1,5 +1,6 @@
 import React from 'react'
 import type { LeagueMatchView, LeagueRoundCollection } from '@shared/types'
+import '../../styles/leagueRounds.css'
 
 type LeagueRoundsViewProps = {
   mode: 'schedule' | 'results'
@@ -10,47 +11,28 @@ type LeagueRoundsViewProps = {
   lastUpdated?: number
 }
 
-const DATE_RANGE_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-})
-
-const DATE_ONLY_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
-  day: '2-digit',
-  month: '2-digit',
-})
-
 const TIME_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
   hour: '2-digit',
   minute: '2-digit',
 })
 
-const formatRangeDate = (value: string): string => {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-  return DATE_RANGE_FORMATTER.format(date)
-}
-
 const parseMatchDateTime = (value: string): {
   isValid: boolean
-  dateLabel: string
-  timeLabel: string
+  fullLabel: string
 } => {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
     return {
       isValid: false,
-      dateLabel: value,
-      timeLabel: '',
+      fullLabel: 'Дата уточняется',
     }
   }
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const year = String(date.getFullYear()).slice(-2)
   return {
     isValid: true,
-    dateLabel: DATE_ONLY_FORMATTER.format(date),
-    timeLabel: TIME_FORMATTER.format(date),
+    fullLabel: `${day}.${month}.${year} ${TIME_FORMATTER.format(date)}`,
   }
 }
 
@@ -66,47 +48,51 @@ const buildLocationLabel = (match: LeagueMatchView): string => {
   return parts.join(' · ')
 }
 
-const resolveShortName = (club: LeagueMatchView['homeClub']): string => {
-  if (club.shortName && club.shortName.trim().length > 0) {
-    return club.shortName.trim()
-  }
-  return club.name
-}
-
 const buildMatchDescriptor = (match: LeagueMatchView, mode: 'schedule' | 'results') => {
-  const { timeLabel, dateLabel } = parseMatchDateTime(match.matchDateTime)
+  const { fullLabel } = parseMatchDateTime(match.matchDateTime)
   const isLive = match.status === 'LIVE'
   const isFinished = match.status === 'FINISHED'
   const isPostponed = match.status === 'POSTPONED'
 
+  const badge = isPostponed
+    ? { label: 'Перенесён', tone: 'postponed' as const }
+    : isLive
+      ? { label: 'Матч идёт', tone: 'live' as const }
+      : null
+
   if (isPostponed) {
     return {
-      main: 'Перенесён',
-      secondary: timeLabel ? `${dateLabel} · ${timeLabel}` : dateLabel,
-      showLive: false,
-      penalty: null,
+      dateTime: fullLabel,
+      score: '—',
+      detail: null,
+      badge,
+      modifier: 'postponed' as const,
     }
   }
 
   if (mode === 'results' || isFinished || isLive) {
-    const main = `${match.homeScore} : ${match.awayScore}`
-    const secondary = timeLabel ? `${dateLabel} · ${timeLabel}` : dateLabel
-    const penalty = match.hasPenaltyShootout && match.penaltyHomeScore !== null && match.penaltyAwayScore !== null
-      ? `Пенальти ${match.penaltyHomeScore}:${match.penaltyAwayScore}`
-      : null
+    const score = `${match.homeScore} : ${match.awayScore}`
+    const penalty =
+      match.hasPenaltyShootout &&
+      match.penaltyHomeScore !== null &&
+      match.penaltyAwayScore !== null
+        ? `Пенальти ${match.penaltyHomeScore}:${match.penaltyAwayScore}`
+        : null
     return {
-      main,
-      secondary,
-      showLive: isLive,
-      penalty,
+      dateTime: fullLabel,
+      score,
+      detail: penalty,
+      badge,
+      modifier: isLive ? 'live' : undefined,
     }
   }
 
   return {
-    main: timeLabel || 'Время уточняется',
-    secondary: dateLabel,
-    showLive: false,
-    penalty: null,
+    dateTime: fullLabel,
+    score: '—',
+    detail: null,
+    badge: null,
+    modifier: undefined,
   }
 }
 
@@ -166,18 +152,14 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
   }
 
   const { season, rounds } = data
-  const headerTitle = mode === 'schedule' ? 'Календарь матчей' : 'Последние результаты'
+  const headerTitle = mode === 'schedule' ? 'Календарь матчей' : 'Результаты'
   const updatedLabel = formatUpdatedLabel(lastUpdated)
 
   return (
     <section className="league-rounds" aria-label={headerTitle}>
       <header className="league-rounds-header">
-        <div>
-          <h2>{headerTitle}</h2>
-          <p>
-            {season.name} · {formatRangeDate(season.startDate)} — {formatRangeDate(season.endDate)}
-          </p>
-        </div>
+        <h2>{headerTitle}</h2>
+        <p>{season.name}</p>
         <span className="muted">{updatedLabel}</span>
       </header>
 
@@ -199,17 +181,21 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                 <div className="league-round-card-body">
                   {round.matches.map(match => {
                     const descriptor = buildMatchDescriptor(match, mode)
-                    const homeName = resolveShortName(match.homeClub)
-                    const awayName = resolveShortName(match.awayClub)
+                    const homeName = match.homeClub.name
+                    const awayName = match.awayClub.name
                     const location = buildLocationLabel(match)
                     return (
                       <div
-                        className={
-                          'league-match-row' + (descriptor.showLive ? ' live' : '') + (match.status === 'POSTPONED' ? ' postponed' : '')
-                        }
+                        className={`league-match-card${descriptor.modifier ? ` ${descriptor.modifier}` : ''}`}
                         key={match.id}
                       >
-                        <div className="league-match-teams">
+                        <div className="league-match-top">
+                          <span className="match-datetime">{descriptor.dateTime}</span>
+                          {descriptor.badge && (
+                            <span className={`match-badge ${descriptor.badge.tone}`}>{descriptor.badge.label}</span>
+                          )}
+                        </div>
+                        <div className="league-match-main">
                           <div className="league-match-team">
                             {match.homeClub.logoUrl ? (
                               <img
@@ -225,14 +211,10 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
                             <span className="team-name">{homeName}</span>
                           </div>
                           <div className="league-match-score">
-                            <span className="score-main">{descriptor.main}</span>
-                            {descriptor.secondary && (
-                              <span className="score-sub">{descriptor.secondary}</span>
+                            <span className="score-main">{descriptor.score}</span>
+                            {descriptor.detail && (
+                              <span className="score-detail">{descriptor.detail}</span>
                             )}
-                            {descriptor.penalty && (
-                              <span className="score-penalty">{descriptor.penalty}</span>
-                            )}
-                            {descriptor.showLive && <span className="score-live">Матч идёт</span>}
                           </div>
                           <div className="league-match-team">
                             {match.awayClub.logoUrl ? (
