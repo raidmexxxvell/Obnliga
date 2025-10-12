@@ -332,6 +332,7 @@ export const NewsSection = () => {
           aria-modal="true"
           aria-label={modalState.item.title}
         >
+          <div className="news-modal-backdrop" role="presentation" onClick={closeModal} />
           <div className="news-modal-content">
             <header>
               <time className="news-date" dateTime={modalState.item.createdAt}>
@@ -358,7 +359,6 @@ export const NewsSection = () => {
               Закрыть
             </button>
           </div>
-          <div className="news-modal-backdrop" role="presentation" onClick={closeModal} />
         </div>
       ) : null}
     </section>
