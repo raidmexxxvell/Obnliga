@@ -41,7 +41,7 @@ export type SeasonWithCompetition = Prisma.SeasonGetPayload<{
   }
 }>
 
-const ensureSeasonSummary = (season: SeasonWithCompetition): LeagueSeasonSummary => ({
+export const ensureSeasonSummary = (season: SeasonWithCompetition): LeagueSeasonSummary => ({
   id: season.id,
   name: season.name,
   startDate: season.startDate.toISOString(),

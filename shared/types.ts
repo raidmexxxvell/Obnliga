@@ -66,3 +66,47 @@ export interface LeagueTableResponse {
   season: LeagueSeasonSummary
   standings: LeagueTableEntry[]
 }
+
+export interface LeagueMatchLocation {
+  stadiumId: number | null
+  stadiumName: string | null
+  city: string | null
+}
+
+export interface LeagueMatchView {
+  id: string
+  matchDateTime: string
+  status: 'SCHEDULED' | 'LIVE' | 'POSTPONED' | 'FINISHED'
+  homeClub: {
+    id: number
+    name: string
+    shortName: string
+    logoUrl: string | null
+  }
+  awayClub: {
+    id: number
+    name: string
+    shortName: string
+    logoUrl: string | null
+  }
+  homeScore: number
+  awayScore: number
+  hasPenaltyShootout: boolean
+  penaltyHomeScore: number | null
+  penaltyAwayScore: number | null
+  location: LeagueMatchLocation | null
+}
+
+export interface LeagueRoundMatches {
+  roundId: number | null
+  roundNumber: number | null
+  roundLabel: string
+  roundType: 'REGULAR' | 'PLAYOFF' | null
+  matches: LeagueMatchView[]
+}
+
+export interface LeagueRoundCollection {
+  season: LeagueSeasonSummary
+  rounds: LeagueRoundMatches[]
+  generatedAt: string
+}

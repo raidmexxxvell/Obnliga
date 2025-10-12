@@ -91,17 +91,19 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
               Лого
             </span>
             <span role="columnheader" className="col-club">
-              <span>Клуб</span>
-              <span className="club-score-label">З-П</span>
+              Клуб
             </span>
-            <span role="columnheader" className="col-form">
+            <span role="columnheader" className="col-record">
               В/Н/П
             </span>
+            <span role="columnheader" className="col-score">
+              ЗП
+            </span>
             <span role="columnheader" className="col-diff">
-              Разн
+              РГ
             </span>
             <span role="columnheader" className="col-points">
-              Очки
+              О
             </span>
           </div>
           {standings.length === 0 ? (
@@ -132,14 +134,13 @@ export const LeagueTableView: React.FC<LeagueTableViewProps> = ({
                 <span role="cell" className="col-club">
                   <span className="club-name">
                     <strong>{entry.clubName}</strong>
-                    <span className="muted">{entry.clubShortName}</span>
-                  </span>
-                  <span className="club-score">
-                    {entry.goalsFor}-{entry.goalsAgainst}
                   </span>
                 </span>
-                <span role="cell" className="col-form">
+                <span role="cell" className="col-record">
                   {entry.wins}/{entry.draws}/{entry.losses}
+                </span>
+                <span role="cell" className="col-score">
+                  {entry.goalsFor}-{entry.goalsAgainst}
                 </span>
                 <span role="cell" className="col-diff" data-positive={entry.goalDifference >= 0}>
                   {entry.goalDifference >= 0 ? '+' : ''}

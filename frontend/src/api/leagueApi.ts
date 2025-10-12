@@ -1,4 +1,8 @@
-import type { LeagueSeasonSummary, LeagueTableResponse } from '@shared/types'
+import type {
+  LeagueRoundCollection,
+  LeagueSeasonSummary,
+  LeagueTableResponse,
+} from '@shared/types'
 
 const API_BASE = import.meta.env.VITE_BACKEND_URL ?? ''
 
@@ -117,6 +121,14 @@ export const leagueApi = {
   fetchTable(seasonId?: number, signal?: AbortSignal) {
     const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ''
     return request<LeagueTableResponse>(`/api/league/table${query}`, { signal })
+  },
+  fetchSchedule(seasonId?: number, signal?: AbortSignal) {
+    const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ''
+    return request<LeagueRoundCollection>(`/api/league/schedule${query}`, { signal })
+  },
+  fetchResults(seasonId?: number, signal?: AbortSignal) {
+    const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ''
+    return request<LeagueRoundCollection>(`/api/league/results${query}`, { signal })
   },
 }
 

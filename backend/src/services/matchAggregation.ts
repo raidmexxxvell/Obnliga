@@ -18,6 +18,11 @@ import prisma from '../db'
 import { defaultCache } from '../cache'
 import { buildLeagueTable } from './leagueTable'
 import {
+  PUBLIC_LEAGUE_RESULTS_KEY,
+  PUBLIC_LEAGUE_SCHEDULE_KEY,
+  refreshLeagueMatchAggregates,
+} from './leagueSchedule'
+import {
   addDays,
   applyTimeToDate,
   createInitialPlayoffPlans,
@@ -132,6 +137,10 @@ export async function handleMatchFinalization(
     ...Array.from(impactedClubIds).map(clubId => `club:${clubId}:player-career`),
     PUBLIC_LEAGUE_TABLE_KEY,
     `${PUBLIC_LEAGUE_TABLE_KEY}:${seasonId}`,
+    PUBLIC_LEAGUE_SCHEDULE_KEY,
+    `${PUBLIC_LEAGUE_SCHEDULE_KEY}:${seasonId}`,
+    PUBLIC_LEAGUE_RESULTS_KEY,
+    `${PUBLIC_LEAGUE_RESULTS_KEY}:${seasonId}`,
   ]
   await Promise.all(cacheKeys.map(key => defaultCache.invalidate(key).catch(() => undefined)))
 
@@ -148,6 +157,9 @@ export async function handleMatchFinalization(
         table,
         PUBLIC_LEAGUE_TABLE_TTL_SECONDS
       )
+      await refreshLeagueMatchAggregates(refreshedSeason.id, {
+        publishTopic: options?.publishTopic,
+      })
       if (options?.publishTopic) {
         await options.publishTopic(PUBLIC_LEAGUE_TABLE_KEY, {
           type: 'league.table',

@@ -16,6 +16,11 @@ import {
 } from '@prisma/client'
 import { handleMatchFinalization, rebuildCareerStatsForClubs } from '../services/matchAggregation'
 import { buildLeagueTable } from '../services/leagueTable'
+import {
+  PUBLIC_LEAGUE_RESULTS_KEY,
+  PUBLIC_LEAGUE_SCHEDULE_KEY,
+  refreshLeagueMatchAggregates,
+} from '../services/leagueSchedule'
 import { createSeasonPlayoffs, runSeasonAutomation } from '../services/seasonAutomation'
 import { serializePrisma } from '../utils/serialization'
 import { defaultCache } from '../cache'
@@ -2377,8 +2382,18 @@ export default async function (server: FastifyInstance) {
         await defaultCache.invalidate(PUBLIC_LEAGUE_SEASONS_KEY)
         await defaultCache.invalidate(PUBLIC_LEAGUE_TABLE_KEY)
         await defaultCache.invalidate(`${PUBLIC_LEAGUE_TABLE_KEY}:${seasonId}`)
+        await defaultCache.invalidate(PUBLIC_LEAGUE_SCHEDULE_KEY)
+        await defaultCache.invalidate(`${PUBLIC_LEAGUE_SCHEDULE_KEY}:${seasonId}`)
+        await defaultCache.invalidate(PUBLIC_LEAGUE_RESULTS_KEY)
+        await defaultCache.invalidate(`${PUBLIC_LEAGUE_RESULTS_KEY}:${seasonId}`)
         if (previousActiveSeasonId && previousActiveSeasonId !== seasonId) {
           await defaultCache.invalidate(`${PUBLIC_LEAGUE_TABLE_KEY}:${previousActiveSeasonId}`)
+          await defaultCache.invalidate(
+            `${PUBLIC_LEAGUE_SCHEDULE_KEY}:${previousActiveSeasonId}`
+          )
+          await defaultCache.invalidate(
+            `${PUBLIC_LEAGUE_RESULTS_KEY}:${previousActiveSeasonId}`
+          )
         }
         await defaultCache.set(PUBLIC_LEAGUE_TABLE_KEY, table, PUBLIC_LEAGUE_TABLE_TTL_SECONDS)
         await defaultCache.set(
@@ -2386,6 +2401,11 @@ export default async function (server: FastifyInstance) {
           table,
           PUBLIC_LEAGUE_TABLE_TTL_SECONDS
         )
+
+        const publishTopic =
+          typeof admin.publishTopic === 'function' ? admin.publishTopic.bind(admin) : undefined
+
+        await refreshLeagueMatchAggregates(seasonId, { publishTopic })
 
         if (typeof admin.publishTopic === 'function') {
           try {
@@ -2434,6 +2454,19 @@ export default async function (server: FastifyInstance) {
             status: MatchStatus.SCHEDULED,
           },
         })
+
+        const publishTopic =
+          typeof admin.publishTopic === 'function' ? admin.publishTopic.bind(admin) : undefined
+
+        try {
+          await refreshLeagueMatchAggregates(match.seasonId, { publishTopic })
+        } catch (err) {
+          admin.log.warn(
+            { err, seasonId: match.seasonId },
+            'failed to refresh league aggregates after match create'
+          )
+        }
+
         return sendSerialized(reply, match)
       })
 
@@ -2632,11 +2665,23 @@ export default async function (server: FastifyInstance) {
           data,
         })
 
+        const publishTopic =
+          typeof request.server.publishTopic === 'function'
+            ? request.server.publishTopic.bind(request.server)
+            : undefined
+
+        if (nextStatus !== MatchStatus.FINISHED || existing.status === MatchStatus.FINISHED) {
+          try {
+            await refreshLeagueMatchAggregates(existing.seasonId, { publishTopic })
+          } catch (err) {
+            request.server.log.warn(
+              { err, matchId: matchId.toString(), seasonId: existing.seasonId },
+              'failed to refresh league aggregates after match update'
+            )
+          }
+        }
+
         if (body.status === MatchStatus.FINISHED && existing.status !== MatchStatus.FINISHED) {
-          const publishTopic =
-            typeof request.server.publishTopic === 'function'
-              ? request.server.publishTopic.bind(request.server)
-              : undefined
           await handleMatchFinalization(matchId, request.server.log, { publishTopic })
         }
 
@@ -2651,6 +2696,21 @@ export default async function (server: FastifyInstance) {
           return reply.status(409).send({ ok: false, error: 'finished_match_locked' })
         }
         await prisma.match.delete({ where: { id: matchId } })
+
+        const publishTopic =
+          typeof request.server.publishTopic === 'function'
+            ? request.server.publishTopic.bind(request.server)
+            : undefined
+
+        try {
+          await refreshLeagueMatchAggregates(match.seasonId, { publishTopic })
+        } catch (err) {
+          request.server.log.warn(
+            { err, matchId: matchId.toString(), seasonId: match.seasonId },
+            'failed to refresh league aggregates after match delete'
+          )
+        }
+
         return reply.send({ ok: true })
       })
 
