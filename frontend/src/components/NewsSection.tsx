@@ -1,5 +1,6 @@
 import type { PointerEvent, TouchEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { NewsItem } from '@shared/types'
 import { wsClient, WSMessage } from '../wsClient'
 import '../styles/news.css'
@@ -325,42 +326,47 @@ export const NewsSection = () => {
         </footer>
       </article>
 
-      {modalState ? (
-        <div
-          className="news-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-label={modalState.item.title}
-        >
-          <div className="news-modal-backdrop" role="presentation" onClick={closeModal} />
-          <div className="news-modal-content">
-            <header>
-              <time className="news-date" dateTime={modalState.item.createdAt}>
-                {new Date(modalState.item.createdAt).toLocaleString('ru-RU', {
-                  day: '2-digit',
-                  month: 'long',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </time>
-              <h3>{modalState.item.title}</h3>
-            </header>
-            {modalState.item.coverUrl ? (
-              <div className="news-cover">
-                <img src={modalState.item.coverUrl} alt="Обложка новости" loading="lazy" />
+      {modalState
+        ? createPortal(
+            <>
+              <div className="news-modal-backdrop" role="presentation" onClick={closeModal} />
+              <div
+                className="news-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-label={modalState.item.title}
+              >
+                <div className="news-modal-content">
+                  <header>
+                    <time className="news-date" dateTime={modalState.item.createdAt}>
+                      {new Date(modalState.item.createdAt).toLocaleString('ru-RU', {
+                        day: '2-digit',
+                        month: 'long',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </time>
+                    <h3>{modalState.item.title}</h3>
+                  </header>
+                  {modalState.item.coverUrl ? (
+                    <div className="news-cover">
+                      <img src={modalState.item.coverUrl} alt="Обложка новости" loading="lazy" />
+                    </div>
+                  ) : null}
+                  <div className="news-content">
+                    {modalState.item.content.split('\n').map((paragraph, idx) => (
+                      <p key={idx}>{paragraph}</p>
+                    ))}
+                  </div>
+                  <button className="news-close" type="button" onClick={closeModal}>
+                    Закрыть
+                  </button>
+                </div>
               </div>
-            ) : null}
-            <div className="news-content">
-              {modalState.item.content.split('\n').map((paragraph, idx) => (
-                <p key={idx}>{paragraph}</p>
-              ))}
-            </div>
-            <button className="news-close" type="button" onClick={closeModal}>
-              Закрыть
-            </button>
-          </div>
-        </div>
-      ) : null}
+            </>,
+            document.body
+          )
+        : null}
     </section>
   )
 }
