@@ -14,10 +14,15 @@
 
 .league-rounds-header {
   display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.league-rounds-header-primary {
+  display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  text-align: center;
+  gap: 4px;
 }
 
 .league-rounds-header h2 {
@@ -217,6 +222,12 @@
 @media (max-width: 720px) {
   .league-rounds {
     padding: 18px 16px 22px;
+  }
+
+  .league-rounds-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
   }
 
   .league-match-main {

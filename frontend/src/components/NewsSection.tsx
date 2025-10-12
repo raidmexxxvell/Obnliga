@@ -2,6 +2,7 @@ import type { PointerEvent, TouchEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { NewsItem } from '@shared/types'
 import { wsClient, WSMessage } from '../wsClient'
+import '../styles/news.css'
 
 const API_BASE = import.meta.env.VITE_BACKEND_URL || ''
 const ROTATION_INTERVAL_MS = 7_000

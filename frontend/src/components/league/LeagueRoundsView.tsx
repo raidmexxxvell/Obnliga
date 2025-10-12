@@ -158,8 +158,10 @@ export const LeagueRoundsView: React.FC<LeagueRoundsViewProps> = ({
   return (
     <section className="league-rounds" aria-label={headerTitle}>
       <header className="league-rounds-header">
-        <h2>{headerTitle}</h2>
-        <p>{season.name}</p>
+        <div className="league-rounds-header-primary">
+          <h2>{headerTitle}</h2>
+          <p>{season.name}</p>
+        </div>
         <span className="muted">{updatedLabel}</span>
       </header>
 

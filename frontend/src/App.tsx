@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import './app.css'
+import './styles/splash.css'
 import Profile from './Profile'
 import { wsClient } from './wsClient'
 import { NewsSection } from './components/NewsSection'
