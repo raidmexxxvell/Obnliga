@@ -39,7 +39,6 @@ const LeaguePage: React.FC = () => {
   const tableErrors = useAppStore(state => state.errors.table)
   const leagueMenuOpen = useAppStore(state => state.leagueMenuOpen)
   const closeLeagueMenu = useAppStore(state => state.closeLeagueMenu)
-  const toggleLeagueMenu = useAppStore(state => state.toggleLeagueMenu)
   const tableFetchedAt = useAppStore(state => state.tableFetchedAt)
   const tables = useAppStore(state => state.tables)
 
@@ -81,15 +80,10 @@ const LeaguePage: React.FC = () => {
     setLeagueSubTab(tab)
   }
 
-  const handleRefreshClick = () => {
+  const handleForceReload = () => {
     if (selectedSeasonId) {
       void fetchTable({ seasonId: selectedSeasonId, force: true })
     }
-  }
-
-  const handleSeasonsButtonClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation()
-    toggleLeagueMenu(!leagueMenuOpen)
   }
 
   const handleContentClick = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -147,26 +141,6 @@ const LeaguePage: React.FC = () => {
               </button>
             ))}
           </nav>
-          {selectedSeason && (
-            <div className="league-toolbar-actions">
-              <button
-                type="button"
-                className="button-secondary"
-                onClick={handleRefreshClick}
-                disabled={loadingTable}
-              >
-                {loadingTable ? 'Обновляем…' : 'Обновить'}
-              </button>
-              <button
-                type="button"
-                className="button-secondary season-toggle"
-                onClick={handleSeasonsButtonClick}
-                aria-pressed={leagueMenuOpen}
-              >
-                {leagueMenuOpen ? 'Скрыть сезоны' : 'Сезоны'}
-              </button>
-            </div>
-          )}
         </div>
         {!selectedSeason && (
           <div className="inline-feedback info" role="status">
@@ -179,7 +153,7 @@ const LeaguePage: React.FC = () => {
             table={table}
             loading={loadingTable}
             error={tableErrors}
-            onRetry={handleRefreshClick}
+            onRetry={handleForceReload}
             lastUpdated={lastUpdated}
           />
         ) : (

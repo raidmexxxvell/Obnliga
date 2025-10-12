@@ -627,16 +627,10 @@ body {
 
 .league-toolbar {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-
-.league-toolbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  gap: 14px;
+  margin-bottom: 16px;
 }
 
 .league-sidebar-header {
@@ -655,15 +649,16 @@ body {
 
 .league-subtabs {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(48px, auto);
   gap: 12px;
-  padding: 8px;
+  padding: 10px;
   border-radius: 16px;
   background: rgba(12, 20, 36, 0.8);
   border: 1px solid rgba(0, 240, 255, 0.18);
   box-shadow: 0 12px 28px rgba(3, 8, 18, 0.6);
   width: 100%;
-  margin-bottom: 8px;
+  max-width: 440px;
 }
 
 .subtab-button {
@@ -741,10 +736,6 @@ body {
   border: 1px dashed rgba(0, 240, 255, 0.22);
 }
 
-.season-toggle {
-  min-width: 140px;
-  white-space: nowrap;
-}
 
 .league-table-header {
   display: flex;
@@ -924,13 +915,11 @@ body {
   }
 
   .league-toolbar {
-    flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
   }
 
-  .league-toolbar-actions {
-    width: 100%;
-    justify-content: space-between;
+  .league-subtabs {
+    max-width: 100%;
   }
 }
 
@@ -949,16 +938,6 @@ body {
   .league-table-header {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .league-toolbar-actions {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-  }
-
-  .season-toggle {
-    width: 100%;
   }
 
   .league-table-row {
@@ -1659,29 +1638,11 @@ body {
 
 @media (min-width: 1100px) {
   .league-subtabs {
-    max-width: 620px;
-  }
-
-  .season-actions {
-    gap: 14px;
+    max-width: 520px;
   }
 }
 
 @media (max-width: 640px) {
-  .season-context {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .season-actions {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .season-actions .button-secondary {
-    flex: 1;
-  }
-
   .league-table-row {
     grid-template-columns: 32px 48px minmax(140px, 1fr) repeat(4, minmax(60px, 0.8fr));
     padding: 10px 12px;
