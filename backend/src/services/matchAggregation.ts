@@ -116,6 +116,8 @@ export async function handleMatchFinalization(matchId: bigint, logger: FastifyBa
     'league:player-career',
     `match:${matchId.toString()}`,
     ...Array.from(impactedClubIds).map(clubId => `club:${clubId}:player-career`),
+      'public:league:table',
+      `public:league:table:${seasonId}`,
   ]
   await Promise.all(cacheKeys.map(key => defaultCache.invalidate(key).catch(() => undefined)))
 }

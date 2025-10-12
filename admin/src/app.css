@@ -2137,6 +2137,27 @@
   border: 1px solid rgba(0, 240, 255, 0.12);
 }
 
+.season-active-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 240, 255, 0.14);
+  background: rgba(0, 240, 255, 0.08);
+}
+
+.season-active-row .button-primary {
+  width: auto;
+  padding: 10px 18px;
+}
+
+.season-active-row .muted {
+  margin: 0;
+}
+
 .active-row {
   background: rgba(0, 240, 255, 0.08);
 }

@@ -67,6 +67,7 @@ export interface Season {
   startDate: string
   endDate: string
   seriesFormat?: SeriesFormat | null
+  isActive: boolean
   competition: Competition
   participants: SeasonParticipant[]
   rosters?: SeasonRosterEntry[]

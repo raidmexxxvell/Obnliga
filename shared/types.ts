@@ -32,3 +32,37 @@ export interface NewsItem {
   sendToTelegram?: boolean
   createdAt: string
 }
+
+export interface LeagueSeasonSummary {
+  id: number
+  name: string
+  startDate: string
+  endDate: string
+  isActive: boolean
+  competition: {
+    id: number
+    name: string
+    type: 'LEAGUE' | 'CUP'
+  }
+}
+
+export interface LeagueTableEntry {
+  position: number
+  clubId: number
+  clubName: string
+  clubShortName: string
+  clubLogoUrl: string | null
+  matchesPlayed: number
+  wins: number
+  draws: number
+  losses: number
+  goalsFor: number
+  goalsAgainst: number
+  goalDifference: number
+  points: number
+}
+
+export interface LeagueTableResponse {
+  season: LeagueSeasonSummary
+  standings: LeagueTableEntry[]
+}

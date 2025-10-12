@@ -64,7 +64,9 @@ server.register(bracketRoutes)
 
 // register public news routes
 import newsRoutes from './routes/newsRoutes'
+import leagueRoutes from './routes/leagueRoutes'
 server.register(newsRoutes)
+server.register(leagueRoutes)
 
 // register fastify websocket & cookie plugins and realtime
 // websocket & cookie plugins and realtime will be registered in start() to avoid top-level await

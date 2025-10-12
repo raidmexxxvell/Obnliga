@@ -3,6 +3,8 @@ import {
   adminGet,
   adminLogin,
   adminRequestWithMeta,
+  adminPatch,
+  AdminApiError,
   lineupLogin,
   translateAdminError,
 } from '../api/adminClient'
@@ -141,6 +143,7 @@ interface AdminState {
   clearError(): void
   setSelectedCompetition(competitionId?: number): void
   setSelectedSeason(seasonId?: number): void
+  activateSeason(seasonId: number): Promise<void>
   fetchDictionaries(options?: FetchOptions): Promise<void>
   fetchSeasons(options?: FetchOptions): Promise<void>
   fetchSeries(seasonId?: number, options?: FetchOptions): Promise<void>
@@ -529,6 +532,49 @@ const adminStoreCreator = (set: Setter, get: Getter): AdminState => {
           // Ошибка уже зафиксирована в стейте run()
         }
       })()
+    },
+    async activateSeason(seasonId: number) {
+      if (get().mode !== 'admin') return
+      const targetId = Number(seasonId)
+      if (!Number.isFinite(targetId) || targetId <= 0) {
+        return
+      }
+      set(state => ({
+        loading: { ...state.loading, activateSeason: true },
+        error: undefined,
+      }))
+      try {
+        const token = ensureToken()
+        const response = await adminPatch<{
+          seasonId: number
+          season: Season
+        }>(token, `/api/admin/seasons/${targetId}/activate`)
+        const activatedSeason = response.season
+        set(state => ({
+          data: {
+            ...state.data,
+            seasons: state.data.seasons.map(season =>
+              season.id === targetId
+                ? { ...season, isActive: true }
+                : { ...season, isActive: false }
+            ),
+          },
+          selectedSeasonId: targetId,
+        }))
+        await Promise.all([
+          get().fetchSeasons({ force: true }),
+          get().fetchMatches(targetId, { force: true }),
+          get().fetchStats(targetId, activatedSeason?.competitionId ?? get().selectedCompetitionId),
+        ])
+      } catch (error) {
+        const message =
+          error instanceof AdminApiError ? error.message : translateAdminError('request_failed')
+        set({ error: message, status: 'error' })
+      } finally {
+        set(state => ({
+          loading: { ...state.loading, activateSeason: false },
+        }))
+      }
     },
     async fetchDictionaries(options?: FetchOptions) {
       if (get().mode !== 'admin') return

@@ -15,6 +15,7 @@ import {
   SeriesStatus,
 } from '@prisma/client'
 import { handleMatchFinalization, rebuildCareerStatsForClubs } from '../services/matchAggregation'
+import { buildLeagueTable } from '../services/leagueTable'
 import { createSeasonPlayoffs, runSeasonAutomation } from '../services/seasonAutomation'
 import { serializePrisma } from '../utils/serialization'
 import { defaultCache } from '../cache'
@@ -285,6 +286,10 @@ const NEWS_CACHE_KEY = 'news:all'
 const seasonStatsCacheKey = (seasonId: number, suffix: string) => `season:${seasonId}:${suffix}`
 const competitionStatsCacheKey = (competitionId: number, suffix: string) =>
   `competition:${competitionId}:${suffix}`
+const PUBLIC_LEAGUE_SEASONS_KEY = 'public:league:seasons'
+const PUBLIC_LEAGUE_TABLE_KEY = 'public:league:table'
+const PUBLIC_LEAGUE_TABLE_TTL_SECONDS = 300
+const leagueStatsCacheKey = (suffix: string) => `league:${suffix}`
 
 const matchStatisticMetrics: MatchStatisticMetric[] = MATCH_STATISTIC_METRICS
 
@@ -2338,6 +2343,68 @@ export default async function (server: FastifyInstance) {
         return sendSerialized(reply, matches)
       })
 
+
+      admin.patch<{ Params: { seasonId: string } }>('/seasons/:seasonId/activate', async (request, reply) => {
+        const rawSeasonId = request.params?.seasonId
+        const seasonId = Number(rawSeasonId)
+        if (!Number.isFinite(seasonId) || seasonId <= 0) {
+          return reply.status(400).send({ ok: false, error: 'season_invalid' })
+        }
+
+        const season = await prisma.season.findUnique({
+          where: { id: seasonId },
+          include: { competition: true },
+        })
+
+        if (!season) {
+          return reply.status(404).send({ ok: false, error: 'season_not_found' })
+        }
+
+        let previousActiveSeasonId: number | null = null
+        await prisma.$transaction(async tx => {
+          const previousActive = await tx.season.findFirst({
+            where: { isActive: true },
+            select: { id: true },
+          })
+          previousActiveSeasonId = previousActive?.id ?? null
+          await tx.season.updateMany({ where: { isActive: true }, data: { isActive: false } })
+          await tx.season.update({ where: { id: seasonId }, data: { isActive: true } })
+        })
+
+        const activatedSeason = { ...season, isActive: true }
+        const table = await buildLeagueTable(activatedSeason)
+
+        await defaultCache.invalidate(PUBLIC_LEAGUE_SEASONS_KEY)
+        await defaultCache.invalidate(PUBLIC_LEAGUE_TABLE_KEY)
+        await defaultCache.invalidate(`${PUBLIC_LEAGUE_TABLE_KEY}:${seasonId}`)
+        if (previousActiveSeasonId && previousActiveSeasonId !== seasonId) {
+          await defaultCache.invalidate(`${PUBLIC_LEAGUE_TABLE_KEY}:${previousActiveSeasonId}`)
+        }
+        await defaultCache.set(PUBLIC_LEAGUE_TABLE_KEY, table, PUBLIC_LEAGUE_TABLE_TTL_SECONDS)
+        await defaultCache.set(
+          `${PUBLIC_LEAGUE_TABLE_KEY}:${seasonId}`,
+          table,
+          PUBLIC_LEAGUE_TABLE_TTL_SECONDS
+        )
+
+        if (typeof admin.publishTopic === 'function') {
+          try {
+            await admin.publishTopic(PUBLIC_LEAGUE_TABLE_KEY, {
+              type: 'league.table',
+              seasonId: table.season.id,
+              payload: table,
+            })
+          } catch (err) {
+            admin.log.warn({ err }, 'failed to broadcast league table update')
+          }
+        }
+
+        return sendSerialized(reply, {
+          seasonId: table.season.id,
+          season: activatedSeason,
+          table,
+        })
+      })
       admin.post('/matches', async (request, reply) => {
         const body = request.body as {
           seasonId?: number

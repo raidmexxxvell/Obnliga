@@ -290,6 +290,7 @@ export const MatchesTab = () => {
     fetchMatches,
     fetchFriendlyMatches,
     fetchDictionaries,
+    activateSeason,
     loading,
     error,
   } = useAdminStore(state => ({
@@ -302,6 +303,7 @@ export const MatchesTab = () => {
     fetchMatches: state.fetchMatches,
     fetchFriendlyMatches: state.fetchFriendlyMatches,
     fetchDictionaries: state.fetchDictionaries,
+    activateSeason: state.activateSeason,
     loading: state.loading,
     error: state.error,
   }))
@@ -373,10 +375,15 @@ export const MatchesTab = () => {
   const [playoffResult, setPlayoffResult] = useState<PlayoffCreationResult | null>(null)
 
   const isLoading = Boolean(loading.matches || loading.seasons)
+  const activatingSeason = Boolean(loading.activateSeason)
 
   const selectedSeason = useMemo<Season | undefined>(() => {
     return data.seasons.find(season => season.id === selectedSeasonId)
   }, [data.seasons, selectedSeasonId])
+
+  const activeSeason = useMemo<Season | undefined>(() => {
+    return data.seasons.find(season => season.isActive)
+  }, [data.seasons])
 
   const seasonParticipants = useMemo<SeasonParticipant[]>(() => {
     return selectedSeason?.participants ?? []
@@ -1910,6 +1917,26 @@ export const MatchesTab = () => {
                 ))}
               </select>
             </label>
+            <div className="season-active-row" role="status" aria-live="polite">
+              <span className="muted">
+                Текущий активный сезон:{' '}
+                <strong>
+                  {activeSeason
+                    ? `${activeSeason.name} — ${activeSeason.competition.name}`
+                    : 'не выбран'}
+                </strong>
+              </span>
+              <button
+                className="button-primary"
+                type="button"
+                onClick={() => selectedSeason && activateSeason(selectedSeason.id)}
+                disabled={
+                  !selectedSeason || activatingSeason || selectedSeason.isActive || !token
+                }
+              >
+                {activatingSeason ? 'Сохраняем…' : 'Сделать активным'}
+              </button>
+            </div>
             {selectedSeason ? (
               <div className="season-details">
                 <p>
